@@ -1,0 +1,195 @@
+/**
+ * Le monde de l'étape 1 : **deux pièces, deux coutures.**
+ *
+ * Deux, et pas une, volontairement. Avec une seule couture on ne teste que le
+ * cas facile : la bouche de sortie est derrière la caméra virtuelle, donc jamais
+ * visible, donc aucune récursion. En reliant les deux parois opposées de chaque
+ * pièce, on obtient un couloir **infini** qui alterne les deux salles — c'est le
+ * cas le plus dur du rendu de portails, et il vaut mieux l'avoir sous les yeux
+ * dès le premier jour que le découvrir plus tard.
+ *
+ * Les deux pièces sont volontairement dissemblables :
+ *   — tailles différentes (10 × 4 × 10 contre 16 × 8 × 16), donc une pièce plus
+ *     grande dedans que dehors, gratuitement ;
+ *   — altitudes différentes ;
+ *   — éloignées de trente mètres et pivotées d'un quart de tour, pour qu'aucune
+ *     coïncidence de position ne puisse masquer une erreur de transformation.
+ */
+
+import type { F32 } from '../f32'
+import { create, fromBasis, invertRigid, multiply, type Mat4 } from '../math/mat4'
+import { add, cross, neg, scale, type Vec3 } from '../math/vec3'
+import { buildRoom, pushWall, type Color, type Hole } from './geometry'
+import type { Cell, Mouth, Passage, World } from './types'
+
+const DOOR_HALF_W = 0.9
+const DOOR_HALF_H = 1.1
+
+/** Repère d'une bouche, colonnes (right, up, normal, centre). */
+function mouthFrame(m: Mouth): Mat4 {
+  return fromBasis(create(), m.right, m.up, m.normal, m.center)
+}
+
+/**
+ * Repère de la bouche de sortie, retourné d'un demi-tour autour de son axe
+ * vertical. C'est ce demi-tour qui fait qu'on **sort** de la seconde bouche au
+ * lieu d'y entrer : franchir une porte, ce n'est pas apparaître collé contre son
+ * dos.
+ */
+function mouthFrameFlipped(m: Mouth): Mat4 {
+  return fromBasis(create(), neg(m.right), m.up, neg(m.normal), m.center)
+}
+
+/** T = F_to · demi-tour · F_from⁻¹ */
+function passageTransform(from: Mouth, to: Mouth): Mat4 {
+  const inv = invertRigid(create(), mouthFrame(from))
+  return multiply(create(), mouthFrameFlipped(to), inv)
+}
+
+function makePassages(a: Mouth, b: Mouth): [Passage, Passage] {
+  return [
+    { from: a, to: b, transform: passageTransform(a, b) },
+    { from: b, to: a, transform: passageTransform(b, a) },
+  ]
+}
+
+/**
+ * Encadrement de l'ouverture : quatre bandes fines posées juste devant la paroi,
+ * en léger surplomb sur le trou.
+ *
+ * Purement utilitaire, et pourtant essentiel : sans un bord net, on ne peut pas
+ * juger à l'œil si l'image vue à travers la couture est correctement alignée.
+ * Décalé d'un centimètre vers l'intérieur pour ne conflictuer ni avec la paroi
+ * ni avec le quad du portail.
+ */
+function pushMouthFrame(out: number[], m: Mouth, color: Color, band = 0.07): void {
+  const o = add(m.center, scale(m.normal, 0.01))
+  const w = m.halfWidth
+  const h = m.halfHeight
+  const R = m.right
+  const U = m.up
+  const corner = (s: number, t: number): Vec3 => add(add(o, scale(R, s)), scale(U, t))
+
+  // Verticales, puis horizontale supérieure. Rien en bas : l'ouverture descend
+  // jusqu'au sol.
+  const bands: { origin: Vec3; right: Vec3; up: Vec3 }[] = [
+    { origin: corner(-w, -h), right: scale(R, band), up: scale(U, 2 * h) },
+    { origin: corner(w - band, -h), right: scale(R, band), up: scale(U, 2 * h) },
+    { origin: corner(-w, h - band), right: scale(R, 2 * w), up: scale(U, band) },
+  ]
+  for (const b of bands) pushWall(out, { origin: b.origin, right: b.right, up: b.up, color })
+}
+
+function holeOf(m: Mouth): Hole {
+  return { center: m.center, halfWidth: m.halfWidth, halfHeight: m.halfHeight }
+}
+
+export function buildWorld(): World {
+  // --- Cellule « hall » : petite, claire, à échelle humaine. ----------------
+  const hallMin: Vec3 = { x: -5, y: 0, z: -5 }
+  const hallMax: Vec3 = { x: 5, y: 4, z: 5 }
+
+  const hallNorth: Mouth = {
+    id: 'hall.nord',
+    cell: 'hall',
+    center: { x: 0, y: DOOR_HALF_H, z: hallMin.z },
+    right: { x: 1, y: 0, z: 0 },
+    up: { x: 0, y: 1, z: 0 },
+    normal: { x: 0, y: 0, z: 1 },
+    halfWidth: DOOR_HALF_W,
+    halfHeight: DOOR_HALF_H,
+  }
+  const hallSouth: Mouth = {
+    id: 'hall.sud',
+    cell: 'hall',
+    center: { x: 0, y: DOOR_HALF_H, z: hallMax.z },
+    right: { x: -1, y: 0, z: 0 },
+    up: { x: 0, y: 1, z: 0 },
+    normal: { x: 0, y: 0, z: -1 },
+    halfWidth: DOOR_HALF_W,
+    halfHeight: DOOR_HALF_H,
+  }
+
+  // --- Cellule « salle » : plus grande, plus basse, plus froide. ------------
+  const salleMin: Vec3 = { x: 30, y: -1.5, z: 20 }
+  const salleMax: Vec3 = { x: 46, y: 6.5, z: 36 }
+  const salleDoorY = salleMin.y + DOOR_HALF_H
+
+  const salleWest: Mouth = {
+    id: 'salle.ouest',
+    cell: 'salle',
+    center: { x: salleMin.x, y: salleDoorY, z: 28 },
+    right: { x: 0, y: 0, z: -1 },
+    up: { x: 0, y: 1, z: 0 },
+    normal: { x: 1, y: 0, z: 0 },
+    halfWidth: DOOR_HALF_W,
+    halfHeight: DOOR_HALF_H,
+  }
+  const salleEast: Mouth = {
+    id: 'salle.est',
+    cell: 'salle',
+    center: { x: salleMax.x, y: salleDoorY, z: 28 },
+    right: { x: 0, y: 0, z: 1 },
+    up: { x: 0, y: 1, z: 0 },
+    normal: { x: -1, y: 0, z: 0 },
+    halfWidth: DOOR_HALF_W,
+    halfHeight: DOOR_HALF_H,
+  }
+
+  // Vérification silencieuse mais utile : un repère de bouche doit être direct,
+  // sinon la transformation retourne l'image sans que rien ne le signale.
+  for (const m of [hallNorth, hallSouth, salleWest, salleEast]) {
+    const n = cross(m.right, m.up)
+    const err = Math.abs(n.x - m.normal.x) + Math.abs(n.y - m.normal.y) + Math.abs(n.z - m.normal.z)
+    if (err > 1e-6) throw new Error(`Repère de bouche indirect sur ${m.id} (right × up ≠ normal)`)
+  }
+
+  const [hallNorthToSalle, salleWestToHall] = makePassages(hallNorth, salleWest)
+  const [hallSouthToSalle, salleEastToHall] = makePassages(hallSouth, salleEast)
+
+  const accent: Color = [0.62, 0.36, 0.2]
+
+  const hallVerts = buildRoom(
+    hallMin,
+    hallMax,
+    { floor: [0.3, 0.29, 0.27], ceiling: [0.42, 0.41, 0.39], wall: [0.55, 0.53, 0.5] },
+    { north: holeOf(hallNorth), south: holeOf(hallSouth) },
+  )
+  const salleVerts = buildRoom(
+    salleMin,
+    salleMax,
+    { floor: [0.24, 0.25, 0.28], ceiling: [0.34, 0.36, 0.4], wall: [0.44, 0.46, 0.5] },
+    { west: holeOf(salleWest), east: holeOf(salleEast) },
+  )
+
+  const hallExtra: number[] = []
+  pushMouthFrame(hallExtra, hallNorth, accent)
+  pushMouthFrame(hallExtra, hallSouth, accent)
+  const salleExtra: number[] = []
+  pushMouthFrame(salleExtra, salleWest, accent)
+  pushMouthFrame(salleExtra, salleEast, accent)
+
+  const hall: Cell = {
+    id: 'hall',
+    min: hallMin,
+    max: hallMax,
+    verts: concat(hallVerts, hallExtra),
+    passages: [hallNorthToSalle, hallSouthToSalle],
+  }
+  const salle: Cell = {
+    id: 'salle',
+    min: salleMin,
+    max: salleMax,
+    verts: concat(salleVerts, salleExtra),
+    passages: [salleWestToHall, salleEastToHall],
+  }
+
+  return { cells: new Map([[hall.id, hall], [salle.id, salle]]) }
+}
+
+function concat(a: F32, b: number[]): F32 {
+  const out = new Float32Array(a.length + b.length)
+  out.set(a, 0)
+  out.set(b, a.length)
+  return out
+}

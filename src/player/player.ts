@@ -1,0 +1,132 @@
+/**
+ * Le visiteur.
+ *
+ * L'orientation n'est pas stockée en angles d'Euler mais comme une direction de
+ * regard plus une verticale locale. C'est un peu plus de travail tout de suite,
+ * et c'est indispensable ensuite : une couture peut faire pivoter le monde
+ * n'importe comment, et le tunnel-vrille comme la gravité par face demandent que
+ * « le haut » cesse d'être une constante. Des angles d'Euler autour d'un +Y
+ * global seraient à jeter au premier virage.
+ */
+
+import { advance, resolveAgainstCell } from '../world/motion'
+import type { World } from '../world/types'
+import { add, cross, dot, len, normalize, rotateAxis, scale, sub, v3, type Vec3 } from '../math/vec3'
+
+const RADIUS = 0.35
+const WALK = 3.4
+const SPRINT = 6.8
+const LOOK_SENSITIVITY = 0.0022
+/** Marge d'inclinaison, pour ne jamais aligner le regard avec la verticale. */
+const PITCH_LIMIT = 0.06
+
+export interface Preset {
+  name: string
+  cell: string
+  pos: Vec3
+  forward: Vec3
+}
+
+/**
+ * Les points de vue du test de torture.
+ *
+ * Ce ne sont pas des raccourcis de confort : ce sont les six situations qui
+ * trahissent un portail mal fait. Les avoir à portée de touche est ce qui permet
+ * de vérifier en dix secondes, à chaque modification, que rien n'a régressé.
+ */
+export const PRESETS: Preset[] = [
+  { name: 'Nez collé à la couture', cell: 'hall', pos: v3(0, 1.65, -4.88), forward: v3(0, 0, -1) },
+  { name: 'Regard rasant', cell: 'hall', pos: v3(2.2, 1.65, -4.94), forward: v3(-0.96, 0, -0.28) },
+  { name: 'Pile dans l’embrasure', cell: 'hall', pos: v3(0, 1.65, -4.999), forward: v3(0, 0, -1) },
+  { name: 'Récursion (couloir infini)', cell: 'hall', pos: v3(0, 1.65, 4.4), forward: v3(0, 0, -1) },
+  { name: 'Vue en biais depuis le coin', cell: 'hall', pos: v3(3.6, 1.65, 3.6), forward: v3(-0.55, -0.1, -0.83) },
+  { name: 'Depuis la grande salle', cell: 'salle', pos: v3(38, 0.15, 28), forward: v3(-1, 0, 0) },
+  // Assez près pour qu'un cube lancé franchisse l'ouverture avant de retomber,
+  // assez loin pour qu'on le voie ensuite atterrir de l'autre côté.
+  { name: 'Devant l’ouverture, pour lancer', cell: 'hall', pos: v3(0, 1.65, -2.2), forward: v3(0, 0, -1) },
+]
+
+export class Player {
+  cell: string
+  pos: Vec3
+  forward: Vec3
+  up: Vec3
+  crossings = 0
+
+  constructor() {
+    const p = PRESETS[3]!
+    this.cell = p.cell
+    this.pos = { ...p.pos }
+    this.forward = normalize(p.forward)
+    this.up = v3(0, 1, 0)
+  }
+
+  goTo(preset: Preset): void {
+    this.cell = preset.cell
+    this.pos = { ...preset.pos }
+    this.forward = normalize(preset.forward)
+    this.up = v3(0, 1, 0)
+    this.reorthogonalise()
+  }
+
+  right(): Vec3 {
+    return normalize(cross(this.forward, this.up))
+  }
+
+  /** Rotation du regard : lacet autour de la verticale locale, tangage autour du côté. */
+  look(dx: number, dy: number): void {
+    this.forward = normalize(rotateAxis(this.forward, this.up, -dx * LOOK_SENSITIVITY))
+
+    const r = this.right()
+    const candidate = normalize(rotateAxis(this.forward, r, -dy * LOOK_SENSITIVITY))
+    // Interdire de dépasser la verticale : au-delà, le lacet s'inverse et la vue
+    // se met à rouler.
+    const alignment = dot(candidate, this.up)
+    if (Math.abs(alignment) < Math.cos(PITCH_LIMIT)) this.forward = candidate
+  }
+
+  update(dt: number, world: World, keys: Set<string>): void {
+    // Base horizontale : le regard projeté sur le plan perpendiculaire à la
+    // verticale locale. C'est ce qui fait qu'on ne décolle pas en regardant en l'air.
+    let fwdH = sub(this.forward, scale(this.up, dot(this.forward, this.up)))
+    if (len(fwdH) < 1e-4) fwdH = cross(this.up, this.right())
+    fwdH = normalize(fwdH)
+    const rightH = normalize(cross(fwdH, this.up))
+
+    let ax = 0
+    let az = 0
+    if (keys.has('KeyW') || keys.has('ArrowUp')) az += 1
+    if (keys.has('KeyS') || keys.has('ArrowDown')) az -= 1
+    if (keys.has('KeyD') || keys.has('ArrowRight')) ax += 1
+    if (keys.has('KeyA') || keys.has('ArrowLeft')) ax -= 1
+    if (ax === 0 && az === 0) return
+
+    const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? SPRINT : WALK
+    const dir = normalize(add(scale(fwdH, az), scale(rightH, ax)))
+    const delta = scale(dir, speed * dt)
+
+    // La direction du regard et la verticale locale voyagent avec le corps.
+    const carried = [this.forward, this.up]
+    const result = advance(world, this.cell, this.pos, delta, carried, (cell, p) =>
+      resolveAgainstCell(cell, p, RADIUS),
+    )
+    this.forward = carried[0]!
+    this.up = carried[1]!
+    this.cell = result.cell
+    this.pos = result.pos
+    this.crossings += result.crossings
+
+    if (result.crossings > 0) this.reorthogonalise()
+  }
+
+  /**
+   * Les transformations de couture sont rigides, donc en théorie le repère reste
+   * orthonormé. En pratique, après quelques centaines de traversées, l'erreur
+   * d'arrondi finit par se voir. Une remise d'équerre coûte trois produits
+   * vectoriels et supprime le problème définitivement.
+   */
+  private reorthogonalise(): void {
+    this.up = normalize(this.up)
+    this.forward = normalize(sub(this.forward, scale(this.up, dot(this.forward, this.up))))
+  }
+}

@@ -1,0 +1,180 @@
+import './style.css'
+
+import { initGpu } from './render/gpu'
+import { Renderer } from './render/renderer'
+import { Player, PRESETS } from './player/player'
+import { CUBE_SIZE, Projectiles } from './player/projectiles'
+import { buildWorld } from './world/world'
+import { buildCube } from './world/geometry'
+import { Hud } from './ui/hud'
+import { runSelfTest, type Check } from './dev/selftest'
+
+/**
+ * Prise de contrôle exposée à la page.
+ *
+ * Elle sert au script de test (`npm run torture`) : sans elle, il faudrait
+ * simuler des mouvements de souris et espérer tomber au bon endroit, alors qu'on
+ * veut des points de vue **exactement** reproductibles d'une exécution à l'autre
+ * pour pouvoir comparer les captures.
+ */
+interface DevHook {
+  frames: number
+  selfTest: () => Check[]
+  goTo: (index: number) => void
+  look: (dx: number, dy: number) => void
+  throwCube: () => void
+  setDepth: (n: number) => void
+  /** Masque l'écran d'entrée et les panneaux, pour des captures propres. */
+  setChrome: (visible: boolean) => void
+  state: () => unknown
+}
+
+declare global {
+  interface Window {
+    __edifice?: DevHook
+  }
+}
+
+const canvas = document.querySelector<HTMLCanvasElement>('#scene')!
+const overlay = document.querySelector<HTMLElement>('#overlay')!
+const errorBox = document.querySelector<HTMLElement>('#error')!
+
+/** Le rendu par récursion allouant une cible plein écran par niveau, on borne la densité. */
+const MAX_DPR = 2
+
+main().catch((err: unknown) => {
+  overlay.hidden = true
+  errorBox.hidden = false
+  errorBox.textContent = err instanceof Error ? err.message : String(err)
+  console.error(err)
+})
+
+async function main(): Promise<void> {
+  const { device, context, format } = await initGpu(canvas)
+
+  const renderer = new Renderer(device, context, format)
+  const world = buildWorld()
+  renderer.setWorld(world, buildCube(CUBE_SIZE, [0.78, 0.5, 0.26]))
+
+  const player = new Player()
+  const projectiles = new Projectiles()
+  const hud = new Hud()
+  const keys = new Set<string>()
+
+  resize()
+  window.addEventListener('resize', resize)
+
+  // --- Souris capturée ------------------------------------------------------
+  overlay.addEventListener('click', () => void canvas.requestPointerLock())
+  canvas.addEventListener('click', () => {
+    if (document.pointerLockElement !== canvas) void canvas.requestPointerLock()
+  })
+  document.addEventListener('pointerlockchange', () => {
+    overlay.hidden = document.pointerLockElement === canvas
+  })
+  document.addEventListener('mousemove', (e) => {
+    if (document.pointerLockElement === canvas) player.look(e.movementX, e.movementY)
+  })
+
+  // --- Clavier --------------------------------------------------------------
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Tab') e.preventDefault()
+    keys.add(e.code)
+
+    switch (e.code) {
+      case 'KeyF':
+        projectiles.throwFrom(player, world)
+        break
+      case 'KeyR':
+        projectiles.clear()
+        break
+      case 'KeyH':
+        hud.toggle()
+        break
+      case 'BracketLeft':
+        renderer.maxDepth = Math.max(0, renderer.maxDepth - 1)
+        break
+      case 'BracketRight':
+        renderer.maxDepth = Math.min(8, renderer.maxDepth + 1)
+        break
+      default: {
+        const digit = /^Digit([1-9])$/.exec(e.code)
+        const preset = digit ? PRESETS[Number(digit[1]) - 1] : undefined
+        if (preset) player.goTo(preset)
+      }
+    }
+  })
+  window.addEventListener('keyup', (e) => keys.delete(e.code))
+  window.addEventListener('blur', () => keys.clear())
+
+  // --- Prise de contrôle pour le script de test -----------------------------
+  const hook: DevHook = {
+    frames: 0,
+    selfTest: () => runSelfTest(world),
+    goTo: (index) => {
+      const preset = PRESETS[index]
+      if (preset) player.goTo(preset)
+    },
+    look: (dx, dy) => player.look(dx, dy),
+    throwCube: () => projectiles.throwFrom(player, world),
+    setDepth: (n) => {
+      renderer.maxDepth = n
+    },
+    setChrome: (visible) => {
+      overlay.hidden = !visible
+      hud.setVisible(visible)
+    },
+    state: () => ({
+      cell: player.cell,
+      pos: player.pos,
+      forward: player.forward,
+      up: player.up,
+      crossings: player.crossings,
+      stats: renderer.getStats(),
+    }),
+  }
+  window.__edifice = hook
+
+  // --- Boucle ---------------------------------------------------------------
+  let previous = performance.now()
+  let fps = 0
+
+  const frame = (now: number): void => {
+    // Onglet en arrière-plan, point d'arrêt dans le débogueur : un pas de temps
+    // énorme traverserait les murs. On le borne.
+    const dt = Math.min((now - previous) / 1000, 1 / 20)
+    previous = now
+    fps += (1 / Math.max(dt, 1e-4) - fps) * 0.1
+
+    player.update(dt, world, keys)
+    projectiles.update(dt, world)
+
+    renderer.render(
+      { cell: player.cell, pos: player.pos, forward: player.forward, up: player.up },
+      projectiles.toRenderList(),
+    )
+
+    hud.update({
+      fps,
+      cell: player.cell,
+      pos: player.pos,
+      crossings: player.crossings,
+      maxDepth: renderer.maxDepth,
+      projectiles: projectiles.count,
+      stats: renderer.getStats(),
+    })
+
+    hook.frames++
+    requestAnimationFrame(frame)
+  }
+  requestAnimationFrame(frame)
+
+  function resize(): void {
+    const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR)
+    const width = Math.max(1, Math.round(canvas.clientWidth * dpr))
+    const height = Math.max(1, Math.round(canvas.clientHeight * dpr))
+    canvas.width = width
+    canvas.height = height
+    renderer.resize(width, height)
+  }
+}
