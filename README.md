@@ -1,9 +1,12 @@
 # Édifice — le musée impossible
 
 Un musée dont l'architecture est physiquement impossible, et dont chaque salle est
-une machine en état de marche. Le plan complet est dans
-[`PLAN.md`](https://github.com/Felar59/portfolio-museum/blob/master/PLAN.md) du
-dépôt du portfolio ; ce dépôt-ci contient le moteur.
+une machine en état de marche : chacun de mes projets y tourne pour de vrai, et
+c'est en le faisant fonctionner qu'on avance dans le bâtiment.
+
+Le plan de travail complet — les six moments signature, les onze machines, les
+lots et leurs portes de sortie — vit dans `PLAN.md`, à la racine du dossier du
+portfolio. Ce dépôt-ci contient le moteur.
 
 **État : étape 1 terminée.** Deux pièces, deux coutures, un portail qu'on n'arrive
 pas à prendre en défaut.
