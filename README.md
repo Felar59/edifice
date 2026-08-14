@@ -8,8 +8,9 @@ Le plan de travail complet — les six moments signature, les onze machines, les
 lots et leurs portes de sortie — vit dans `PLAN.md`, à la racine du dossier du
 portfolio. Ce dépôt-ci contient le moteur.
 
-**État : étape 1 terminée.** Deux pièces, deux coutures, un portail qu'on n'arrive
-pas à prendre en défaut.
+**État : le socle est posé, et la structure du musée avec lui.** Une rotonde à huit
+portes, sept ailes vides qui attendent chacune sa tricherie géométrique, des portails
+qu'on n'arrive pas à prendre en défaut, et un éclairage qui franchit les ouvertures.
 
 ## Démarrer
 
@@ -31,15 +32,31 @@ masquer les panneaux, `1`–`7` pour les points de vue du test.
 ### L'espace cousu
 
 Le monde n'est pas un espace unique mais un **graphe de cellules** reliées par des
-**coutures**. Une couture est une ouverture rectangulaire porteuse d'une
-transformation rigide : franchir cette ouverture, c'est changer de repère. Les
-deux pièces de l'étape 1 sont éloignées de trente mètres, de tailles différentes
-(10 × 4 × 10 contre 16 × 8 × 16) et pivotées d'un quart de tour — de sorte
-qu'aucune coïncidence de position ne puisse masquer une erreur de calcul.
+**coutures**. Une couture est une ouverture rectangulaire porteuse d'une transformation
+rigide : franchir cette ouverture, c'est changer de repère.
 
-Chaque pièce a **deux** ouvertures, sur ses parois opposées. Le couloir n'a donc
-pas de fin : il alterne les deux salles indéfiniment. C'est le cas le plus dur du
-rendu de portails, et il valait mieux l'avoir sous les yeux dès le premier jour.
+Le plan du musée est une **rotonde** de 14 × 5 × 14, percée de huit portes, et sept
+**ailes** — une par tricherie géométrique à venir : le tunnel-vrille, la gravité par
+face, l'escalier de Penrose, l'espace pavé, les murs mobiles, la salle récursive, la
+perspective forcée. Elles sont vides, et c'est voulu : on les remplira une par une,
+chacune avec son propre problème.
+
+Les ailes sont éloignées de **centaines de mètres** les unes des autres et de la
+rotonde. Aucune ne se touche. Ce n'est pas de l'économie de place mais une précaution
+de mise au point : si deux cellules étaient voisines, une erreur de transformation
+pourrait passer inaperçue, masquée par une coïncidence de position. Ici, la moindre
+erreur envoie le visiteur dans le vide.
+
+Les deux extrémités du tunnel donnent **toutes deux** sur la rotonde. On entre par la
+porte nord, on parcourt les dix-huit mètres, on ressort par la porte sud — et on se
+retrouve face à la porte nord. Le couloir n'a donc pas de fin, ce qui préserve le cas
+de récursion le plus dur du rendu de portails ; il valait mieux le garder sous les yeux
+en permanence.
+
+Chaque aile a sa propre température de lumière. Du centre de la rotonde, on voit donc
+une couronne de huit ouvertures de huit teintes différentes, chacune déposant sa couleur
+au sol devant son seuil. Ce n'est pas seulement joli : c'est le contrôle visuel de
+l'éclairage traversant, huit fois répété.
 
 ### Le rendu
 
@@ -291,7 +308,8 @@ Par ordre d'arrivée prévue :
   visible de l'éclairage actuel, et le prochain morceau sérieux.
 - **Audio** — la spatialisation doit elle aussi traverser les coutures.
 - **Verticalité** — ni saut ni chute. La position verticale ne change qu'en
-  franchissant une couture.
+  franchissant une couture. C'est le premier manque à combler : l'escalier de Penrose
+  et la gravité par face en dépendent.
 - **Le tunnel-vrille**, la gravité par face, les murs mobiles, l'espace pavé.
   Toute la géométrie tricheuse, qui est la raison d'être du projet.
 - **Rust** — le moteur est en TypeScript. L'étape 1 était un problème de matrices

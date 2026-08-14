@@ -1,4 +1,4 @@
-import { PRESETS } from '../player/player'
+import { presets } from '../player/player'
 import type { RenderStats } from '../render/renderer'
 import type { Vec3 } from '../math/vec3'
 
@@ -37,12 +37,12 @@ export class Hud {
       'ZQSD / WASD  se déplacer      Maj  courir',
       'F  lancer un cube             R  tout retirer',
       '[  ]  profondeur de récursion H  masquer les panneaux',
-      `1 – ${PRESETS.length}  points de vue du test`,
+      `1 – ${presets().length}  points de vue du test`,
     ].join('\n')
 
     this.torture.innerHTML =
       '<b>Test de torture — l’étape 1 n’est finie que si tout tient</b>\n' +
-      PRESETS.map((p, i) => `${i + 1}. ${p.name}`).join('\n') +
+      presets().map((p, i) => `${i + 1}. ${p.name}`).join('\n') +
       '\n· Cube lancé à travers, en cloche, en biais' +
       '\n· Cube immobilisé à moitié dans l’ouverture' +
       '\n· Traversée en marche arrière, à pleine vitesse'

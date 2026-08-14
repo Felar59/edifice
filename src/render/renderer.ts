@@ -48,12 +48,12 @@ import portalShader from '../shaders/portal.wgsl?raw'
 const OFFSCREEN_FORMAT: GPUTextureFormat = 'rgba8unorm'
 const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus'
 /**
- * Un bloc d'uniformes de scène porte désormais l'éclairage de la cellule : six
- * lampes et quatre ouvertures, soit 640 octets, alignés sur 768. Les portails, eux,
- * se contentent toujours de 256.
+ * Un bloc d'uniformes de scène porte l'éclairage de la cellule : six lampes et huit
+ * ouvertures, soit 896 octets, alignés sur 1024. Les portails, eux, se contentent
+ * toujours de 256.
  */
-const SCENE_STRIDE = 768
-const SCENE_BYTES = 640
+const SCENE_STRIDE = 1024
+const SCENE_BYTES = 896
 const PORTAL_STRIDE = 256
 
 /** Fond, et couleur du brouillard : c'est aussi ce qui masque la coupure de récursion. */
@@ -172,7 +172,7 @@ export class Renderer {
   // Matrices réutilisées d'une image sur l'autre : rien ici ne doit allouer par
   // image, sinon le ramasse-miettes se réveille au pire moment.
   private readonly proj = create()
-  private readonly scratch = new Float32Array(176)
+  private readonly scratch = new Float32Array(240)
 
   constructor(device: GPUDevice, context: GPUCanvasContext, canvasFormat: GPUTextureFormat) {
     this.device = device
@@ -632,7 +632,7 @@ export class Renderer {
       s[o + 15] = 0
     }
 
-    return this.sceneUniforms.write(s, 160)
+    return this.sceneUniforms.write(s, 224)
   }
 
   private writePortalUniforms(viewProj: Mat4, polygon: Vec3[], hasImage: boolean): number {

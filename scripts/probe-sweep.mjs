@@ -53,7 +53,7 @@ try {
   const startX = seam.cx + seam.nx * 0.015
   const startZ = seam.cz + seam.nz * 0.015
   await browser.eval(
-    `window.__edifice.teleport('hall', ${startX}, 1.65, ${startZ}, ${-seam.nx}, 0, ${-seam.nz})`,
+    `window.__edifice.teleport('${seam.cell}', ${startX}, 1.65, ${startZ}, ${-seam.nx}, 0, ${-seam.nz})`,
   )
 
   for (let mm = 0; mm <= 40; mm++) {

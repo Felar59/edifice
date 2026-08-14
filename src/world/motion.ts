@@ -14,7 +14,7 @@
 
 import { transformDir, transformPoint } from '../math/mat4'
 import { add, dot, len, scale, sub, type Vec3 } from '../math/vec3'
-import type { Cell, Passage, World } from './types'
+import type { Cell, Mouth, Passage, World } from './types'
 
 /** Longueur maximale d'un sous-pas, en mètres. */
 const SUBSTEP = 0.04
@@ -184,22 +184,43 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, radius: number): Vec3 {
   // Une fois engagé dans une embrasure, on y reste : sans cette contrainte on
   // pourrait glisser latéralement et se retrouver dans l'épaisseur de la paroi,
   // là où il n'y a rien à voir.
-  for (const passage of cell.passages) {
-    const m = passage.from
-    if (Math.abs(m.normal.x) > 0.5) {
-      const beyond = m.normal.x > 0 ? x < cell.min.x : x > cell.max.x
-      if (beyond) {
-        const limit = m.halfWidth - radius
-        z = Math.min(Math.max(z, m.center.z - limit), m.center.z + limit)
-      }
-    } else if (Math.abs(m.normal.z) > 0.5) {
-      const beyond = m.normal.z > 0 ? z < cell.min.z : z > cell.max.z
-      if (beyond) {
-        const limit = m.halfWidth - radius
-        x = Math.min(Math.max(x, m.center.x - limit), m.center.x + limit)
+  //
+  // Encore faut-il savoir **de laquelle** il s'agit. Une première version appliquait
+  // la contrainte de chaque bouche à la suite, ce qui allait tant qu'une paroi n'en
+  // portait qu'une. Dès que la rotonde a eu deux portes sur le même mur, le corps
+  // engagé dans la première se faisait happer devant la seconde : on partait vers une
+  // aile et on arrivait dans une autre. On retient donc, par paroi, la bouche dont on
+  // est le plus proche.
+  const engage = (
+    beyond: boolean,
+    onThisFace: (m: Mouth) => boolean,
+    lateralOf: (m: Mouth) => number,
+    current: number,
+  ): number => {
+    if (!beyond) return current
+
+    let nearest: Mouth | null = null
+    let smallestGap = Infinity
+    for (const passage of cell.passages) {
+      const m = passage.from
+      if (!onThisFace(m)) continue
+      const gap = Math.abs(current - lateralOf(m))
+      if (gap < smallestGap) {
+        smallestGap = gap
+        nearest = m
       }
     }
+    if (!nearest) return current
+
+    const limit = nearest.halfWidth - radius
+    const centre = lateralOf(nearest)
+    return Math.min(Math.max(current, centre - limit), centre + limit)
   }
+
+  z = engage(x < cell.min.x, (m) => m.normal.x > 0.5, (m) => m.center.z, z)
+  z = engage(x > cell.max.x, (m) => m.normal.x < -0.5, (m) => m.center.z, z)
+  x = engage(z < cell.min.z, (m) => m.normal.z > 0.5, (m) => m.center.x, x)
+  x = engage(z > cell.max.z, (m) => m.normal.z < -0.5, (m) => m.center.x, x)
 
   return { x, y: p.y, z }
 }

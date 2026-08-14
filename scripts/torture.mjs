@@ -33,7 +33,7 @@ const VIEWS = [
   { file: '3-embrasure', label: 'Pile dans l’embrasure', preset: 2 },
   { file: '4-recursion', label: 'Récursion — le couloir infini', preset: 3 },
   { file: '5-biais', label: 'Vue en biais depuis le coin', preset: 4 },
-  { file: '6-grande-salle', label: 'Depuis la grande salle', preset: 5 },
+  { file: '6-depuis-aile', label: 'Depuis l’aile, vers sa porte', preset: 5 },
   { file: '7-tangage-bas', label: 'Tangage vers le bas', preset: 7 },
   { file: '8-tangage-haut', label: 'Tangage vers le haut', preset: 8 },
   { file: '9-au-cheveu', label: 'À un cheveu de la couture', preset: 9 },
@@ -180,7 +180,7 @@ try {
 
   const seamForLight = await browser.eval('window.__edifice.seam()')
   await browser.eval(
-    `window.__edifice.teleport('hall', ${seamForLight.cx + seamForLight.nx * 0.45},` +
+    `window.__edifice.teleport('${seamForLight.cell}', ${seamForLight.cx + seamForLight.nx * 0.45},` +
       ` 1.65, ${seamForLight.cz + seamForLight.nz * 0.45},` +
       ` ${seamForLight.nx}, -0.9, ${seamForLight.nz})`,
   )
@@ -220,7 +220,7 @@ try {
   console.log('\n  Arrêt sur le plan d’une couture\n  ' + '─'.repeat(58))
 
   await browser.eval(
-    `window.__edifice.teleport('hall', ${seamForLight.cx + seamForLight.nx * 0.02},` +
+    `window.__edifice.teleport('${seamForLight.cell}', ${seamForLight.cx + seamForLight.nx * 0.02},` +
       ` 1.65, ${seamForLight.cz + seamForLight.nz * 0.02},` +
       ` ${-seamForLight.nx}, 0, ${-seamForLight.nz})`,
   )
@@ -281,7 +281,7 @@ try {
       const startX = seam.cx + seam.nx * 0.015
       const startZ = seam.cz + seam.nz * 0.015
       await sweeper.eval(
-        `window.__edifice.teleport('hall', ${startX}, 1.65, ${startZ}, ${-seam.nx}, 0, ${-seam.nz})`,
+        `window.__edifice.teleport('${seam.cell}', ${startX}, 1.65, ${startZ}, ${-seam.nx}, 0, ${-seam.nz})`,
       )
 
       let degraded = 0

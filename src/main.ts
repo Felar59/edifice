@@ -2,9 +2,9 @@ import './style.css'
 
 import { initGpu } from './render/gpu'
 import { Renderer } from './render/renderer'
-import { Player, PRESETS } from './player/player'
+import { Player, presets } from './player/player'
 import { CUBE_SIZE, Projectiles } from './player/projectiles'
-import { buildWorld } from './world/world'
+import { buildWorld, HUB } from './world/world'
 import { buildCube } from './world/geometry'
 import { Hud } from './ui/hud'
 import { runSelfTest, type Check } from './dev/selftest'
@@ -35,7 +35,15 @@ interface DevHook {
   /** Facteur appliqué à la lumière transmise par les ouvertures. */
   setTransmission: (factor: number) => void
   /** Où se trouve la bouche par laquelle on quitte le hall vers le nord. */
-  seam: () => { cx: number; cy: number; cz: number; nx: number; ny: number; nz: number }
+  seam: () => {
+    cell: string
+    cx: number
+    cy: number
+    cz: number
+    nx: number
+    ny: number
+    nz: number
+  }
   /** Avance dans la direction du regard, par le vrai code de déplacement. */
   walk: (metres: number) => void
   /** Oriente le regard sans bouger. */
@@ -129,7 +137,7 @@ async function main(): Promise<void> {
         break
       default: {
         const digit = /^Digit([1-9])$/.exec(e.code)
-        const preset = digit ? PRESETS[Number(digit[1]) - 1] : undefined
+        const preset = digit ? presets()[Number(digit[1]) - 1] : undefined
         if (preset) player.goTo(preset)
       }
     }
@@ -142,7 +150,7 @@ async function main(): Promise<void> {
     frames: 0,
     selfTest: () => runSelfTest(world),
     goTo: (index) => {
-      const preset = PRESETS[index]
+      const preset = presets()[index]
       if (preset) player.goTo(preset)
     },
     look: (dx, dy) => player.look(dx, dy),
@@ -170,8 +178,11 @@ async function main(): Promise<void> {
       // Le script de balayage doit se placer par rapport à la couture, et non à une
       // coordonnée écrite en dur : l'épaisseur des parois a déjà déplacé ce plan une
       // fois, et un test qui n'en tient pas compte se met à mesurer autre chose.
-      const mouth = world.cells.get('hall')!.passages[0]!.from
+      const mouth = world.cells.get(HUB)!.passages[0]!.from
       return {
+        // Le nom de la cellule voyage avec la couture : les scripts ne doivent jamais
+        // le réécrire, sous peine de désigner une pièce qui n'existe plus.
+        cell: mouth.cell,
         cx: mouth.center.x, cy: mouth.center.y, cz: mouth.center.z,
         nx: mouth.normal.x, ny: mouth.normal.y, nz: mouth.normal.z,
       }

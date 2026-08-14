@@ -29,8 +29,13 @@ export interface WallSpec {
   /** Arête « verticale » complète. */
   up: Vec3
   color: Color
-  /** Au plus une ouverture par paroi — c'est tout ce dont ce prototype a besoin. */
-  hole?: Hole
+  /**
+   * Ouvertures à percer, disjointes horizontalement.
+   *
+   * Plusieurs, désormais : la rotonde a deux portes sur la même paroi, et s'en tenir
+   * à une seule aurait imposé une pièce centrale à quatre ailes au maximum.
+   */
+  holes?: Hole[]
 }
 
 /**
@@ -73,44 +78,70 @@ function pushSubQuad(
   push(p00, u0, v0); push(p11, u1, v1); push(p01, u0, v1)
 }
 
-/** Une paroi, éventuellement percée. */
+/**
+ * Une paroi, éventuellement percée de plusieurs ouvertures.
+ *
+ * Le découpage est celui qu'on ferait à la main sur un plan : des bandes pleine
+ * hauteur entre les ouvertures, puis pour chacune le morceau au-dessus et celui en
+ * dessous. Cela suppose les ouvertures **disjointes horizontalement**, ce qui est le
+ * cas de deux portes sur un même mur ; le contraire est refusé bruyamment plutôt que
+ * dessiné de travers.
+ */
 export function pushWall(out: number[], spec: WallSpec): void {
-  if (!spec.hole) {
+  const holes = spec.holes ?? []
+  if (holes.length === 0) {
     pushSubQuad(out, spec, 0, 1, 0, 1)
     return
   }
 
-  // Projeter le centre de l'ouverture dans les coordonnées paramétriques.
   const wRight = len(spec.right)
   const wUp = len(spec.up)
   const dirR = scale(spec.right, 1 / wRight)
   const dirU = scale(spec.up, 1 / wUp)
-  const rel = sub(spec.hole.center, spec.origin)
-  const cs = (rel.x * dirR.x + rel.y * dirR.y + rel.z * dirR.z) / wRight
-  const ct = (rel.x * dirU.x + rel.y * dirU.y + rel.z * dirU.z) / wUp
-  const hs = spec.hole.halfWidth / wRight
-  const ht = spec.hole.halfHeight / wUp
 
-  const s0 = Math.max(0, cs - hs)
-  const s1 = Math.min(1, cs + hs)
-  const t0 = Math.max(0, ct - ht)
-  const t1 = Math.min(1, ct + ht)
+  // Chaque ouverture, ramenée aux coordonnées paramétriques de la paroi.
+  const spans = holes
+    .map((hole) => {
+      const rel = sub(hole.center, spec.origin)
+      const cs = (rel.x * dirR.x + rel.y * dirR.y + rel.z * dirR.z) / wRight
+      const ct = (rel.x * dirU.x + rel.y * dirU.y + rel.z * dirU.z) / wUp
+      return {
+        s0: Math.max(0, cs - hole.halfWidth / wRight),
+        s1: Math.min(1, cs + hole.halfWidth / wRight),
+        t0: Math.max(0, ct - hole.halfHeight / wUp),
+        t1: Math.min(1, ct + hole.halfHeight / wUp),
+      }
+    })
+    .sort((a, b) => a.s0 - b.s0)
 
-  pushSubQuad(out, spec, 0, 1, 0, t0)   // sous l'ouverture
-  pushSubQuad(out, spec, 0, 1, t1, 1)   // au-dessus
-  pushSubQuad(out, spec, 0, s0, t0, t1) // à gauche
-  pushSubQuad(out, spec, s1, 1, t0, t1) // à droite
+  for (let i = 1; i < spans.length; i++) {
+    if (spans[i]!.s0 < spans[i - 1]!.s1) {
+      throw new Error(
+        'ouvertures qui se chevauchent sur une même paroi : le découpage en bandes ne ' +
+          'sait pas les traiter',
+      )
+    }
+  }
+
+  let cursor = 0
+  for (const span of spans) {
+    pushSubQuad(out, spec, cursor, span.s0, 0, 1)   // bande pleine hauteur avant
+    pushSubQuad(out, spec, span.s0, span.s1, 0, span.t0)  // sous l'ouverture
+    pushSubQuad(out, spec, span.s0, span.s1, span.t1, 1)  // au-dessus
+    cursor = span.s1
+  }
+  pushSubQuad(out, spec, cursor, 1, 0, 1)           // bande pleine hauteur après
 }
 
 export interface RoomHoles {
-  /** Ouverture sur la paroi z = min.z (normale intérieure +Z). */
-  north?: Hole
-  /** Ouverture sur la paroi z = max.z (normale intérieure -Z). */
-  south?: Hole
-  /** Ouverture sur la paroi x = min.x (normale intérieure +X). */
-  west?: Hole
-  /** Ouverture sur la paroi x = max.x (normale intérieure -X). */
-  east?: Hole
+  /** Ouvertures sur la paroi z = min.z (normale intérieure +Z). */
+  north?: Hole[]
+  /** Ouvertures sur la paroi z = max.z (normale intérieure -Z). */
+  south?: Hole[]
+  /** Ouvertures sur la paroi x = min.x (normale intérieure +X). */
+  west?: Hole[]
+  /** Ouvertures sur la paroi x = max.x (normale intérieure -X). */
+  east?: Hole[]
 }
 
 export interface RoomPalette {
@@ -146,7 +177,7 @@ export function buildRoom(min: Vec3, max: Vec3, pal: RoomPalette, holes: RoomHol
     right: { x: dx, y: 0, z: 0 },
     up: { x: 0, y: dy, z: 0 },
     color: pal.wall,
-    ...(holes.north ? { hole: holes.north } : {}),
+    ...(holes.north ? { holes: holes.north } : {}),
   })
   // Paroi sud (z = max.z), normale -Z : right = -X, up = +Y.
   pushWall(out, {
@@ -154,7 +185,7 @@ export function buildRoom(min: Vec3, max: Vec3, pal: RoomPalette, holes: RoomHol
     right: { x: -dx, y: 0, z: 0 },
     up: { x: 0, y: dy, z: 0 },
     color: pal.wall,
-    ...(holes.south ? { hole: holes.south } : {}),
+    ...(holes.south ? { holes: holes.south } : {}),
   })
   // Paroi ouest (x = min.x), normale +X : right = -Z, up = +Y.
   pushWall(out, {
@@ -162,7 +193,7 @@ export function buildRoom(min: Vec3, max: Vec3, pal: RoomPalette, holes: RoomHol
     right: { x: 0, y: 0, z: -dz },
     up: { x: 0, y: dy, z: 0 },
     color: pal.wall,
-    ...(holes.west ? { hole: holes.west } : {}),
+    ...(holes.west ? { holes: holes.west } : {}),
   })
   // Paroi est (x = max.x), normale -X : right = +Z, up = +Y.
   pushWall(out, {
@@ -170,7 +201,7 @@ export function buildRoom(min: Vec3, max: Vec3, pal: RoomPalette, holes: RoomHol
     right: { x: 0, y: 0, z: dz },
     up: { x: 0, y: dy, z: 0 },
     color: pal.wall,
-    ...(holes.east ? { hole: holes.east } : {}),
+    ...(holes.east ? { holes: holes.east } : {}),
   })
 
   return new Float32Array(out)

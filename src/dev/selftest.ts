@@ -18,6 +18,7 @@ import { Player } from '../player/player'
 import { Projectiles } from '../player/projectiles'
 import { cameraToWorld } from '../render/camera'
 import { advance, resolveAgainstCell } from '../world/motion'
+import { getLandmarks, HUB } from '../world/world'
 import type { World } from '../world/types'
 
 export interface Check {
@@ -109,14 +110,14 @@ export function runSelfTest(world: World): Check[] {
   // 5. Le même aller-retour, mais en marchant réellement : cette fois on teste le
   //    code de déplacement (sous-pas, décalage au-delà du plan, report du reste
   //    du mouvement) et non plus seulement les matrices.
-  const hall = world.cells.get('hall')
+  const hall = world.cells.get(HUB)
   if (hall) {
     const mouth = hall.passages[0]!.from
     const start = add(mouth.center, scale(mouth.normal, 1.5))
     const forward = scale(mouth.normal, -1)
 
     const carried = [{ ...forward }]
-    const out = advance(world, 'hall', start, scale(forward, 3), carried, (cell, p) =>
+    const out = advance(world, HUB, start, scale(forward, 3), carried, (cell, p) =>
       resolveAgainstCell(cell, p, 0.35),
     )
     add_('marche · la couture est bien franchie', out.crossings === 1, `${out.crossings} traversée(s)`)
@@ -128,7 +129,7 @@ export function runSelfTest(world: World): Check[] {
     const err = distance(home.pos, start)
     add_(
       'marche · aller-retour revient au départ',
-      home.cell === 'hall' && err < 1e-3,
+      home.cell === HUB && err < 1e-3,
       `cellule ${home.cell}, écart ${fmt(err)} m`,
     )
 
@@ -141,7 +142,7 @@ export function runSelfTest(world: World): Check[] {
     //    et pas davantage. Ce qu'on vérifie, ce sont les trois propriétés qui
     //    doivent tenir indéfiniment : le couloir ne se referme jamais, la
     //    direction du regard reste unitaire, et le corps reste dans sa cellule.
-    let cell = 'hall'
+    let cell = HUB
     let pos = { ...start }
     const dir = [{ ...forward }]
     let total = 0
@@ -231,7 +232,13 @@ export function runSelfTest(world: World): Check[] {
   {
     const pitched = normalize(v3(0, -0.5, -0.866))
     const player = new Player()
-    player.goTo({ name: 'contrôle', cell: 'hall', pos: v3(0, 1.65, -3), forward: pitched })
+    const marks0 = getLandmarks()
+    player.goTo({
+      name: 'contrôle',
+      cell: marks0.hub,
+      pos: add(marks0.seamCenter, scale(marks0.seamNormal, 3)),
+      forward: pitched,
+    })
 
     const placed = dot(player.forward, player.up)
     add_(
@@ -262,7 +269,13 @@ export function runSelfTest(world: World): Check[] {
   //    ignorait le changement de repère, et cet angle relatif sautait brusquement.
   {
     const thrower = new Player()
-    thrower.goTo({ name: 'contrôle', cell: 'hall', pos: v3(0, 1.65, -2.2), forward: v3(0, 0, -1) })
+    const marks = getLandmarks()
+    thrower.goTo({
+      name: 'contrôle',
+      cell: marks.hub,
+      pos: add(marks.seamCenter, scale(marks.seamNormal, 2.2)),
+      forward: { x: -marks.seamNormal.x, y: 0, z: -marks.seamNormal.z },
+    })
     const cubes = new Projectiles()
     cubes.throwFrom(thrower, world)
 
@@ -277,7 +290,7 @@ export function runSelfTest(world: World): Check[] {
       cubes.update(step, world)
       const cube = cubes.inspect()[0]
       if (!cube) break
-      if (cube.cell !== 'hall') crossed = true
+      if (cube.cell !== HUB) crossed = true
 
       worstOrtho = Math.max(
         worstOrtho,
@@ -295,7 +308,7 @@ export function runSelfTest(world: World): Check[] {
       previous = relative
     }
 
-    add_('objet lancé · franchit bien la couture', crossed, crossed ? 'oui' : 'jamais sorti du hall')
+    add_('objet lancé · franchit bien la couture', crossed, crossed ? 'oui' : 'jamais sorti de la rotonde')
     add_('objet lancé · base orthogonale', worstOrtho < 1e-4, `écart ${fmt(worstOrtho)}`)
     add_('objet lancé · base directe', worstDet < 1e-4, `écart ${fmt(worstDet)}`)
     add_(

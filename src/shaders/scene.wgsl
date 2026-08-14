@@ -20,7 +20,7 @@ struct Uniforms {
   ambient  : vec4<f32>,   // plancher de luminosité de la cellule
   params   : vec4<f32>,   // x : nombre de lampes ; y : nombre d'ouvertures
   lights   : array<Light, 6>,
-  mouths   : array<MouthLight, 4>,
+  mouths   : array<MouthLight, 8>,
 };
 
 @group(0) @binding(0) var<uniform> u : Uniforms;

@@ -39,7 +39,12 @@ export type Colour = readonly [number, number, number]
 
 /** Le nombre de lampes et d'ouvertures que le nuanceur sait traiter par cellule. */
 export const MAX_LIGHTS = 6
-export const MAX_MOUTH_LIGHTS = 4
+/**
+ * Huit, parce que la rotonde en compte sept. Chaque ouverture est évaluée par
+ * fragment, donc ce plafond est un vrai budget : le monter davantage se paierait sur
+ * chaque pixel de chaque passe.
+ */
+export const MAX_MOUTH_LIGHTS = 8
 
 export interface Light {
   position: Vec3
