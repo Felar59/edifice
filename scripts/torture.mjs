@@ -53,6 +53,21 @@ const VIEWS = [
 const MIN_SPREAD = 6      // écart-type de luminance
 const MIN_COLOURS = 12    // teintes distinctes, quantifiées à 16 niveaux par canal
 
+/**
+ * Saut de luminance moyenne toléré entre deux positions distantes d'un millimètre.
+ * Mesuré à moins de un en fonctionnement normal ; quatre laisse de la marge sans
+ * laisser passer un décrochement franc.
+ */
+const MAX_LUMINANCE_JUMP = 4
+
+/**
+ * Effet minimal de la transmission, mesuré en comparant la même pose avec et sans.
+ * Le sol doit se refroidir et s'éclaircir quand l'ouverture derrière soi se met à
+ * transmettre la lumière bleutée de la pièce voisine.
+ */
+const MIN_COOLING = 0.01
+const MIN_BRIGHTENING = 0.5
+
 async function waitForServer(url, tries = 80) {
   for (let i = 0; i < tries; i++) {
     try {
@@ -146,6 +161,83 @@ try {
     failures++
   }
 
+  // --- La lumière franchit-elle les ouvertures ? ----------------------------
+  //
+  // Le musée n'a pas de fenêtres : la lumière vient de lampes posées dans les pièces
+  // et de ce qui filtre par les ouvertures.
+  //
+  // Mesurer cela demande de la prudence, et une première version s'est fait piéger.
+  // Comparer la couleur du sol loin de la porte et près d'elle *semble* mesurer la
+  // transmission — le sol se refroidit bien en approchant. Mais il se refroidit
+  // surtout parce qu'on **voit** la salle froide à travers l'ouverture, et la mesure
+  // restait donc identique avec la transmission débranchée.
+  //
+  // Le seul moyen honnête d'isoler la transmission est de comparer la même pose avec
+  // et sans, l'ouverture hors du champ. On se place donc dos à la porte, tout près,
+  // le regard au sol : ce sol ne peut recevoir de lumière froide que par l'ouverture
+  // qui est derrière, et de près l'effet est franc.
+  console.log('\n  Éclairage traversant\n  ' + '─'.repeat(58))
+
+  const seamForLight = await browser.eval('window.__edifice.seam()')
+  await browser.eval(
+    `window.__edifice.teleport('hall', ${seamForLight.cx + seamForLight.nx * 0.45},` +
+      ` 1.65, ${seamForLight.cz + seamForLight.nz * 0.45},` +
+      ` ${seamForLight.nx}, -0.9, ${seamForLight.nz})`,
+  )
+
+  const withTransmission = stats(decode(await browser.screenshotStable()))
+  await browser.eval('window.__edifice.setTransmission(0)')
+  const withoutTransmission = stats(decode(await browser.screenshotStable()))
+  await browser.eval('window.__edifice.setTransmission(1)')
+
+  const coolingEffect = withoutTransmission.warmth - withTransmission.warmth
+  const brightening = withTransmission.mean - withoutTransmission.mean
+  const transmits = coolingEffect >= MIN_COOLING && brightening >= MIN_BRIGHTENING
+  if (!transmits) failures++
+  console.log(
+    `  ${transmits ? '  ok  ' : 'ÉCHEC '} l'ouverture éclaire le sol derrière soi` +
+      ` · refroidissement ${coolingEffect.toFixed(3)} (min ${MIN_COOLING})` +
+      ` · apport ${brightening.toFixed(2)} (min ${MIN_BRIGHTENING})`,
+  )
+
+  // --- Peut-on s'arrêter sur le plan d'une couture ? -------------------------
+  //
+  // L'état dégénéré : l'œil pile dans le plan d'une ouverture, sans avoir changé de
+  // cellule. L'ouverture y est vue par la tranche, sa surface projetée est nulle, et
+  // il ne reste qu'un aplat.
+  //
+  // On ne peut pas y tomber par hasard dans un balayage au millimètre — c'est un
+  // événement de mesure nulle, et il a fallu une coïncidence arithmétique pour le
+  // rencontrer une première fois. On le provoque donc : on demande au moteur la marge
+  // qui reste jusqu'au plan, et on marche exactement cette distance moins un
+  // nanomètre. Le franchissement doit se déclencher malgré tout.
+  //
+  // Ce qui l'assure est un rapport entre deux constantes : on franchit dès qu'un pas
+  // arrive à moins de `PLANE_EPS` (un dixième de millimètre) du plan, alors que le
+  // découpage de la silhouette n'écarte l'ouverture qu'en deçà de `EYE_EPS`
+  // (un dix-millionième). Tant que la première est très supérieure à la seconde,
+  // l'état dégénéré reste hors d'atteinte.
+  console.log('\n  Arrêt sur le plan d’une couture\n  ' + '─'.repeat(58))
+
+  await browser.eval(
+    `window.__edifice.teleport('hall', ${seamForLight.cx + seamForLight.nx * 0.02},` +
+      ` 1.65, ${seamForLight.cz + seamForLight.nz * 0.02},` +
+      ` ${-seamForLight.nx}, 0, ${-seamForLight.nz})`,
+  )
+  const clearance = await browser.eval('window.__edifice.clearance()')
+  await browser.eval(`window.__edifice.walk(${clearance} - 1e-9)`)
+  const afterStop = await browser.eval('window.__edifice.state()')
+  const stopClearance = await browser.eval('window.__edifice.clearance()')
+  const stopPixels = stats(decode(await browser.screenshotStable()))
+
+  const survived = afterStop.crossings > 0 && stopClearance > 0 && stopPixels.spread >= MIN_SPREAD
+  if (!survived) failures++
+  console.log(
+    `  ${survived ? '  ok  ' : 'ÉCHEC '} marche de ${clearance.toFixed(6)} m moins un nanomètre` +
+      ` · cellule ${afterStop.cell} · marge ${stopClearance.toExponential(1)}` +
+      ` · relief ${stopPixels.spread.toFixed(1)}`,
+  )
+
   // --- Volet 3 : le balayage du franchissement -----------------------------
   //
   // Des poses fixes ne prouvent pas qu'une transition est propre. Ce qui gênait à
@@ -194,6 +286,8 @@ try {
 
       let degraded = 0
       let worst = { relief: Infinity, at: 0 }
+      let brightest = { jump: 0, at: 0, crossing: false }
+      let previous = null
       const cells = new Set()
 
       for (let mm = 0; mm <= 40; mm++) {
@@ -210,17 +304,32 @@ try {
         if (px.spread < worst.relief) worst = { relief: px.spread, at: mm }
         if (px.spread < MIN_SPREAD) degraded++
 
+        // Continuité de l'éclairage. Un millimètre avant la couture, l'ouverture
+        // couvre tout le champ et on voit déjà la pièce d'en face ; un millimètre
+        // après, on y est. Les deux images regardent la même pièce éclairée par les
+        // mêmes lampes, donc la luminance doit se suivre. Un décrochement
+        // signalerait un éclairage qui dépend du point de vue — l'erreur qui
+        // ruinerait la cohérence de tout l'espace cousu.
+        if (previous !== null) {
+          const jump = Math.abs(px.mean - previous)
+          if (jump > brightest.jump) {
+            brightest = { jump, at: mm, crossing: state.crossings > 0 }
+          }
+        }
+        previous = px.mean
+
         await sweeper.eval(`window.__edifice.face(${f.x}, ${f.y}, ${f.z})`)
         await sweeper.eval('window.__edifice.walk(0.001)')
       }
 
-      const ok = degraded <= 1 && cells.size === 2
+      const ok = degraded <= 1 && cells.size === 2 && brightest.jump <= MAX_LUMINANCE_JUMP
       if (!ok) failures++
       console.log(
         `  ${ok ? '  ok  ' : 'ÉCHEC '} ${run.name.padEnd(9)}` +
           ` bande dégradée : ${String(degraded).padStart(2)} mm` +
           ` · relief minimal ${worst.relief.toFixed(1)} au mm ${worst.at}` +
-          ` · cellules traversées : ${[...cells].join(', ')}`,
+          ` · saut de luminance ${brightest.jump.toFixed(2)} au mm ${brightest.at}` +
+          ` · cellules : ${[...cells].join(', ')}`,
       )
     }
   } finally {

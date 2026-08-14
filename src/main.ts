@@ -24,6 +24,16 @@ interface DevHook {
   look: (dx: number, dy: number) => void
   throwCube: () => void
   setDepth: (n: number) => void
+  /**
+   * Distance signée minimale du visiteur aux plans des bouches de sa cellule.
+   *
+   * Doit rester strictement positive : atteindre le plan sans avoir changé de
+   * cellule est l'état dégénéré où l'ouverture est vue par la tranche, donc de
+   * surface projetée nulle, donc invisible.
+   */
+  clearance: () => number
+  /** Facteur appliqué à la lumière transmise par les ouvertures. */
+  setTransmission: (factor: number) => void
   /** Où se trouve la bouche par laquelle on quitte le hall vers le nord. */
   seam: () => { cx: number; cy: number; cz: number; nx: number; ny: number; nz: number }
   /** Avance dans la direction du regard, par le vrai code de déplacement. */
@@ -139,6 +149,22 @@ async function main(): Promise<void> {
     throwCube: () => projectiles.throwFrom(player, world),
     setDepth: (n) => {
       renderer.maxDepth = n
+    },
+    clearance: () => {
+      const cell = world.cells.get(player.cell)!
+      let least = Infinity
+      for (const passage of cell.passages) {
+        const m = passage.from
+        const d =
+          m.normal.x * (player.pos.x - m.center.x) +
+          m.normal.y * (player.pos.y - m.center.y) +
+          m.normal.z * (player.pos.z - m.center.z)
+        if (d < least) least = d
+      }
+      return least
+    },
+    setTransmission: (factor) => {
+      renderer.transmission = factor
     },
     seam: () => {
       // Le script de balayage doit se placer par rapport à la couture, et non à une

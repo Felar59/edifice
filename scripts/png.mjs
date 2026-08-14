@@ -97,8 +97,12 @@ export function decode(buffer) {
 
 /**
  * Ce qu'il faut savoir d'une image pour dire si elle vaut quelque chose :
- * sa luminance moyenne, son relief (l'écart-type de cette luminance) et le nombre
- * de teintes distinctes qu'elle contient.
+ * sa luminance moyenne, son relief (l'écart-type de cette luminance), le nombre de
+ * teintes distinctes qu'elle contient, et sa moyenne par canal.
+ *
+ * Cette dernière sert à raisonner sur la **couleur** de la lumière : le hall est
+ * chaud, la salle est froide, donc le rapport rouge/bleu mesuré au sol dit si la
+ * lumière franchit bien les ouvertures.
  *
  * Une image utile n'est jamais un aplat. C'est grossier, et c'est exactement le
  * contrôle qui manquait : une vue cisaillée, une ouverture noire ou un écran vide
@@ -108,6 +112,9 @@ export function stats(png) {
   const { width, height, channels, data } = png
   let sum = 0
   let sumSq = 0
+  let sumR = 0
+  let sumG = 0
+  let sumB = 0
   const seen = new Set()
   const count = width * height
 
@@ -119,6 +126,9 @@ export function stats(png) {
     const lum = (r + g + b) / 3
     sum += lum
     sumSq += lum * lum
+    sumR += r
+    sumG += g
+    sumB += b
     // Quantifié à 16 niveaux par canal : on compte des teintes, pas du bruit.
     seen.add(((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4))
   }
@@ -128,5 +138,10 @@ export function stats(png) {
     mean,
     spread: Math.sqrt(Math.max(0, sumSq / count - mean * mean)),
     colours: seen.size,
+    red: sumR / count,
+    green: sumG / count,
+    blue: sumB / count,
+    /** Au-dessus de 1 la lumière est ambrée, en dessous bleutée. */
+    warmth: sumB > 0 ? sumR / sumB : 0,
   }
 }

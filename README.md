@@ -129,6 +129,50 @@ la zone que le parent s'apprête à lire, y poser un aplat recouvre toute l'imag
 utile. Le symptôme était une porte uniformément grise alors que tous les
 compteurs indiquaient une récursion correcte.
 
+### L'éclairage
+
+**D'où vient la lumière dans une pièce qui n'a pas d'extérieur ?** De lampes posées
+dans la pièce, et de ce qui filtre par les ouvertures. C'est la réponse
+thématiquement juste — un musée enterré n'a pas de fenêtres, il a des spots — et
+c'est aussi la moins chère.
+
+Chaque cellule porte son ambiance et jusqu'à six lampes ponctuelles, évaluées à
+chaque image. **Pas de lightmaps** : le plan les prévoyait, mais elles supposent un
+monde figé, et il faudrait tout recuire au moindre mur qui bouge — or des murs qui
+bougent sont au programme. **Pas d'ombres** non plus : une lampe éclaire à travers
+une cloison, on l'assume, c'est le lot suivant.
+
+Ce qui traverse les coutures, c'est que **chaque ouverture est aussi une lampe
+rectangulaire**, portant la radiance de la pièce d'en face. On la calcule une fois,
+à la construction du monde : l'ambiance de la pièce voisine plus ce que ses lampes
+déposent sur le plan de l'ouverture. Un seul rebond, jamais deux : sans cette
+coupure, deux salles reliées se renverraient la lumière indéfiniment et il faudrait
+itérer.
+
+Deux détails ont demandé du soin.
+
+Une source surfacique s'évalue d'ordinaire par son **point représentatif**, le plus
+proche du fragment. Pris seul, il rase les surfaces : pour un fragment de sol devant
+une porte, ce point tombe au niveau du sol, la direction devient horizontale et le
+terme de Lambert s'annule — une ouverture de deux mètres de haut n'éclairerait pas le
+sol devant elle. On garde donc ce point pour l'atténuation, qui porte la proximité,
+mais on prend la direction diffuse **à mi-chemin du point le plus proche et du centre
+de l'ouverture**.
+
+Et une pièce sombre n'a rien à transmettre. La salle n'était éclairée que depuis son
+plafond, si bien que la lumière franchissant l'ouverture se réduisait à son ambiance :
+dix fois trop faible pour compter. On croyait voir la lumière traverser alors qu'on
+voyait seulement la pièce froide *à travers* l'ouverture, ce qui est une autre chose.
+Deux appliques posées au-dessus des portes, côté salle, donnent à la transmission de
+quoi exister.
+
+La cohérence à travers une couture est garantie par un point d'architecture :
+l'éclairage est attaché aux **cellules** et calculé en coordonnées du monde. Une paroi
+vue directement et la même paroi vue à travers une couture reçoivent exactement le
+même calcul, puisque rien dans ce calcul ne dépend de l'endroit d'où l'on regarde.
+Faire dépendre la lumière d'une ouverture de la position de l'œil aurait suffi à tout
+casser.
+
 ### Le déplacement
 
 Un pas ne peut pas s'appliquer d'un bloc : sur une seule image, un corps peut
@@ -196,6 +240,25 @@ régression qu'on n'a jamais vu échouer n'en est pas un — et il s'est trouvé
 seul des trois se laissait prendre par la mesure d'image, d'où l'invariant sur la
 caméra.
 
+**L'éclairage traversant** demande une mesure prudente, et une première version s'est
+fait piéger. Comparer la couleur du sol loin de la porte et près d'elle *semble*
+mesurer la transmission — le sol se refroidit bien en approchant. Mais il se
+refroidit surtout parce qu'on **voit** la salle froide à travers l'ouverture, et la
+mesure restait identique avec la transmission débranchée. Le seul moyen honnête de
+l'isoler est de comparer la même pose avec et sans, l'ouverture hors du champ : dos à
+la porte, le regard au sol.
+
+**L'arrêt sur le plan d'une couture** est l'état dégénéré du portail : l'œil pile
+dans le plan d'une ouverture, sans avoir changé de cellule. L'ouverture y est vue par
+la tranche, sa surface projetée est nulle, il ne reste qu'un aplat. On ne peut pas y
+tomber par hasard dans un balayage au millimètre — c'est un événement de mesure
+nulle, et il a fallu une coïncidence arithmétique pour le rencontrer une fois. On le
+provoque donc : on demande au moteur la marge restante jusqu'au plan, et on marche
+exactement cette distance moins un nanomètre. Le franchissement doit se déclencher
+malgré tout, ce qu'assure un rapport entre deux constantes — on franchit dès qu'un
+pas arrive à un dixième de millimètre du plan, alors que le découpage de la silhouette
+n'écarte l'ouverture qu'en deçà d'un dix-millionième.
+
 **Le balayage du franchissement.** Des poses fixes ne prouvent pas qu'une
 transition est propre : ce qui gênait à l'œil, c'était le passage lui-même, une
 bande grise de quelques millimètres trop brève pour être capturée par hasard et
@@ -224,9 +287,8 @@ sinon on passerait son temps à réviser des références.
 
 Par ordre d'arrivée prévue :
 
-- **Éclairage** — pour l'instant une lumière directionnelle et un ambiant. La
-  cohérence de l'éclairage à travers les coutures est le vrai morceau difficile :
-  d'où vient la lumière dans une pièce qui n'a pas d'extérieur ?
+- **Ombres** — une lampe éclaire à travers une cloison. C'est le manque le plus
+  visible de l'éclairage actuel, et le prochain morceau sérieux.
 - **Audio** — la spatialisation doit elle aussi traverser les coutures.
 - **Verticalité** — ni saut ni chute. La position verticale ne change qu'en
   franchissant une couture.
@@ -274,7 +336,7 @@ jamais.
 
 ```
 src/math/      vecteurs, matrices, plan proche oblique
-src/world/     cellules, coutures, géométrie, déplacement
+src/world/     cellules, coutures, géométrie, déplacement, éclairage
 src/render/    initialisation WebGPU, rendu récursif des portails
 src/player/    visiteur, objets lancés
 src/dev/       auto-test des invariants

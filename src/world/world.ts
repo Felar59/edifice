@@ -20,6 +20,7 @@ import type { F32 } from '../f32'
 import { create, fromBasis, invertRigid, multiply, type Mat4 } from '../math/mat4'
 import { add, cross, neg, scale, type Vec3 } from '../math/vec3'
 import { buildRoom, pushWall, type Color, type Hole } from './geometry'
+import { mouthRadiance, type CellLighting } from './light'
 import type { Cell, Mouth, Passage, World } from './types'
 
 const DOOR_HALF_W = 0.9
@@ -64,10 +65,22 @@ function passageTransform(from: Mouth, to: Mouth): Mat4 {
   return multiply(create(), mouthFrameFlipped(to), inv)
 }
 
-function makePassages(a: Mouth, b: Mouth): [Passage, Passage] {
+/**
+ * Les deux sens d'une même couture.
+ *
+ * Chacun porte la lumière de la pièce vers laquelle il mène : le passage qui part du
+ * hall apporte la lumière de la salle, et réciproquement. C'est ce qui fait qu'on
+ * voit la teinte de la pièce voisine se déposer au sol devant la porte.
+ */
+function makePassages(
+  a: Mouth,
+  aLighting: CellLighting,
+  b: Mouth,
+  bLighting: CellLighting,
+): [Passage, Passage] {
   return [
-    { from: a, to: b, transform: passageTransform(a, b) },
-    { from: b, to: a, transform: passageTransform(b, a) },
+    { from: a, to: b, transform: passageTransform(a, b), radiance: mouthRadiance(b, bLighting) },
+    { from: b, to: a, transform: passageTransform(b, a), radiance: mouthRadiance(a, aLighting) },
   ]
 }
 
@@ -178,8 +191,52 @@ export function buildWorld(): World {
     if (err > 1e-6) throw new Error(`Repère de bouche indirect sur ${m.id} (right × up ≠ normal)`)
   }
 
-  const [hallNorthToSalle, salleWestToHall] = makePassages(hallNorth, salleWest)
-  const [hallSouthToSalle, salleEastToHall] = makePassages(hallSouth, salleEast)
+  // --- L'éclairage ----------------------------------------------------------
+  //
+  // Le musée n'a pas de fenêtres : la lumière vient de lampes posées dans les
+  // pièces, et de ce qui filtre par les ouvertures. Les deux salles sont
+  // volontairement de températures opposées — le hall chaud, la salle froide — pour
+  // qu'on **voie** la lumière franchir la couture : une flaque bleutée au sol du
+  // hall devant la porte, une flaque ambrée au sol de la salle devant la sienne.
+  // Sans ce contraste, l'éclairage traversant serait juste et invisible.
+  const hallLighting: CellLighting = {
+    ambient: [0.075, 0.07, 0.065],
+    lights: [
+      { position: { x: 0, y: 3.6, z: 0 }, colour: [1, 0.85, 0.66], intensity: 7, radius: 11 },
+      { position: { x: 0, y: 2.9, z: -3.6 }, colour: [1, 0.82, 0.6], intensity: 3, radius: 6 },
+      { position: { x: 0, y: 2.9, z: 3.6 }, colour: [1, 0.82, 0.6], intensity: 3, radius: 6 },
+    ],
+  }
+  const salleLighting: CellLighting = {
+    ambient: [0.045, 0.055, 0.075],
+    lights: [
+      { position: { x: 38, y: 5.6, z: 24 }, colour: [0.62, 0.76, 1], intensity: 9, radius: 16 },
+      { position: { x: 38, y: 5.6, z: 32 }, colour: [0.58, 0.72, 1], intensity: 9, radius: 16 },
+      // Deux appliques, juste au-dessus de chaque porte, côté salle.
+      //
+      // Elles ne sont pas décoratives. Sans elles la salle est trop sombre pour avoir
+      // quoi que ce soit à transmettre : la lumière qui franchissait l'ouverture se
+      // réduisait à son ambiance, et l'effet mesuré au sol du hall était dix fois
+      // trop faible pour compter. On croyait voir la lumière traverser alors qu'on
+      // voyait seulement la pièce froide à travers l'ouverture — ce qui est une autre
+      // chose. Une source près de la bouche donne à la transmission de quoi exister.
+      { position: { x: 30.9, y: 2.6, z: 28 }, colour: [0.6, 0.74, 1], intensity: 5, radius: 7 },
+      { position: { x: 45.1, y: 2.6, z: 28 }, colour: [0.6, 0.74, 1], intensity: 5, radius: 7 },
+    ],
+  }
+
+  const [hallNorthToSalle, salleWestToHall] = makePassages(
+    hallNorth,
+    hallLighting,
+    salleWest,
+    salleLighting,
+  )
+  const [hallSouthToSalle, salleEastToHall] = makePassages(
+    hallSouth,
+    hallLighting,
+    salleEast,
+    salleLighting,
+  )
 
   const accent: Color = [0.62, 0.36, 0.2]
 
@@ -209,6 +266,7 @@ export function buildWorld(): World {
     max: hallMax,
     verts: concat(hallVerts, hallExtra),
     passages: [hallNorthToSalle, hallSouthToSalle],
+    lighting: hallLighting,
   }
   const salle: Cell = {
     id: 'salle',
@@ -216,6 +274,7 @@ export function buildWorld(): World {
     max: salleMax,
     verts: concat(salleVerts, salleExtra),
     passages: [salleWestToHall, salleEastToHall],
+    lighting: salleLighting,
   }
 
   return { cells: new Map([[hall.id, hall], [salle.id, salle]]) }

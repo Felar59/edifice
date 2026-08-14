@@ -20,6 +20,22 @@ import type { Cell, Passage, World } from './types'
 const SUBSTEP = 0.04
 /** Combien on pousse le corps au-delà du plan, pour ne pas rester pile dessus. */
 const NUDGE = 1e-3
+/**
+ * Épaisseur autour du plan d'une bouche dans laquelle on refuse de s'arrêter.
+ *
+ * Pile dans le plan d'une ouverture, celle-ci est vue par la tranche : son
+ * quadrilatère a une surface projetée nulle, donc rien à dessiner, alors que la
+ * bonne image serait la pièce d'en face occupant tout le champ. Le cas est
+ * géométriquement dégénéré et ne se répare pas — il se rend **inatteignable**.
+ *
+ * On franchit donc dès qu'un pas *arrive* à moins de un dixième de millimètre du
+ * plan, sans attendre de l'avoir dépassé. Le décalage appliqué ensuite étant dix
+ * fois plus grand, on ressort toujours franchement du bon côté.
+ *
+ * C'était un vrai défaut, et rare : un pas qui tombait pile sur le plan laissait le
+ * corps dans sa cellule de départ, sans portail dessiné, donc devant un aplat gris.
+ */
+const PLANE_EPS = 1e-4
 const MAX_ITERATIONS = 96
 
 export interface Advance {
@@ -36,9 +52,8 @@ interface Crossing {
 /**
  * Première bouche traversée par le segment `from → from + seg`, s'il y en a une.
  *
- * On teste le passage du côté visible (`d0 > 0`) vers le côté caché (`d1 ≤ 0`) :
- * une bouche ne se franchit que dans un sens, l'autre sens étant assuré par la
- * bouche jumelle, qui est un passage distinct.
+ * Une bouche ne se franchit que dans un sens — du côté visible vers le côté caché.
+ * L'autre sens est assuré par la bouche jumelle, qui est un passage distinct.
  */
 function findCrossing(cell: Cell, from: Vec3, seg: Vec3): Crossing | null {
   let best: Crossing | null = null
@@ -48,11 +63,14 @@ function findCrossing(cell: Cell, from: Vec3, seg: Vec3): Crossing | null {
     const m = passage.from
     const d0 = dot(m.normal, sub(from, m.center))
     const d1 = dot(m.normal, sub(to, m.center))
-    if (d0 <= 0 || d1 > 0) continue
+    // On part du côté visible, et on arrive au plan ou au-delà.
+    if (d0 <= PLANE_EPS || d1 > PLANE_EPS) continue
 
     const denom = d0 - d1
     if (denom < 1e-9) continue
-    const t = d0 / denom
+    // Le paramètre visé est le plan lui-même, pas le seuil de déclenchement : borné
+    // à un, puisque le pas peut s'arrêter juste avant de l'atteindre.
+    const t = Math.min(1, d0 / denom)
 
     // Le point d'impact doit tomber **dans** l'ouverture, pas sur la paroi.
     const rel = sub(add(from, scale(seg, t)), m.center)

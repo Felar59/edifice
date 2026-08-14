@@ -40,13 +40,21 @@ import { cameraToWorld, type Camera } from './camera'
 
 export type { Camera }
 import { FLOATS_PER_VERTEX } from '../world/geometry'
+import { MAX_LIGHTS, MAX_MOUTH_LIGHTS } from '../world/light'
 import type { Cell, Mouth, Passage, World } from '../world/types'
 import sceneShader from '../shaders/scene.wgsl?raw'
 import portalShader from '../shaders/portal.wgsl?raw'
 
 const OFFSCREEN_FORMAT: GPUTextureFormat = 'rgba8unorm'
 const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus'
-const UNIFORM_STRIDE = 256
+/**
+ * Un bloc d'uniformes de scène porte désormais l'éclairage de la cellule : six
+ * lampes et quatre ouvertures, soit 640 octets, alignés sur 768. Les portails, eux,
+ * se contentent toujours de 256.
+ */
+const SCENE_STRIDE = 768
+const SCENE_BYTES = 640
+const PORTAL_STRIDE = 256
 
 /** Fond, et couleur du brouillard : c'est aussi ce qui masque la coupure de récursion. */
 export const FOG_COLOR: readonly [number, number, number] = [0.055, 0.056, 0.065]
@@ -119,6 +127,16 @@ export class Renderer {
   /** Garde-fou : plafond du nombre de passes par image. */
   maxPasses = 24
   fovY = (72 * Math.PI) / 180
+  /**
+   * Facteur appliqué à la lumière que les ouvertures transmettent.
+   *
+   * Existe pour être **mesurable**. Rien ne casse visiblement quand la transmission
+   * disparaît : les images restent contrastées et colorées, simplement fausses. Et
+   * on ne peut pas la déduire de la couleur d'une image, parce que le sol devant une
+   * porte se refroidit surtout parce qu'on *voit* la pièce froide au travers. Le seul
+   * moyen honnête d'isoler la transmission est de comparer la même pose avec et sans.
+   */
+  transmission = 1
 
   private readonly device: GPUDevice
   private readonly context: GPUCanvasContext
@@ -154,7 +172,7 @@ export class Renderer {
   // Matrices réutilisées d'une image sur l'autre : rien ici ne doit allouer par
   // image, sinon le ramasse-miettes se réveille au pire moment.
   private readonly proj = create()
-  private readonly scratch = new Float32Array(48)
+  private readonly scratch = new Float32Array(176)
 
   constructor(device: GPUDevice, context: GPUCanvasContext, canvasFormat: GPUTextureFormat) {
     this.device = device
@@ -166,7 +184,7 @@ export class Renderer {
         {
           binding: 0,
           visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-          buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 160 },
+          buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: SCENE_BYTES },
         },
       ],
     })
@@ -192,12 +210,12 @@ export class Renderer {
     this.sceneModule = device.createShaderModule({ code: sceneShader, label: 'scene' })
     this.portalModule = device.createShaderModule({ code: portalShader, label: 'portal' })
 
-    this.sceneUniforms = new Ring(device, UNIFORM_STRIDE, 256, 'uniformes de scène')
-    this.portalUniforms = new Ring(device, UNIFORM_STRIDE, 256, 'uniformes de portail')
+    this.sceneUniforms = new Ring(device, SCENE_STRIDE, 256, 'uniformes de scène')
+    this.portalUniforms = new Ring(device, PORTAL_STRIDE, 256, 'uniformes de portail')
 
     this.sceneBindGroup = device.createBindGroup({
       layout: this.sceneLayout,
-      entries: [{ binding: 0, resource: { buffer: this.sceneUniforms.buffer, size: 160 } }],
+      entries: [{ binding: 0, resource: { buffer: this.sceneUniforms.buffer, size: SCENE_BYTES } }],
     })
     this.portalUniformBindGroup = device.createBindGroup({
       layout: this.portalUniformLayout,
@@ -398,7 +416,7 @@ export class Renderer {
 
     const mesh = this.meshes.get(cell.id)
     if (mesh) {
-      const offset = this.writeSceneUniforms(viewProj, IDENTITY, camPos)
+      const offset = this.writeSceneUniforms(viewProj, IDENTITY, camPos, cell)
       pass.setBindGroup(0, this.sceneBindGroup, [offset])
       pass.setVertexBuffer(0, mesh.buffer)
       pass.draw(mesh.vertexCount)
@@ -410,7 +428,7 @@ export class Renderer {
     if (this.objectMesh) {
       for (const obj of objects) {
         if (obj.cell !== cell.id) continue
-        const offset = this.writeSceneUniforms(viewProj, obj.model, camPos)
+        const offset = this.writeSceneUniforms(viewProj, obj.model, camPos, cell)
         pass.setBindGroup(0, this.sceneBindGroup, [offset])
         pass.setVertexBuffer(0, this.objectMesh.buffer)
         pass.draw(this.objectMesh.vertexCount)
@@ -557,13 +575,64 @@ export class Renderer {
     return (w * h) / 4
   }
 
-  private writeSceneUniforms(viewProj: Mat4, model: Mat4, camPos: Vec3): number {
+  private writeSceneUniforms(viewProj: Mat4, model: Mat4, camPos: Vec3, cell: Cell): number {
     const s = this.scratch
     s.set(viewProj, 0)
     s.set(model, 16)
     s[32] = camPos.x; s[33] = camPos.y; s[34] = camPos.z; s[35] = 1
     s[36] = FOG_COLOR[0]; s[37] = FOG_COLOR[1]; s[38] = FOG_COLOR[2]; s[39] = FOG_DENSITY
-    return this.sceneUniforms.write(s, 40)
+
+    const { ambient, lights } = cell.lighting
+    s[40] = ambient[0]; s[41] = ambient[1]; s[42] = ambient[2]; s[43] = 0
+
+    const lightCount = Math.min(lights.length, MAX_LIGHTS)
+    const mouthCount = Math.min(cell.passages.length, MAX_MOUTH_LIGHTS)
+    s[44] = lightCount; s[45] = mouthCount; s[46] = 0; s[47] = 0
+
+    for (let i = 0; i < MAX_LIGHTS; i++) {
+      const o = 48 + i * 8
+      const light = i < lightCount ? lights[i]! : null
+      if (!light) {
+        s.fill(0, o, o + 8)
+        continue
+      }
+      s[o] = light.position.x
+      s[o + 1] = light.position.y
+      s[o + 2] = light.position.z
+      s[o + 3] = light.radius
+      s[o + 4] = light.colour[0]
+      s[o + 5] = light.colour[1]
+      s[o + 6] = light.colour[2]
+      s[o + 7] = light.intensity
+    }
+
+    // Chaque ouverture de la cellule devient une lampe rectangulaire portant la
+    // lumière de la pièce d'en face. Les demi-dimensions voyagent dans la longueur
+    // des vecteurs, ce qui évite deux flottants de plus.
+    for (let i = 0; i < MAX_MOUTH_LIGHTS; i++) {
+      const o = 96 + i * 16
+      const passage = i < mouthCount ? cell.passages[i]! : null
+      if (!passage) {
+        s.fill(0, o, o + 16)
+        continue
+      }
+      const m = passage.from
+      s[o] = m.center.x; s[o + 1] = m.center.y; s[o + 2] = m.center.z; s[o + 3] = 0
+      s[o + 4] = m.right.x * m.halfWidth
+      s[o + 5] = m.right.y * m.halfWidth
+      s[o + 6] = m.right.z * m.halfWidth
+      s[o + 7] = 0
+      s[o + 8] = m.up.x * m.halfHeight
+      s[o + 9] = m.up.y * m.halfHeight
+      s[o + 10] = m.up.z * m.halfHeight
+      s[o + 11] = 0
+      s[o + 12] = passage.radiance[0] * this.transmission
+      s[o + 13] = passage.radiance[1] * this.transmission
+      s[o + 14] = passage.radiance[2] * this.transmission
+      s[o + 15] = 0
+    }
+
+    return this.sceneUniforms.write(s, 160)
   }
 
   private writePortalUniforms(viewProj: Mat4, polygon: Vec3[], hasImage: boolean): number {

@@ -1,6 +1,7 @@
 import type { F32 } from '../f32'
 import type { Mat4 } from '../math/mat4'
 import type { Vec3 } from '../math/vec3'
+import type { CellLighting, Colour } from './light'
 
 /**
  * Une **bouche** de couture : une ouverture rectangulaire posée sur une paroi.
@@ -34,6 +35,15 @@ export interface Passage {
   to: Mouth
   /** Transformation rigide de l'espace de `from.cell` vers celui de `to.cell`. */
   transform: Mat4
+  /**
+   * Lumière que cette ouverture déverse dans `from.cell`, en provenance de
+   * `to.cell` : c'est ainsi que l'éclairage traverse une couture.
+   *
+   * Ne compte que l'éclairage **direct** de la pièce d'en face — ses lampes et son
+   * ambiance, pas ce que ses propres ouvertures lui apportent. Sans cette coupure,
+   * deux salles reliées se renverraient la lumière indéfiniment.
+   */
+  radiance: Colour
 }
 
 export interface Cell {
@@ -45,6 +55,8 @@ export interface Cell {
   verts: F32
   /** Les passages qui partent de cette cellule. */
   passages: Passage[]
+  /** Lampes et ambiance propres à la cellule. */
+  lighting: CellLighting
 }
 
 export interface World {
