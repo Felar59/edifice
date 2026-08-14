@@ -65,6 +65,12 @@ const FOG_CLEAR = FOG_COLOR.map((c) => c ** (1 / 2.2)) as unknown as [number, nu
 
 /** Distance du plan proche. Partagée : le rendu des coutures en dépend. */
 const NEAR = 0.02
+/**
+ * Profondeur minimale à laquelle on accepte de dessiner un coin de couture : au-delà
+ * du plan proche, avec une marge — un coin posé pile dessus se ferait écrêter au
+ * moindre arrondi.
+ */
+const NEAR_LIMIT = NEAR * 1.5
 
 /** Une bouche dont la surface à l'écran tombe sous ce seuil ne mérite pas une passe. */
 const MIN_COVERAGE = 0.00004
@@ -133,7 +139,7 @@ export class Renderer {
   // Matrices réutilisées d'une image sur l'autre : rien ici ne doit allouer par
   // image, sinon le ramasse-miettes se réveille au pire moment.
   private readonly proj = create()
-  private readonly scratch = new Float32Array(40)
+  private readonly scratch = new Float32Array(48)
 
   constructor(device: GPUDevice, context: GPUCanvasContext, canvasFormat: GPUTextureFormat) {
     this.device = device
@@ -154,7 +160,7 @@ export class Renderer {
         {
           binding: 0,
           visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-          buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 144 },
+          buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 176 },
         },
       ],
     })
@@ -180,7 +186,7 @@ export class Renderer {
     })
     this.portalUniformBindGroup = device.createBindGroup({
       layout: this.portalUniformLayout,
-      entries: [{ binding: 0, resource: { buffer: this.portalUniforms.buffer, size: 144 } }],
+      entries: [{ binding: 0, resource: { buffer: this.portalUniforms.buffer, size: 176 } }],
     })
 
     // Une texture 1×1 pour les cas de repli : WGSL exige que la liaison existe,
@@ -314,34 +320,21 @@ export class Renderer {
     //     l'éloignement.
     //
     //   avec image — le cas normal.
-    const children: {
-      passage: Passage
-      target: Target | null
-      visible: boolean
-      fullscreen: boolean
-    }[] = []
+    // Direction du regard, reprise de la matrice de la caméra, dont le troisième axe
+    // est l'opposé du regard.
+    const viewFwd = { x: -camWorld[8]!, y: -camWorld[9]!, z: -camWorld[10]! }
+
+    const children: { passage: Passage; target: Target | null; visible: boolean }[] = []
     for (const passage of cell.passages) {
       const mouth = passage.from
-      const rel = sub(camPos, mouth.center)
-      const dist = dot(mouth.normal, rel)
-
-      // Trop près pour un quad, et de face : voir le nuanceur de portail.
-      const inOpening =
-        Math.abs(dot(rel, mouth.right)) <= mouth.halfWidth - 0.04 &&
-        Math.abs(dot(rel, mouth.up)) <= mouth.halfHeight - 0.04
-      const fullscreen = dist > 0 && inOpening && dist < NEAR * 2
+      const dist = dot(mouth.normal, sub(camPos, mouth.center))
 
       // Le seuil sur la distance est zéro, et non un epsilon confortable : écarter
       // une bouche dont on n'est qu'à un dixième de millimètre revenait à ne rien
       // dessiner pendant l'image du franchissement, c'est-à-dire au pire moment.
-      //
-      // Et le mode plein écran doit court-circuiter l'estimation de couverture, qui
-      // se trompe précisément là : à cette distance les quatre coins de l'ouverture
-      // tombent derrière le plan proche, la boîte englobante est vide, et la bouche
-      // serait déclarée invisible alors qu'elle occupe tout l'écran.
-      const cover = dist <= 0 ? 0 : fullscreen ? 1 : this.coverage(mouth, viewProj)
+      const cover = dist <= 0 ? 0 : this.coverage(mouth, viewProj, camPos, viewFwd)
       if (cover <= 0) {
-        children.push({ passage, target: null, visible: false, fullscreen: false })
+        children.push({ passage, target: null, visible: false })
         continue
       }
 
@@ -356,7 +349,7 @@ export class Renderer {
       } else {
         this.stats.skipped++
       }
-      children.push({ passage, target: child, visible: true, fullscreen })
+      children.push({ passage, target: child, visible: true })
     }
 
     // --- 2. Puis la cellule elle-même. --------------------------------------
@@ -405,9 +398,15 @@ export class Renderer {
 
     // --- 3. Les ouvertures, peintes avec l'image de l'autre côté. ------------
     pass.setPipeline(this.portalPipeline(colorFormat))
-    for (const { passage, target: child, visible, fullscreen } of children) {
+    for (const { passage, target: child, visible } of children) {
       if (!visible) continue
-      const offset = this.writePortalUniforms(viewProj, passage.from, child !== null, fullscreen)
+      const offset = this.writePortalUniforms(
+        viewProj,
+        passage.from,
+        child !== null,
+        camPos,
+        viewFwd,
+      )
       pass.setBindGroup(0, this.portalUniformBindGroup, [offset])
       pass.setBindGroup(1, child ? this.textureBindGroup(child.colorView) : this.blankBindGroup)
       pass.draw(6)
@@ -446,8 +445,17 @@ export class Renderer {
     return obliqueNear(create(), proj, { x: n.x, y: n.y, z: n.z, w })
   }
 
-  /** Fraction de l'écran couverte par la bouche, en très gros. */
-  private coverage(mouth: Mouth, viewProj: Mat4): number {
+  /**
+   * Fraction de l'écran couverte par la bouche, en très gros.
+   *
+   * Les coins sont repoussés au-delà du plan proche exactement comme le fait le
+   * nuanceur, et pour la même raison : sans cela, une ouverture qu'on a sous le nez
+   * a ses quatre coins derrière le plan proche, sa boîte englobante est vide, et on
+   * la déclare invisible au moment même où elle occupe tout l'écran. Repousser un
+   * point le long de son rayon ne change pas sa projection, donc la mesure reste
+   * juste.
+   */
+  private coverage(mouth: Mouth, viewProj: Mat4, camPos: Vec3, viewFwd: Vec3): number {
     let minX = Infinity
     let maxX = -Infinity
     let minY = Infinity
@@ -457,9 +465,22 @@ export class Renderer {
     for (let i = 0; i < 4; i++) {
       const sx = i === 0 || i === 3 ? -1 : 1
       const sy = i < 2 ? -1 : 1
-      const x = mouth.center.x + mouth.right.x * mouth.halfWidth * sx + mouth.up.x * mouth.halfHeight * sy
-      const y = mouth.center.y + mouth.right.y * mouth.halfWidth * sx + mouth.up.y * mouth.halfHeight * sy
-      const z = mouth.center.z + mouth.right.z * mouth.halfWidth * sx + mouth.up.z * mouth.halfHeight * sy
+      let x = mouth.center.x + mouth.right.x * mouth.halfWidth * sx + mouth.up.x * mouth.halfHeight * sy
+      let y = mouth.center.y + mouth.right.y * mouth.halfWidth * sx + mouth.up.y * mouth.halfHeight * sy
+      let z = mouth.center.z + mouth.right.z * mouth.halfWidth * sx + mouth.up.z * mouth.halfHeight * sy
+
+      const depth =
+        (x - camPos.x) * viewFwd.x + (y - camPos.y) * viewFwd.y + (z - camPos.z) * viewFwd.z
+      if (depth <= 0) {
+        behind++
+        continue
+      }
+      if (depth < NEAR_LIMIT) {
+        const k = NEAR_LIMIT / depth
+        x = camPos.x + (x - camPos.x) * k
+        y = camPos.y + (y - camPos.y) * k
+        z = camPos.z + (z - camPos.z) * k
+      }
 
       const cw = viewProj[3]! * x + viewProj[7]! * y + viewProj[11]! * z + viewProj[15]!
       if (cw <= 1e-6) {
@@ -500,7 +521,8 @@ export class Renderer {
     viewProj: Mat4,
     mouth: Mouth,
     hasImage: boolean,
-    fullscreen: boolean,
+    camPos: Vec3,
+    viewFwd: Vec3,
   ): number {
     const s = this.scratch
     s.set(viewProj, 0)
@@ -513,13 +535,14 @@ export class Renderer {
     s[25] = mouth.up.y * mouth.halfHeight
     s[26] = mouth.up.z * mouth.halfHeight
     s[27] = 0
-    s[28] = hasImage ? 1 : 0
-    s[29] = fullscreen ? 1 : 0
-    s[30] = 0; s[31] = 0
-    // Au fond de la récursion, l'ouverture prend la couleur du brouillard :
-    // la coupure se confond alors avec l'éloignement, et ne se voit pas.
-    s[32] = FOG_COLOR[0]; s[33] = FOG_COLOR[1]; s[34] = FOG_COLOR[2]; s[35] = 1
-    return this.portalUniforms.write(s, 36)
+    s[28] = camPos.x; s[29] = camPos.y; s[30] = camPos.z; s[31] = NEAR_LIMIT
+    s[32] = viewFwd.x; s[33] = viewFwd.y; s[34] = viewFwd.z; s[35] = 0
+    s[36] = hasImage ? 1 : 0
+    s[37] = 0; s[38] = 0; s[39] = 0
+    // Au fond de la récursion, l'ouverture prend la couleur du brouillard : la
+    // coupure se confond alors avec l'éloignement, et ne se voit pas.
+    s[40] = FOG_COLOR[0]; s[41] = FOG_COLOR[1]; s[42] = FOG_COLOR[2]; s[43] = 1
+    return this.portalUniforms.write(s, 44)
   }
 
   private textureBindGroup(view: GPUTextureView): GPUBindGroup {

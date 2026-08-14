@@ -38,6 +38,8 @@ const VIEWS = [
   { file: '8-tangage-haut', label: 'Tangage vers le haut', preset: 8 },
   { file: '9-au-cheveu', label: 'À un cheveu de la couture', preset: 9 },
   { file: '10-au-micron', label: 'Au micron de la couture', preset: 10 },
+  { file: '11-embrasure-cote', label: 'Dans l’embrasure, regard de côté', preset: 11 },
+  { file: '12-embrasure-dos', label: 'Dans l’embrasure, dos tourné', preset: 12 },
 ]
 
 /**
@@ -133,12 +135,12 @@ try {
   await browser.eval('window.__edifice.goTo(6)')
   await browser.eval('window.__edifice.throwCube()')
   await new Promise((r) => setTimeout(r, 200))
-  writeFileSync(`${SHOTS}/11-cube-en-vol.png`, await browser.screenshotStable())
+  writeFileSync(`${SHOTS}/13-cube-en-vol.png`, await browser.screenshotStable())
   await new Promise((r) => setTimeout(r, 1600))
-  writeFileSync(`${SHOTS}/12-cube-de-lautre-cote.png`, await browser.screenshotStable())
+  writeFileSync(`${SHOTS}/14-cube-de-lautre-cote.png`, await browser.screenshotStable())
   const after = await browser.eval('window.__edifice.state()')
-  console.log(`  ${'Cube lancé à travers'.padEnd(34)} ${SHOTS}/11-cube-en-vol.png, ${SHOTS}/12-cube-de-lautre-cote.png`)
-  const afterPx = stats(decode(readFileSync(`${SHOTS}/12-cube-de-lautre-cote.png`)))
+  console.log(`  ${'Cube lancé à travers'.padEnd(34)} ${SHOTS}/13-cube-en-vol.png, ${SHOTS}/14-cube-de-lautre-cote.png`)
+  const afterPx = stats(decode(readFileSync(`${SHOTS}/14-cube-de-lautre-cote.png`)))
   if (after.stats.passes < 2 || afterPx.spread < MIN_SPREAD) {
     console.log('  ÉCHEC  le rendu s’est dégradé après le lancer')
     failures++

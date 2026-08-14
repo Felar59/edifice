@@ -79,8 +79,18 @@ deux une image entièrement vide au pire moment.
 
 Le premier : à quelques millimètres de l'ouverture, le quad du portail est plus
 proche que le plan proche, donc entièrement écrêté — il ne reste que le trou dans
-la paroi. Or à cette distance l'ouverture couvre de toute façon tout le champ : on
-peint alors l'écran entier au lieu du quad.
+la paroi. La parade repose sur une propriété simple : **la projection d'un point
+est invariante le long du rayon qui le relie à l'œil.** On éloigne donc chaque coin
+du quad juste assez pour qu'il repasse devant le plan proche, ce qui ne déplace pas
+sa silhouette d'un pixel — un segment droit en 3D se projetant en un segment droit,
+les arêtes restent exactement où elles étaient.
+
+Une première tentative peignait simplement tout l'écran quand l'œil approchait de
+l'ouverture, au motif qu'à cette distance elle couvre tout le champ. C'était faux :
+le raccourci ignorait la **direction du regard**. Debout dans l'embrasure et tourné
+vers l'arrière, il recouvrait toute l'image avec la vue d'une caméra virtuelle qui
+regarde hors de la salle d'en face — la pièce où l'on se trouve devenait un grand
+aplat gris.
 
 Le second : quand le plan de coupe passe **par** la caméra virtuelle, le plan
 proche oblique dégénère. La troisième ligne de la matrice devient l'opposée de la

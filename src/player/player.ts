@@ -56,6 +56,13 @@ export const PRESETS: Preset[] = [
   // Au micron, c'est le plan proche oblique qui dégénère : la troisième ligne de la
   // matrice devient l'opposée de la quatrième et tout atterrit sur le plan lointain.
   { name: 'Au micron de la couture', cell: 'hall', pos: v3(0, 1.65, -4.999999), forward: v3(0, 0, -1) },
+  // Debout dans l'embrasure, mais **sans regarder la couture**. Ces deux vues
+  // attrapent le défaut du raccourci « on peint tout l'écran quand on est près de
+  // l'ouverture » : il ignorait la direction du regard et recouvrait toute l'image
+  // avec la vue d'une caméra qui regarde hors de la salle d'en face. Debout entre
+  // les deux pièces, l'une des deux devenait un grand aplat gris.
+  { name: 'Dans l’embrasure, regard de côté', cell: 'hall', pos: v3(0, 1.65, -4.995), forward: v3(1, 0, -0.08) },
+  { name: 'Dans l’embrasure, dos tourné', cell: 'hall', pos: v3(0, 1.65, -4.995), forward: v3(0, 0, 1) },
 ]
 
 export class Player {

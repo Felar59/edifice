@@ -15,6 +15,7 @@
 import { create, invertRigid, multiply, transformDir, transformPoint, type Mat4 } from '../math/mat4'
 import { add, cross, dot, len, normalize, scale, sub, v3, type Vec3 } from '../math/vec3'
 import { Player } from '../player/player'
+import { Projectiles } from '../player/projectiles'
 import { cameraToWorld } from '../render/camera'
 import { advance, resolveAgainstCell } from '../world/motion'
 import type { World } from '../world/types'
@@ -249,7 +250,62 @@ export function runSelfTest(world: World): Check[] {
     )
   }
 
-  // 9. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
+  // 9. L'orientation d'un objet lancé doit traverser la couture avec lui.
+  //
+  //    Ce qui est vérifié n'est **pas** la continuité de l'orientation dans le repère
+  //    du monde : celle-là doit sauter en franchissant une couture, puisque le repère
+  //    change. C'est l'angle entre les axes de l'objet et sa propre vitesse qui doit
+  //    rester continu — une transformation rigide agit identiquement sur les deux,
+  //    donc leur angle relatif ne peut pas bouger d'un coup.
+  //
+  //    Le défaut d'origine ne transportait que la vitesse : la rotation de l'objet
+  //    ignorait le changement de repère, et cet angle relatif sautait brusquement.
+  {
+    const thrower = new Player()
+    thrower.goTo({ name: 'contrôle', cell: 'hall', pos: v3(0, 1.65, -2.2), forward: v3(0, 0, -1) })
+    const cubes = new Projectiles()
+    cubes.throwFrom(thrower, world)
+
+    const step = 1 / 120
+    let crossed = false
+    let worstOrtho = 0
+    let worstDet = 0
+    let worstJump = 0
+    let previous: number | null = null
+
+    for (let i = 0; i < 300; i++) {
+      cubes.update(step, world)
+      const cube = cubes.inspect()[0]
+      if (!cube) break
+      if (cube.cell !== 'hall') crossed = true
+
+      worstOrtho = Math.max(
+        worstOrtho,
+        Math.abs(dot(cube.ex, cube.ey)),
+        Math.abs(dot(cube.ey, cube.ez)),
+        Math.abs(dot(cube.ex, cube.ez)),
+      )
+      worstDet = Math.max(worstDet, Math.abs(dot(cross(cube.ex, cube.ey), cube.ez) - 1))
+
+      // Un cube au repos a une vitesse nulle : plus de trajectoire, plus d'angle.
+      const speed = len(cube.vel)
+      if (speed < 0.5) break
+      const relative = dot(cube.ex, scale(cube.vel, 1 / speed))
+      if (previous !== null) worstJump = Math.max(worstJump, Math.abs(relative - previous))
+      previous = relative
+    }
+
+    add_('objet lancé · franchit bien la couture', crossed, crossed ? 'oui' : 'jamais sorti du hall')
+    add_('objet lancé · base orthogonale', worstOrtho < 1e-4, `écart ${fmt(worstOrtho)}`)
+    add_('objet lancé · base directe', worstDet < 1e-4, `écart ${fmt(worstDet)}`)
+    add_(
+      'objet lancé · orientation transportée',
+      worstJump < 0.12,
+      `saut maximal ${worstJump.toFixed(4)} par image (rotation propre : ${(4.5 * step).toFixed(4)})`,
+    )
+  }
+
+  // 10. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
   const stray = v3(0, 1.65, 0)
   for (const cell of world.cells.values()) {
     const p = resolveAgainstCell(cell, stray, 0.35)
