@@ -3,3 +3,6 @@ dist/
 .vite/
 *.log
 .DS_Store
+
+# Sorties des sondes de diagnostic, régénérables à la demande.
+shots/probe-*.png
