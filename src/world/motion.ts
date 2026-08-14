@@ -163,5 +163,25 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, radius: number): Vec3 {
   z = Math.max(z, cell.min.z + (clampMinZ ? radius : -slack))
   z = Math.min(z, cell.max.z - (clampMaxZ ? radius : -slack))
 
+  // Une fois engagé dans une embrasure, on y reste : sans cette contrainte on
+  // pourrait glisser latéralement et se retrouver dans l'épaisseur de la paroi,
+  // là où il n'y a rien à voir.
+  for (const passage of cell.passages) {
+    const m = passage.from
+    if (Math.abs(m.normal.x) > 0.5) {
+      const beyond = m.normal.x > 0 ? x < cell.min.x : x > cell.max.x
+      if (beyond) {
+        const limit = m.halfWidth - radius
+        z = Math.min(Math.max(z, m.center.z - limit), m.center.z + limit)
+      }
+    } else if (Math.abs(m.normal.z) > 0.5) {
+      const beyond = m.normal.z > 0 ? z < cell.min.z : z > cell.max.z
+      if (beyond) {
+        const limit = m.halfWidth - radius
+        x = Math.min(Math.max(x, m.center.x - limit), m.center.x + limit)
+      }
+    }
+  }
+
   return { x, y: p.y, z }
 }

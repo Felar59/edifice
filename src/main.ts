@@ -24,6 +24,12 @@ interface DevHook {
   look: (dx: number, dy: number) => void
   throwCube: () => void
   setDepth: (n: number) => void
+  /** Où se trouve la bouche par laquelle on quitte le hall vers le nord. */
+  seam: () => { cx: number; cy: number; cz: number; nx: number; ny: number; nz: number }
+  /** Avance dans la direction du regard, par le vrai code de déplacement. */
+  walk: (metres: number) => void
+  /** Oriente le regard sans bouger. */
+  face: (fx: number, fy: number, fz: number) => void
   /** Placement exact, pour sonder les cas limites au dixième de millimètre. */
   teleport: (cell: string, x: number, y: number, z: number, fx: number, fy: number, fz: number) => void
   /** Masque l'écran d'entrée et les panneaux, pour des captures propres. */
@@ -134,6 +140,18 @@ async function main(): Promise<void> {
     setDepth: (n) => {
       renderer.maxDepth = n
     },
+    seam: () => {
+      // Le script de balayage doit se placer par rapport à la couture, et non à une
+      // coordonnée écrite en dur : l'épaisseur des parois a déjà déplacé ce plan une
+      // fois, et un test qui n'en tient pas compte se met à mesurer autre chose.
+      const mouth = world.cells.get('hall')!.passages[0]!.from
+      return {
+        cx: mouth.center.x, cy: mouth.center.y, cz: mouth.center.z,
+        nx: mouth.normal.x, ny: mouth.normal.y, nz: mouth.normal.z,
+      }
+    },
+    walk: (metres) => player.walk(world, metres),
+    face: (fx, fy, fz) => player.face({ x: fx, y: fy, z: fz }),
     teleport: (cell, x, y, z, fx, fy, fz) => {
       player.goTo({ name: 'sonde', cell, pos: { x, y, z }, forward: { x: fx, y: fy, z: fz } })
     },

@@ -74,23 +74,45 @@ alors une matrice de vue fausse, sans le moindre message d'erreur. L'image
 cisaille, et les coutures, dont la caméra virtuelle hérite du défaut, se
 remplissent de zones vides. La verticale de gravité ne sert qu'à fixer le roulis.
 
+**Les parois ont une épaisseur.** Ce n'est pas une coquetterie d'architecte. Avec
+des cloisons sans épaisseur, l'œil passe à quelques millimètres d'un mur, donc plus
+près que le plan proche : le mur est intégralement écrêté, et comme rien ne se
+trouve derrière lui, toute la zone qu'il occupait devient la couleur d'effacement.
+Une embrasure de vingt-cinq centimètres, avec la couture posée en son fond,
+garantit qu'aucune surface n'entre dans le plan proche pendant la traversée. Le
+relief des jambages remplace du même coup l'encadrement peint qui décorait les
+ouvertures, ce qui supprime la seule géométrie coplanaire de la scène — et permet
+donc de rapprocher le plan proche à quatre millimètres sans craindre le conflit de
+profondeur.
+
 **Deux pièges à l'instant du franchissement.** Ils se cumulent, et donnaient tous
 deux une image entièrement vide au pire moment.
 
 Le premier : à quelques millimètres de l'ouverture, le quad du portail est plus
-proche que le plan proche, donc entièrement écrêté — il ne reste que le trou dans
-la paroi. La parade repose sur une propriété simple : **la projection d'un point
-est invariante le long du rayon qui le relie à l'œil.** On éloigne donc chaque coin
-du quad juste assez pour qu'il repasse devant le plan proche, ce qui ne déplace pas
-sa silhouette d'un pixel — un segment droit en 3D se projetant en un segment droit,
-les arêtes restent exactement où elles étaient.
+proche que le plan proche, donc entièrement écrêté. La parade tient en une ligne de
+nuanceur — **borner la profondeur de clip à zéro**. La position d'un sommet à
+l'écran vient de `x`, `y` et `w` ; `z` ne détermine que la profondeur. La ramener à
+zéro pose donc le sommet sur le plan proche sans le déplacer d'un pixel. On y perd
+seulement que, sur ces quelques millimètres, l'ouverture gagne le test de
+profondeur contre tout ce qui la précède — or rien ne peut s'y trouver.
 
-Une première tentative peignait simplement tout l'écran quand l'œil approchait de
-l'ouverture, au motif qu'à cette distance elle couvre tout le champ. C'était faux :
-le raccourci ignorait la **direction du regard**. Debout dans l'embrasure et tourné
-vers l'arrière, il recouvrait toute l'image avec la vue d'une caméra virtuelle qui
-regarde hors de la salle d'en face — la pièce où l'on se trouve devenait un grand
-aplat gris.
+Deux tentatives précédentes ont échoué, et pour des raisons instructives.
+
+La première peignait tout l'écran quand l'œil approchait de l'ouverture, au motif
+qu'à cette distance elle couvre tout le champ. C'était vrai, mais seulement si on
+la regarde : le raccourci ignorait la **direction du regard**. Debout dans
+l'embrasure et tourné vers l'arrière, il recouvrait toute l'image avec la vue d'une
+caméra virtuelle qui regarde hors de la salle d'en face — la pièce où l'on se
+trouve devenait un grand aplat gris.
+
+La seconde éloignait chaque coin de l'œil le long de son rayon, ce qui préserve
+aussi la projection. Mais un coin passé **derrière** l'œil ne peut pas être éloigné
+vers l'avant, et l'arête qui le relie à un coin déplacé n'est plus la même droite :
+elle traverse le plan proche ailleurs, et la silhouette obtenue est fausse. Cela
+survient dès qu'on se tient dans l'embrasure en inclinant le regard, et cela
+laissait une bande de quatre millimètres où l'image se vidait encore. D'où le
+découpage du polygone contre le demi-espace situé devant l'œil, côté processeur,
+avant de l'envoyer au nuanceur.
 
 Le second : quand le plan de coupe passe **par** la caméra virtuelle, le plan
 proche oblique dégénère. La troisième ligne de la matrice devient l'opposée de la
@@ -174,6 +196,27 @@ régression qu'on n'a jamais vu échouer n'en est pas un — et il s'est trouvé
 seul des trois se laissait prendre par la mesure d'image, d'où l'invariant sur la
 caméra.
 
+**Le balayage du franchissement.** Des poses fixes ne prouvent pas qu'une
+transition est propre : ce qui gênait à l'œil, c'était le passage lui-même, une
+bande grise de quelques millimètres trop brève pour être capturée par hasard et
+assez longue pour être vue. On fait donc **marcher** le visiteur à travers la
+porte, millimètre par millimètre, par le même code de déplacement que d'habitude,
+et on mesure chaque position sous trois directions de regard. Le résultat n'est pas
+un oui-non mais une largeur : sur quelle épaisseur, en millimètres, l'image se
+dégrade-t-elle ? À la vitesse de marche une image couvre près de six centimètres,
+donc tout ce qui reste sous le centimètre est invisible en pratique.
+
+Téléporter l'œil de part et d'autre ne dirait rien, et c'est une erreur que ce test
+a commise avant d'être corrigé : une position au-delà d'une couture mais rattachée
+à la cellule de départ est un état que le moteur ne produit jamais, et le mesurer
+fabrique de faux échecs.
+
+`scripts/probe-sweep.mjs` est la version exhaustive, à lancer à la main quand
+quelque chose résiste : elle fait tourner le regard sur trois cent soixante degrés
+et trois inclinaisons à chaque millimètre, soit près de trois mille images, et
+signale la pire. C'est elle qui a localisé la bande de quatre millimètres que les
+trois directions du test permanent avaient laissée passer.
+
 La comparaison au pixel avec des références viendra quand le rendu sera stabilisé,
 sinon on passerait son temps à réviser des références.
 
@@ -189,8 +232,6 @@ Par ordre d'arrivée prévue :
   franchissant une couture.
 - **Le tunnel-vrille**, la gravité par face, les murs mobiles, l'espace pavé.
   Toute la géométrie tricheuse, qui est la raison d'être du projet.
-- **Épaisseur des parois** — les murs sont des quads sans épaisseur. Les faces
-  arrière sont écartées, ce qui suffit pour l'instant.
 - **Rust** — le moteur est en TypeScript. L'étape 1 était un problème de matrices
   et de passes GPU, et le pilotage de WebGPU vit de toute façon côté page :
   traverser la frontière WASM à chaque image n'aurait fait que ralentir la boucle

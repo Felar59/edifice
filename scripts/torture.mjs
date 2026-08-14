@@ -146,6 +146,87 @@ try {
     failures++
   }
 
+  // --- Volet 3 : le balayage du franchissement -----------------------------
+  //
+  // Des poses fixes ne prouvent pas qu'une transition est propre. Ce qui gênait à
+  // l'œil, c'était le passage lui-même : une bande grise apparaissait pendant une ou
+  // deux images, trop brève pour être capturée par hasard et assez longue pour être
+  // vue.
+  //
+  // On fait donc **marcher** le visiteur à travers la porte, millimètre par
+  // millimètre, par le même code de déplacement que d'habitude, et on mesure chaque
+  // position. Téléporter l'œil de part et d'autre ne dirait rien : une position
+  // au-delà d'une couture mais rattachée à la cellule de départ est un état que le
+  // jeu ne produit jamais.
+  //
+  // Le résultat n'est pas un oui-non mais une largeur : sur quelle épaisseur, en
+  // millimètres, l'image se dégrade-t-elle ? À la vitesse de marche une image
+  // couvre près de six centimètres, donc tout ce qui reste sous le centimètre est
+  // invisible en pratique — et c'est ce qu'on exige.
+  console.log('\n  Balayage du franchissement — on marche, on ne se téléporte pas')
+  console.log('  ' + '─'.repeat(58))
+
+  const sweeper = await launch(URL, { width: 360, height: 220, port: 9334 })
+  try {
+    await sweeper.waitFor('() => !!window.__edifice')
+    await sweeper.eval('window.__edifice.setChrome(false)')
+
+    // Trois directions de regard, la marche restant la même. La troisième n'est pas
+    // décorative : c'est en piquant du nez que deux coins de l'ouverture passent
+    // derrière l'œil, et c'est le seul cas où la silhouette du portail se calculait
+    // faux. Regarder droit devant ou sur le côté ne le révélait pas.
+    const runs = [
+      { name: 'de face', look: (f) => [f.x, f.y, f.z] },
+      { name: 'de côté', look: (f) => [-f.z, 0, f.x] },
+      { name: 'nez baissé', look: (f) => [f.x, -0.5, f.z] },
+    ]
+
+    for (const run of runs) {
+      // On démarre quinze millimètres avant la couture — dont on demande la position
+      // au moteur plutôt que de l'écrire en dur — et on traverse sur quarante
+      // millimètres, en visant l'ouverture.
+      const seam = await sweeper.eval('window.__edifice.seam()')
+      const startX = seam.cx + seam.nx * 0.015
+      const startZ = seam.cz + seam.nz * 0.015
+      await sweeper.eval(
+        `window.__edifice.teleport('hall', ${startX}, 1.65, ${startZ}, ${-seam.nx}, 0, ${-seam.nz})`,
+      )
+
+      let degraded = 0
+      let worst = { relief: Infinity, at: 0 }
+      const cells = new Set()
+
+      for (let mm = 0; mm <= 40; mm++) {
+        const state = await sweeper.eval('window.__edifice.state()')
+        cells.add(state.cell)
+
+        // Orienter le regard sans bouger, puis le remettre dans l'axe de la marche :
+        // c'est la direction de marche qui doit rester maîtresse du parcours.
+        const f = state.forward
+        const [lx, ly, lz] = run.look(f)
+        await sweeper.eval(`window.__edifice.face(${lx}, ${ly}, ${lz})`)
+
+        const px = stats(decode(await sweeper.screenshotStable(2)))
+        if (px.spread < worst.relief) worst = { relief: px.spread, at: mm }
+        if (px.spread < MIN_SPREAD) degraded++
+
+        await sweeper.eval(`window.__edifice.face(${f.x}, ${f.y}, ${f.z})`)
+        await sweeper.eval('window.__edifice.walk(0.001)')
+      }
+
+      const ok = degraded <= 1 && cells.size === 2
+      if (!ok) failures++
+      console.log(
+        `  ${ok ? '  ok  ' : 'ÉCHEC '} ${run.name.padEnd(9)}` +
+          ` bande dégradée : ${String(degraded).padStart(2)} mm` +
+          ` · relief minimal ${worst.relief.toFixed(1)} au mm ${worst.at}` +
+          ` · cellules traversées : ${[...cells].join(', ')}`,
+      )
+    }
+  } finally {
+    await sweeper.close()
+  }
+
   // --- Les erreurs de la console comptent comme des échecs ------------------
   const errors = browser.logs.filter((l) => l.level === 'error')
   if (errors.length) {

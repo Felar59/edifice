@@ -1,56 +1,51 @@
 struct Uniforms {
   viewProj : mat4x4<f32>,
-  center   : vec4<f32>,
-  right    : vec4<f32>,   // right × demi-largeur
-  up       : vec4<f32>,   // up × demi-hauteur
-  camera   : vec4<f32>,   // xyz : position de l'œil ; w : profondeur minimale admise
-  viewFwd  : vec4<f32>,   // xyz : direction du regard, unitaire
-  params   : vec4<f32>,   // x : 1 = image disponible, 0 = repli
+  // Silhouette de l'ouverture, déjà découpée devant l'œil par le processeur. Au
+  // plus cinq sommets : un quadrilatère convexe coupé par un demi-espace en donne
+  // quatre plus un.
+  poly     : array<vec4<f32>, 5>,
+  params   : vec4<f32>,   // x : 1 = image disponible, 0 = repli ; y : nombre de sommets
   fallback : vec4<f32>,   // couleur de repli, en linéaire
 };
 
 @group(0) @binding(0) var<uniform> u : Uniforms;
 @group(1) @binding(0) var src : texture_2d<f32>;
 
-// Ramène un point au-delà du plan proche **sans changer sa projection**.
-//
-// Le problème : dès qu'on approche l'ouverture à moins de la distance du plan
-// proche, le quad du portail se fait intégralement écrêter. Il ne reste alors que
-// le trou dans la paroi, donc une image vide — précisément pendant le
-// franchissement.
-//
-// La parade repose sur une propriété simple : **la projection d'un point est
-// invariante le long du rayon qui le relie à l'œil.** On peut donc éloigner chaque
-// coin de l'œil autant qu'il faut pour qu'il repasse devant le plan proche, sans
-// déplacer d'un pixel la silhouette du quad — un segment droit en 3D se projetant
-// en un segment droit, les arêtes restent exactement où elles étaient.
-//
-// C'est ce qui distingue cette méthode de la solution naïve consistant à peindre
-// tout l'écran quand on est près de l'ouverture : celle-là ignore la direction du
-// regard. Debout dans l'embrasure et tourné vers l'arrière, elle recouvrait toute
-// l'image avec la vue d'une caméra virtuelle qui regarde hors de la salle d'en
-// face — un grand aplat gris à la place de la pièce où l'on se trouve.
-fn pushBeyondNear(p : vec3<f32>, eye : vec3<f32>, fwd : vec3<f32>, minDepth : f32) -> vec3<f32> {
-  let ray = p - eye;
-  let depth = dot(ray, fwd);
-  // Un coin situé derrière l'œil est laissé intact : l'écrêtage matériel en fera ce
-  // qu'il faut, alors que le tirer vers l'avant le renverrait du mauvais côté.
-  if (depth <= 0.0 || depth >= minDepth) {
-    return p;
-  }
-  return eye + ray * (minDepth / depth);
-}
-
+// Éventail de triangles sur le polygone : (0, 1, 2), (0, 2, 3), (0, 3, 4).
+// On dessine toujours neuf sommets ; les triangles en trop, quand le polygone en
+// compte moins de cinq, sont rendus dégénérés en repliant leurs indices sur zéro.
 @vertex
 fn vs(@builtin(vertex_index) i : u32) -> @builtin(position) vec4<f32> {
-  var corners = array<vec2<f32>, 6>(
-    vec2<f32>(-1.0, -1.0), vec2<f32>( 1.0, -1.0), vec2<f32>( 1.0,  1.0),
-    vec2<f32>(-1.0, -1.0), vec2<f32>( 1.0,  1.0), vec2<f32>(-1.0,  1.0),
-  );
-  let k = corners[i];
-  let corner = u.center.xyz + u.right.xyz * k.x + u.up.xyz * k.y;
-  let world = pushBeyondNear(corner, u.camera.xyz, u.viewFwd.xyz, u.camera.w);
-  return u.viewProj * vec4<f32>(world, 1.0);
+  let count = u32(u.params.y);
+  let triangle = i / 3u;
+  let corner = i % 3u;
+
+  var index = 0u;
+  if (corner == 1u) { index = triangle + 1u; }
+  if (corner == 2u) { index = triangle + 2u; }
+  if (index >= count) { index = 0u; }
+
+  var clip = u.viewProj * vec4<f32>(u.poly[index].xyz, 1.0);
+
+  // Borner la profondeur au plan proche, sans toucher au reste.
+  //
+  // Dès qu'on approche l'ouverture à moins de la distance du plan proche, son quad
+  // se fait intégralement écrêter : il ne reste que le trou dans la paroi, donc une
+  // image vide au moment du franchissement. Or `z` ne détermine que la profondeur —
+  // la position à l'écran vient de `x`, `y` et `w`. La ramener à zéro pose donc le
+  // sommet **sur** le plan proche sans le déplacer d'un pixel.
+  //
+  // Une tentative précédente éloignait plutôt le sommet le long de son rayon, ce qui
+  // préserve aussi la projection. Mais un coin passé derrière l'œil ne peut pas être
+  // éloigné vers l'avant, et les positions obtenues devenaient extravagantes quand
+  // la profondeur frôlait zéro. Borner `z` évite les deux écueils ; le découpage
+  // amont se charge des coins derrière l'œil.
+  //
+  // Conséquence assumée : sur ces quelques millimètres, l'ouverture gagne le test de
+  // profondeur contre tout ce qui la précède. Rien ne peut s'y trouver — il faudrait
+  // un objet coincé entre l'œil et une porte qu'on touche du nez.
+  clip.z = max(clip.z, 0.0);
+  return clip;
 }
 
 @fragment

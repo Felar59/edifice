@@ -35,9 +35,11 @@ export interface Preset {
  * de vérifier en dix secondes, à chaque modification, que rien n'a régressé.
  */
 export const PRESETS: Preset[] = [
-  { name: 'Nez collé à la couture', cell: 'hall', pos: v3(0, 1.65, -4.88), forward: v3(0, 0, -1) },
+  // Les distances sont relatives au plan de la couture, désormais au fond de
+  // l'embrasure — donc à 5,25 m du centre du hall et non plus à 5 m.
+  { name: 'Nez collé à la couture', cell: 'hall', pos: v3(0, 1.65, -5.13), forward: v3(0, 0, -1) },
   { name: 'Regard rasant', cell: 'hall', pos: v3(2.2, 1.65, -4.94), forward: v3(-0.96, 0, -0.28) },
-  { name: 'Pile dans l’embrasure', cell: 'hall', pos: v3(0, 1.65, -4.999), forward: v3(0, 0, -1) },
+  { name: 'Pile dans l’embrasure', cell: 'hall', pos: v3(0, 1.65, -5.249), forward: v3(0, 0, -1) },
   { name: 'Récursion (couloir infini)', cell: 'hall', pos: v3(0, 1.65, 4.4), forward: v3(0, 0, -1) },
   { name: 'Vue en biais depuis le coin', cell: 'hall', pos: v3(3.6, 1.65, 3.6), forward: v3(-0.55, -0.1, -0.83) },
   { name: 'Depuis la grande salle', cell: 'salle', pos: v3(38, 0.15, 28), forward: v3(-1, 0, 0) },
@@ -52,17 +54,17 @@ export const PRESETS: Preset[] = [
   // Deux distances, parce que deux défauts distincts se cachent là.
   // À un dixième de millimètre, le quad de l'ouverture est plus proche que le plan
   // proche et se fait écrêter : c'est le mode plein écran qui sauve l'image.
-  { name: 'À un cheveu de la couture', cell: 'hall', pos: v3(0, 1.65, -4.9999), forward: v3(0, 0, -1) },
+  { name: 'À un cheveu de la couture', cell: 'hall', pos: v3(0, 1.65, -5.2499), forward: v3(0, 0, -1) },
   // Au micron, c'est le plan proche oblique qui dégénère : la troisième ligne de la
   // matrice devient l'opposée de la quatrième et tout atterrit sur le plan lointain.
-  { name: 'Au micron de la couture', cell: 'hall', pos: v3(0, 1.65, -4.999999), forward: v3(0, 0, -1) },
+  { name: 'Au micron de la couture', cell: 'hall', pos: v3(0, 1.65, -5.249999), forward: v3(0, 0, -1) },
   // Debout dans l'embrasure, mais **sans regarder la couture**. Ces deux vues
   // attrapent le défaut du raccourci « on peint tout l'écran quand on est près de
   // l'ouverture » : il ignorait la direction du regard et recouvrait toute l'image
   // avec la vue d'une caméra qui regarde hors de la salle d'en face. Debout entre
   // les deux pièces, l'une des deux devenait un grand aplat gris.
-  { name: 'Dans l’embrasure, regard de côté', cell: 'hall', pos: v3(0, 1.65, -4.995), forward: v3(1, 0, -0.08) },
-  { name: 'Dans l’embrasure, dos tourné', cell: 'hall', pos: v3(0, 1.65, -4.995), forward: v3(0, 0, 1) },
+  { name: 'Dans l’embrasure, regard de côté', cell: 'hall', pos: v3(0, 1.65, -5.12), forward: v3(1, 0, -0.08) },
+  { name: 'Dans l’embrasure, dos tourné', cell: 'hall', pos: v3(0, 1.65, -5.12), forward: v3(0, 0, 1) },
 ]
 
 export class Player {
@@ -122,7 +124,31 @@ export class Player {
 
     const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? SPRINT : WALK
     const dir = normalize(add(scale(fwdH, az), scale(rightH, ax)))
-    const delta = scale(dir, speed * dt)
+    this.move(world, scale(dir, speed * dt))
+  }
+
+  /**
+   * Avance de `metres` dans la direction du regard, projetée à l'horizontale.
+   *
+   * Sert au balayage du franchissement : pour mesurer une transition, il faut la
+   * parcourir par le même chemin que le visiteur, et non téléporter l'œil de part
+   * et d'autre. Une position au-delà d'une couture mais déclarée dans la cellule de
+   * départ est un état que le jeu ne produit jamais — la mesurer ne dit rien.
+   */
+  walk(world: World, metres: number): void {
+    let fwdH = sub(this.forward, scale(this.up, dot(this.forward, this.up)))
+    if (len(fwdH) < 1e-4) fwdH = cross(this.up, this.right())
+    this.move(world, scale(normalize(fwdH), metres))
+  }
+
+  /** Oriente le regard sans bouger, en conservant la verticale locale. */
+  face(direction: Vec3): void {
+    this.forward = normalize(direction)
+    this.renormalise()
+  }
+
+  private move(world: World, delta: Vec3): void {
+    if (len(delta) < 1e-12) return
 
     // La direction du regard et la verticale locale voyagent avec le corps.
     const carried = [this.forward, this.up]

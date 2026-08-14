@@ -63,14 +63,29 @@ const FOG_DENSITY = 0.014
  */
 const FOG_CLEAR = FOG_COLOR.map((c) => c ** (1 / 2.2)) as unknown as [number, number, number]
 
-/** Distance du plan proche. Partagée : le rendu des coutures en dépend. */
-const NEAR = 0.02
 /**
- * Profondeur minimale à laquelle on accepte de dessiner un coin de couture : au-delà
- * du plan proche, avec une marge — un coin posé pile dessus se ferait écrêter au
- * moindre arrondi.
+ * Distance du plan proche. Partagée : le rendu des coutures en dépend.
+ *
+ * Volontairement courte. Toute géométrie plus proche que cette distance est
+ * écrêtée, et comme rien ne se trouve derrière une paroi, la zone qu'elle occupait
+ * devient la couleur d'effacement — une bande grise pendant le franchissement. Les
+ * embrasures écartent le cas courant en éloignant toute surface de l'œil ; quatre
+ * millimètres réduisent ce qu'il en reste à une largeur qu'on ne traverse pas.
+ *
+ * Ce raccourcissement ne coûte rien en précision de profondeur parce que la scène
+ * n'a plus aucune surface coplanaire : l'encadrement peint des ouvertures, seul
+ * candidat au conflit, a été remplacé par le relief des embrasures.
  */
-const NEAR_LIMIT = NEAR * 1.5
+const NEAR = 0.004
+/**
+ * Épaisseur devant l'œil en deçà de laquelle un sommet compte comme derrière.
+ *
+ * Volontairement minuscule : on ne retire de l'ouverture que ce qui est réellement
+ * invisible. Une valeur confortable coûterait cher au pire moment — à un dixième de
+ * millimètre du plan, elle supprimait les quatre coins d'un coup, donc l'ouverture
+ * entière, donc l'image.
+ */
+const EYE_EPS = 1e-7
 
 /** Une bouche dont la surface à l'écran tombe sous ce seuil ne mérite pas une passe. */
 const MIN_COVERAGE = 0.00004
@@ -324,7 +339,12 @@ export class Renderer {
     // est l'opposé du regard.
     const viewFwd = { x: -camWorld[8]!, y: -camWorld[9]!, z: -camWorld[10]! }
 
-    const children: { passage: Passage; target: Target | null; visible: boolean }[] = []
+    const children: {
+      passage: Passage
+      target: Target | null
+      visible: boolean
+      polygon: Vec3[]
+    }[] = []
     for (const passage of cell.passages) {
       const mouth = passage.from
       const dist = dot(mouth.normal, sub(camPos, mouth.center))
@@ -332,9 +352,10 @@ export class Renderer {
       // Le seuil sur la distance est zéro, et non un epsilon confortable : écarter
       // une bouche dont on n'est qu'à un dixième de millimètre revenait à ne rien
       // dessiner pendant l'image du franchissement, c'est-à-dire au pire moment.
-      const cover = dist <= 0 ? 0 : this.coverage(mouth, viewProj, camPos, viewFwd)
+      const polygon = dist <= 0 ? [] : this.mouthPolygon(mouth, camPos, viewFwd)
+      const cover = polygon.length < 3 ? 0 : this.coverage(polygon, viewProj)
       if (cover <= 0) {
-        children.push({ passage, target: null, visible: false })
+        children.push({ passage, target: null, visible: false, polygon: [] })
         continue
       }
 
@@ -349,7 +370,7 @@ export class Renderer {
       } else {
         this.stats.skipped++
       }
-      children.push({ passage, target: child, visible: true })
+      children.push({ passage, target: child, visible: true, polygon })
     }
 
     // --- 2. Puis la cellule elle-même. --------------------------------------
@@ -398,18 +419,13 @@ export class Renderer {
 
     // --- 3. Les ouvertures, peintes avec l'image de l'autre côté. ------------
     pass.setPipeline(this.portalPipeline(colorFormat))
-    for (const { passage, target: child, visible } of children) {
+    for (const { target: child, visible, polygon } of children) {
       if (!visible) continue
-      const offset = this.writePortalUniforms(
-        viewProj,
-        passage.from,
-        child !== null,
-        camPos,
-        viewFwd,
-      )
+      const offset = this.writePortalUniforms(viewProj, polygon, child !== null)
       pass.setBindGroup(0, this.portalUniformBindGroup, [offset])
       pass.setBindGroup(1, child ? this.textureBindGroup(child.colorView) : this.blankBindGroup)
-      pass.draw(6)
+      // Trois triangles en éventail : de quoi couvrir cinq sommets.
+      pass.draw(9)
     }
 
     pass.end()
@@ -446,6 +462,64 @@ export class Renderer {
   }
 
   /**
+   * Silhouette visible d'une bouche : le quadrilatère de l'ouverture, découpé contre
+   * le demi-espace situé devant l'œil.
+   *
+   * Nécessaire parce qu'un sommet derrière l'œil n'a pas de projection utilisable, et
+   * que le laisser au nuanceur fausse la silhouette : debout dans une embrasure, le
+   * regard incliné, deux coins de l'ouverture passent derrière l'œil, et l'arête qui
+   * les relie aux coins de devant traverse alors le plan proche au mauvais endroit.
+   * C'était la cause d'une bande de quelques millimètres, dans une plage
+   * d'inclinaisons étroite, où l'image se vidait.
+   *
+   * Le reste — dessiner une ouverture plus proche que le plan proche — se règle dans
+   * le nuanceur en bornant la profondeur, ce qui ne déplace aucun sommet.
+   *
+   * Un quadrilatère convexe coupé par un demi-espace donne au plus cinq sommets.
+   */
+  private mouthPolygon(mouth: Mouth, camPos: Vec3, viewFwd: Vec3): Vec3[] {
+    const depthOf = (p: Vec3): number =>
+      (p.x - camPos.x) * viewFwd.x + (p.y - camPos.y) * viewFwd.y + (p.z - camPos.z) * viewFwd.z
+
+    const corners: Vec3[] = []
+    const signs: [number, number][] = [
+      [-1, -1],
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+    ]
+    for (const [sx, sy] of signs) {
+      corners.push({
+        x: mouth.center.x + mouth.right.x * mouth.halfWidth * sx + mouth.up.x * mouth.halfHeight * sy,
+        y: mouth.center.y + mouth.right.y * mouth.halfWidth * sx + mouth.up.y * mouth.halfHeight * sy,
+        z: mouth.center.z + mouth.right.z * mouth.halfWidth * sx + mouth.up.z * mouth.halfHeight * sy,
+      })
+    }
+
+    // Sutherland-Hodgman contre un seul plan : celui du regard, juste devant l'œil.
+    const kept: Vec3[] = []
+    for (let i = 0; i < corners.length; i++) {
+      const a = corners[i]!
+      const b = corners[(i + 1) % corners.length]!
+      const da = depthOf(a)
+      const db = depthOf(b)
+      const inA = da >= EYE_EPS
+      const inB = db >= EYE_EPS
+      if (inA) kept.push(a)
+      if (inA !== inB) {
+        const t = (EYE_EPS - da) / (db - da)
+        kept.push({
+          x: a.x + (b.x - a.x) * t,
+          y: a.y + (b.y - a.y) * t,
+          z: a.z + (b.z - a.z) * t,
+        })
+      }
+    }
+
+    return kept
+  }
+
+  /**
    * Fraction de l'écran couverte par la bouche, en très gros.
    *
    * Les coins sont repoussés au-delà du plan proche exactement comme le fait le
@@ -455,52 +529,27 @@ export class Renderer {
    * point le long de son rayon ne change pas sa projection, donc la mesure reste
    * juste.
    */
-  private coverage(mouth: Mouth, viewProj: Mat4, camPos: Vec3, viewFwd: Vec3): number {
+  private coverage(polygon: Vec3[], viewProj: Mat4): number {
+    if (polygon.length < 3) return 0
+
     let minX = Infinity
     let maxX = -Infinity
     let minY = Infinity
     let maxY = -Infinity
-    let behind = 0
 
-    for (let i = 0; i < 4; i++) {
-      const sx = i === 0 || i === 3 ? -1 : 1
-      const sy = i < 2 ? -1 : 1
-      let x = mouth.center.x + mouth.right.x * mouth.halfWidth * sx + mouth.up.x * mouth.halfHeight * sy
-      let y = mouth.center.y + mouth.right.y * mouth.halfWidth * sx + mouth.up.y * mouth.halfHeight * sy
-      let z = mouth.center.z + mouth.right.z * mouth.halfWidth * sx + mouth.up.z * mouth.halfHeight * sy
-
-      const depth =
-        (x - camPos.x) * viewFwd.x + (y - camPos.y) * viewFwd.y + (z - camPos.z) * viewFwd.z
-      if (depth <= 0) {
-        behind++
-        continue
-      }
-      if (depth < NEAR_LIMIT) {
-        const k = NEAR_LIMIT / depth
-        x = camPos.x + (x - camPos.x) * k
-        y = camPos.y + (y - camPos.y) * k
-        z = camPos.z + (z - camPos.z) * k
-      }
-
-      const cw = viewProj[3]! * x + viewProj[7]! * y + viewProj[11]! * z + viewProj[15]!
-      if (cw <= 1e-6) {
-        behind++
-        continue
-      }
-      const cx = viewProj[0]! * x + viewProj[4]! * y + viewProj[8]! * z + viewProj[12]!
-      const cy = viewProj[1]! * x + viewProj[5]! * y + viewProj[9]! * z + viewProj[13]!
-      const ndcX = cx / cw
-      const ndcY = cy / cw
+    for (const p of polygon) {
+      const cw = viewProj[3]! * p.x + viewProj[7]! * p.y + viewProj[11]! * p.z + viewProj[15]!
+      // Après découpage, aucun sommet n'est derrière l'œil, mais un sommet posé
+      // presque sur l'œil donne une projection démesurée : dans ce cas la bouche
+      // couvre tout l'écran, et c'est ce qu'on renvoie.
+      if (cw <= 1e-6) return 1
+      const ndcX = (viewProj[0]! * p.x + viewProj[4]! * p.y + viewProj[8]! * p.z + viewProj[12]!) / cw
+      const ndcY = (viewProj[1]! * p.x + viewProj[5]! * p.y + viewProj[9]! * p.z + viewProj[13]!) / cw
       if (ndcX < minX) minX = ndcX
       if (ndcX > maxX) maxX = ndcX
       if (ndcY < minY) minY = ndcY
       if (ndcY > maxY) maxY = ndcY
     }
-
-    if (behind === 4) return 0
-    // Un coin derrière la caméra rend la boîte englobante fausse : dans le doute,
-    // on rend. Mieux vaut une passe de trop qu'un trou noir dans l'image.
-    if (behind > 0) return 1
 
     const w = Math.min(maxX, 1) - Math.max(minX, -1)
     const h = Math.min(maxY, 1) - Math.max(minY, -1)
@@ -517,31 +566,26 @@ export class Renderer {
     return this.sceneUniforms.write(s, 40)
   }
 
-  private writePortalUniforms(
-    viewProj: Mat4,
-    mouth: Mouth,
-    hasImage: boolean,
-    camPos: Vec3,
-    viewFwd: Vec3,
-  ): number {
+  private writePortalUniforms(viewProj: Mat4, polygon: Vec3[], hasImage: boolean): number {
     const s = this.scratch
     s.set(viewProj, 0)
-    s[16] = mouth.center.x; s[17] = mouth.center.y; s[18] = mouth.center.z; s[19] = 1
-    s[20] = mouth.right.x * mouth.halfWidth
-    s[21] = mouth.right.y * mouth.halfWidth
-    s[22] = mouth.right.z * mouth.halfWidth
-    s[23] = 0
-    s[24] = mouth.up.x * mouth.halfHeight
-    s[25] = mouth.up.y * mouth.halfHeight
-    s[26] = mouth.up.z * mouth.halfHeight
-    s[27] = 0
-    s[28] = camPos.x; s[29] = camPos.y; s[30] = camPos.z; s[31] = NEAR_LIMIT
-    s[32] = viewFwd.x; s[33] = viewFwd.y; s[34] = viewFwd.z; s[35] = 0
+    for (let i = 0; i < 5; i++) {
+      const p = polygon[Math.min(i, polygon.length - 1)]!
+      s[16 + i * 4] = p.x
+      s[17 + i * 4] = p.y
+      s[18 + i * 4] = p.z
+      s[19 + i * 4] = 1
+    }
     s[36] = hasImage ? 1 : 0
-    s[37] = 0; s[38] = 0; s[39] = 0
+    s[37] = polygon.length
+    s[38] = 0
+    s[39] = 0
     // Au fond de la récursion, l'ouverture prend la couleur du brouillard : la
     // coupure se confond alors avec l'éloignement, et ne se voit pas.
-    s[40] = FOG_COLOR[0]; s[41] = FOG_COLOR[1]; s[42] = FOG_COLOR[2]; s[43] = 1
+    s[40] = FOG_COLOR[0]
+    s[41] = FOG_COLOR[1]
+    s[42] = FOG_COLOR[2]
+    s[43] = 1
     return this.portalUniforms.write(s, 44)
   }
 

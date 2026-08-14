@@ -25,6 +25,24 @@ import type { Cell, Mouth, Passage, World } from './types'
 const DOOR_HALF_W = 0.9
 const DOOR_HALF_H = 1.1
 
+/**
+ * Épaisseur de la paroi à l'endroit d'une porte, et donc profondeur de
+ * l'embrasure.
+ *
+ * Ce n'est pas une coquetterie d'architecte : c'est ce qui supprime la dernière
+ * zone grise du franchissement. Avec des parois sans épaisseur, l'œil passe à
+ * quelques millimètres d'un mur — donc plus près que le plan proche, donc le mur
+ * est intégralement écrêté. Et comme rien ne se trouve derrière lui, toute la zone
+ * qu'il occupait à l'écran devient la couleur d'effacement.
+ *
+ * Avec une embrasure, la surface la plus proche pendant toute la traversée est un
+ * jambage, à des dizaines de centimètres. Plus rien n'entre dans le plan proche.
+ *
+ * Le plan de la couture est posé au **fond** de l'embrasure : on avance dans un
+ * court tunnel, et c'est en son extrémité qu'on change de cellule.
+ */
+const REVEAL = 0.25
+
 /** Repère d'une bouche, colonnes (right, up, normal, centre). */
 function mouthFrame(m: Mouth): Mat4 {
   return fromBasis(create(), m.right, m.up, m.normal, m.center)
@@ -54,34 +72,48 @@ function makePassages(a: Mouth, b: Mouth): [Passage, Passage] {
 }
 
 /**
- * Encadrement de l'ouverture : quatre bandes fines posées juste devant la paroi,
- * en léger surplomb sur le trou.
+ * Les quatre jambages de l'embrasure : un court tunnel qui va de la face
+ * intérieure de la paroi jusqu'au plan de la couture, au fond.
  *
- * Purement utilitaire, et pourtant essentiel : sans un bord net, on ne peut pas
- * juger à l'œil si l'image vue à travers la couture est correctement alignée.
- * Décalé d'un centimètre vers l'intérieur pour ne conflictuer ni avec la paroi
- * ni avec le quad du portail.
+ * Ils remplacent l'encadrement peint qui décorait l'ouverture auparavant. C'est
+ * deux gains pour le même travail : un vrai relief donne un bord net, ce dont on
+ * a besoin pour juger à l'œil l'alignement de l'image vue à travers la couture ;
+ * et cela supprime la seule géométrie coplanaire de la scène, ce qui permet de
+ * rapprocher le plan proche sans craindre le conflit de profondeur.
  */
-function pushMouthFrame(out: number[], m: Mouth, color: Color, band = 0.07): void {
-  const o = add(m.center, scale(m.normal, 0.01))
+function pushReveal(out: number[], m: Mouth, color: Color): void {
   const w = m.halfWidth
   const h = m.halfHeight
   const R = m.right
   const U = m.up
-  const corner = (s: number, t: number): Vec3 => add(add(o, scale(R, s)), scale(U, t))
+  // Face intérieure de la paroi : l'embrasure s'enfonce de là vers la couture.
+  const face = add(m.center, scale(m.normal, REVEAL))
+  const depth = scale(m.normal, -REVEAL)
+  const corner = (s: number, t: number): Vec3 => add(add(face, scale(R, s)), scale(U, t))
 
-  // Verticales, puis horizontale supérieure. Rien en bas : l'ouverture descend
-  // jusqu'au sol.
-  const bands: { origin: Vec3; right: Vec3; up: Vec3 }[] = [
-    { origin: corner(-w, -h), right: scale(R, band), up: scale(U, 2 * h) },
-    { origin: corner(w - band, -h), right: scale(R, band), up: scale(U, 2 * h) },
-    { origin: corner(-w, h - band), right: scale(R, 2 * w), up: scale(U, band) },
+  // L'orientation de chaque jambage est choisie pour que sa normale regarde vers
+  // l'intérieur du tunnel — sinon le tri des faces arrière le rend invisible.
+  const faces: { origin: Vec3; right: Vec3; up: Vec3 }[] = [
+    { origin: corner(-w, -h), right: depth, up: scale(U, 2 * h) },        // jambage gauche
+    { origin: corner(w, -h), right: scale(U, 2 * h), up: depth },         // jambage droit
+    { origin: corner(-w, h), right: depth, up: scale(R, 2 * w) },         // linteau
+    { origin: corner(-w, -h), right: scale(R, 2 * w), up: depth },        // seuil
   ]
-  for (const b of bands) pushWall(out, { origin: b.origin, right: b.right, up: b.up, color })
+  for (const f of faces) pushWall(out, { origin: f.origin, right: f.right, up: f.up, color })
 }
 
+/**
+ * Le trou à percer dans la paroi.
+ *
+ * Il est sur la **face intérieure**, alors que la bouche de la couture est au fond
+ * de l'embrasure : il faut donc revenir de la profondeur de l'embrasure.
+ */
 function holeOf(m: Mouth): Hole {
-  return { center: m.center, halfWidth: m.halfWidth, halfHeight: m.halfHeight }
+  return {
+    center: add(m.center, scale(m.normal, REVEAL)),
+    halfWidth: m.halfWidth,
+    halfHeight: m.halfHeight,
+  }
 }
 
 export function buildWorld(): World {
@@ -89,10 +121,12 @@ export function buildWorld(): World {
   const hallMin: Vec3 = { x: -5, y: 0, z: -5 }
   const hallMax: Vec3 = { x: 5, y: 4, z: 5 }
 
+  // Chaque bouche est au fond de son embrasure, donc en retrait de la face
+  // intérieure de la paroi — vers l'extérieur de la pièce, à l'opposé de sa normale.
   const hallNorth: Mouth = {
     id: 'hall.nord',
     cell: 'hall',
-    center: { x: 0, y: DOOR_HALF_H, z: hallMin.z },
+    center: { x: 0, y: DOOR_HALF_H, z: hallMin.z - REVEAL },
     right: { x: 1, y: 0, z: 0 },
     up: { x: 0, y: 1, z: 0 },
     normal: { x: 0, y: 0, z: 1 },
@@ -102,7 +136,7 @@ export function buildWorld(): World {
   const hallSouth: Mouth = {
     id: 'hall.sud',
     cell: 'hall',
-    center: { x: 0, y: DOOR_HALF_H, z: hallMax.z },
+    center: { x: 0, y: DOOR_HALF_H, z: hallMax.z + REVEAL },
     right: { x: -1, y: 0, z: 0 },
     up: { x: 0, y: 1, z: 0 },
     normal: { x: 0, y: 0, z: -1 },
@@ -118,7 +152,7 @@ export function buildWorld(): World {
   const salleWest: Mouth = {
     id: 'salle.ouest',
     cell: 'salle',
-    center: { x: salleMin.x, y: salleDoorY, z: 28 },
+    center: { x: salleMin.x - REVEAL, y: salleDoorY, z: 28 },
     right: { x: 0, y: 0, z: -1 },
     up: { x: 0, y: 1, z: 0 },
     normal: { x: 1, y: 0, z: 0 },
@@ -128,7 +162,7 @@ export function buildWorld(): World {
   const salleEast: Mouth = {
     id: 'salle.est',
     cell: 'salle',
-    center: { x: salleMax.x, y: salleDoorY, z: 28 },
+    center: { x: salleMax.x + REVEAL, y: salleDoorY, z: 28 },
     right: { x: 0, y: 0, z: 1 },
     up: { x: 0, y: 1, z: 0 },
     normal: { x: -1, y: 0, z: 0 },
@@ -163,11 +197,11 @@ export function buildWorld(): World {
   )
 
   const hallExtra: number[] = []
-  pushMouthFrame(hallExtra, hallNorth, accent)
-  pushMouthFrame(hallExtra, hallSouth, accent)
+  pushReveal(hallExtra, hallNorth, accent)
+  pushReveal(hallExtra, hallSouth, accent)
   const salleExtra: number[] = []
-  pushMouthFrame(salleExtra, salleWest, accent)
-  pushMouthFrame(salleExtra, salleEast, accent)
+  pushReveal(salleExtra, salleWest, accent)
+  pushReveal(salleExtra, salleEast, accent)
 
   const hall: Cell = {
     id: 'hall',
