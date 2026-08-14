@@ -239,6 +239,37 @@ Par ordre d'arrivée prévue :
   sur la physique, les collisions et le précalcul des lightmaps, où il gagne sa
   place. Les modules sont isolés pour que ce soit sans douleur.
 
+## L'atelier
+
+Le dossier `tools/` est un atelier de mise au point, **non versionné** et
+régénérable : des sondes qui servent à comprendre ce qui se passe quand quelque
+chose résiste, pas au projet livré. Il contient son propre `README.md`.
+
+En résumé de ce qui s'y trouve :
+
+- `sheet.mjs` assemble tout un balayage en une seule planche de contact — une
+  transition étalée sur quarante captures interdit la comparaison, et un accident
+  d'une seule image y passe inaperçu ;
+- `trace.mjs` relève position, regard, verticale locale, inclinaison et roulis pas à
+  pas, pour les défauts qu'aucune image ne montre ;
+- `ab.mjs` réintroduit un défaut connu, lance le test, et restaure — parce qu'un
+  contrôle de non-régression qu'on n'a jamais vu échouer n'en est pas un. Le
+  catalogue des défauts déjà rencontrés vit dans `tools/patches.mjs` ;
+- `diff.mjs` dit *où* deux images diffèrent, là où le test de torture dit seulement
+  *si*.
+
+Les outils pilotent le crochet `window.__edifice` exposé par `src/main.ts`
+(`state`, `seam`, `teleport`, `walk`, `face`, `setDepth`, `setChrome`, `selfTest`).
+C'est la frontière prévue pour ça : quand une sonde a besoin de voir autre chose, on
+ajoute une entrée plutôt que d'aller fouiller dans les modules.
+
+Deux règles y sont apprises à mes dépens, et elles valent au-delà de l'atelier :
+ne jamais écrire une coordonnée du monde en dur — le plan des coutures a déjà bougé
+une fois et tous les repères figés se sont mis à mesurer autre chose sans rien
+signaler ; et ne jamais téléporter à travers une couture, une position au-delà du
+plan mais rattachée à la cellule de départ étant un état que le moteur ne produit
+jamais.
+
 ## Organisation
 
 ```
@@ -248,5 +279,6 @@ src/render/    initialisation WebGPU, rendu récursif des portails
 src/player/    visiteur, objets lancés
 src/dev/       auto-test des invariants
 src/shaders/   scene.wgsl, portal.wgsl
-scripts/       pilote CDP sans dépendance, test de torture
+scripts/       pilote CDP sans dépendance, décodeur PNG, test de torture
+tools/         atelier de mise au point, non versionné (voir tools/README.md)
 ```
