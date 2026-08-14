@@ -20,6 +20,7 @@
 import { spawn } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { launch } from './browser.mjs'
+import { createHash } from 'node:crypto'
 import { decode, stats } from './png.mjs'
 
 const PORT = 5190
@@ -91,6 +92,11 @@ try {
 
   // --- Volet 2 : les points de vue -----------------------------------------
   console.log('\n  Points de vue\n  ' + '─'.repeat(58))
+  // Deux points de vue différents ne peuvent pas produire la même image. Ce
+  // contrôle trivial aurait suffi à révéler que le tangage était écrasé : les deux
+  // vues inclinées sortaient identiques au bit près, et leurs statistiques
+  // identiques s'affichaient sans que personne ne les rapproche.
+  const seen = new Map()
   for (const view of VIEWS) {
     await browser.eval(`window.__edifice.goTo(${view.preset})`)
     const png = await browser.screenshotStable()
@@ -101,6 +107,14 @@ try {
 
     const flat = px.spread < MIN_SPREAD || px.colours < MIN_COLOURS
     if (flat) failures++
+
+    const digest = createHash('sha1').update(png).digest('hex')
+    const twin = seen.get(digest)
+    if (twin) {
+      console.log(`  ÉCHEC  ${view.label} donne exactement la même image que « ${twin} »`)
+      failures++
+    }
+    seen.set(digest, view.label)
     console.log(
       `  ${flat ? 'ÉCHEC ' : '  ok  '} ${view.label.padEnd(32)}` +
         ` ${String(state.stats.passes).padStart(2)} passes · prof. ${state.stats.deepest}` +

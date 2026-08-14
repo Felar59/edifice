@@ -106,7 +106,13 @@ chaque sous-pas on teste la traversée **avant** la collision — dans l'autre s
 le mur qui contient la porte arrêterait net celui qui cherche à la franchir.
 
 Les vecteurs à transporter (direction du regard, verticale locale, vitesse) sont
-passés à `advance` et transformés à chaque traversée. L'orientation du visiteur
+passés à `advance` et transformés à chaque traversée. Après quoi on les **remet à
+l'unité, et rien de plus** : une version antérieure projetait aussi le regard
+perpendiculairement à la verticale « pour remettre le repère d'équerre », ce qui
+écrasait le tangage — le regard se redressait brutalement à chaque porte franchie.
+Le regard n'a aucune raison d'être perpendiculaire à la verticale ; c'est
+précisément ce que veut dire regarder en haut ou en bas. Seul le repère de la
+caméra doit être orthonormé, et il est reconstruit à chaque image. L'orientation du visiteur
 n'est pas stockée en angles d'Euler mais comme un regard plus une verticale : une
 couture peut faire pivoter le monde n'importe comment, et le tunnel-vrille comme
 la gravité par face exigent que « le haut » cesse d'être une constante.
@@ -144,6 +150,13 @@ intacts. La mesure porte sur le PNG enregistré plutôt que sur le canevas, ce q
 garantit qu'on mesure exactement l'image qu'on regarde ensuite ; un canevas WebGPU
 ne se relit d'ailleurs pas avec `drawImage` hors de la boucle de rendu.
 `scripts/png.mjs` est un décodeur minimal écrit pour l'occasion, sans dépendance.
+
+S'y ajoutent deux contrôles nés d'un défaut que les mesures précédentes avaient
+laissé passer : le tangage doit survivre au placement et à la traversée, et **deux
+points de vue ne peuvent pas produire la même image**. Ce second contrôle est
+trivial et il aurait suffi : les deux vues inclinées sortaient identiques au bit
+près, et leurs statistiques identiques s'affichaient à l'écran sans que personne ne
+les rapproche.
 
 Chacun de ces contrôles a été **vu échouer** : les trois défauts ont été
 réintroduits un par un pour vérifier que le test les attrape. Un contrôle de

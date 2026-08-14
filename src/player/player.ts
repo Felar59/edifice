@@ -78,7 +78,7 @@ export class Player {
     this.pos = { ...preset.pos }
     this.forward = normalize(preset.forward)
     this.up = v3(0, 1, 0)
-    this.reorthogonalise()
+    this.renormalise()
   }
 
   right(): Vec3 {
@@ -128,17 +128,27 @@ export class Player {
     this.pos = result.pos
     this.crossings += result.crossings
 
-    if (result.crossings > 0) this.reorthogonalise()
+    if (result.crossings > 0) this.renormalise()
   }
 
   /**
-   * Les transformations de couture sont rigides, donc en théorie le repère reste
-   * orthonormé. En pratique, après quelques centaines de traversées, l'erreur
-   * d'arrondi finit par se voir. Une remise d'équerre coûte trois produits
-   * vectoriels et supprime le problème définitivement.
+   * Remise à l'unité des deux vecteurs, contre l'erreur d'arrondi accumulée au fil
+   * des traversées.
+   *
+   * **Et rien de plus.** La version précédente projetait aussi le regard
+   * perpendiculairement à la verticale, « pour remettre le repère d'équerre » — ce
+   * qui écrasait le tangage. Conséquence : à chaque franchissement de porte, le
+   * regard se redressait brutalement à l'horizontale. Le même défaut vidait les
+   * préréglages inclinés de leur inclinaison, au point que les deux points de vue
+   * de tangage du test produisaient des images identiques au bit près.
+   *
+   * Le regard n'a **aucune raison** d'être perpendiculaire à la verticale : c'est
+   * précisément ce que veut dire regarder en haut ou en bas. Seul le repère de la
+   * caméra doit être orthonormé, et il est reconstruit à chaque image à partir de
+   * ces deux vecteurs — voir `src/render/camera.ts`.
    */
-  private reorthogonalise(): void {
+  private renormalise(): void {
     this.up = normalize(this.up)
-    this.forward = normalize(sub(this.forward, scale(this.up, dot(this.forward, this.up))))
+    this.forward = normalize(this.forward)
   }
 }

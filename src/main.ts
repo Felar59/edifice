@@ -81,6 +81,18 @@ async function main(): Promise<void> {
   // --- Clavier --------------------------------------------------------------
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Tab') e.preventDefault()
+
+    // Avec un clavier AZERTY, avancer se fait sur la touche physique `KeyW`, qui
+    // porte un Z. Tenir Ctrl en marchant déclenche donc l'annulation du navigateur.
+    // On l'étouffe, ainsi que le rétablissement, et on ne traite aucun raccourci
+    // tant qu'un modificateur est enfoncé — de sorte que Ctrl+R, F12 et les autres
+    // raccourcis du navigateur continuent de fonctionner normalement.
+    if (e.ctrlKey || e.metaKey || e.altKey) {
+      const k = e.key.toLowerCase()
+      if (k === 'z' || k === 'y') e.preventDefault()
+      return
+    }
+
     keys.add(e.code)
 
     switch (e.code) {

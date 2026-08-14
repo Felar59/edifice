@@ -106,10 +106,16 @@ export class Projectiles {
       p.angle += dt * 4.5
 
       if (touched) {
-        // Aucune prétention à la physique : le cube s'immobilise. Ce qui compte
-        // ici est la traversée, pas le rebond.
+        // Aucune prétention à la physique : le cube s'immobilise. Ce qui compte ici
+        // est la traversée, pas le rebond.
         p.vel = scale(p.vel, 0.25)
-        if (len(p.vel) < 0.6) {
+
+        // Mais il ne s'immobilise que **posé**. Sans cette condition, un cube qui
+        // frôle deux fois le montant d'une porte perd assez de vitesse pour être
+        // déclaré au repos en pleine embrasure, et reste suspendu en l'air.
+        const floor = world.cells.get(p.cell)?.min.y ?? -Infinity
+        const supported = p.pos.y <= floor + HALF + 1e-3
+        if (supported && len(p.vel) < 0.6) {
           p.resting = true
           p.vel = v3(0, 0, 0)
         }

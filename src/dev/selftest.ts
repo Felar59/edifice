@@ -13,7 +13,8 @@
  */
 
 import { create, invertRigid, multiply, transformDir, transformPoint, type Mat4 } from '../math/mat4'
-import { add, cross, dot, len, scale, sub, v3, type Vec3 } from '../math/vec3'
+import { add, cross, dot, len, normalize, scale, sub, v3, type Vec3 } from '../math/vec3'
+import { Player } from '../player/player'
 import { cameraToWorld } from '../render/camera'
 import { advance, resolveAgainstCell } from '../world/motion'
 import type { World } from '../world/types'
@@ -217,7 +218,38 @@ export function runSelfTest(world: World): Check[] {
     add_('caméra · repère direct', worstDet < EPS, `écart ${fmt(worstDet)}`)
   }
 
-  // 8. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
+  // 8. Le tangage doit survivre au placement et à la traversée.
+  //
+  //    Le défaut était brutal — le regard se redressait à l'horizontale chaque fois
+  //    qu'on franchissait une porte — et il venait d'un excès de zèle : une routine
+  //    censée corriger la dérive d'arrondi projetait aussi le regard
+  //    perpendiculairement à la verticale, écrasant l'inclinaison.
+  //
+  //    On mesure le cosinus de l'angle entre le regard et la verticale locale : il
+  //    doit être exactement le même avant et après.
+  {
+    const pitched = normalize(v3(0, -0.5, -0.866))
+    const player = new Player()
+    player.goTo({ name: 'contrôle', cell: 'hall', pos: v3(0, 1.65, -3), forward: pitched })
+
+    const placed = dot(player.forward, player.up)
+    add_(
+      'visiteur · le placement conserve le tangage',
+      Math.abs(placed - dot(pitched, v3(0, 1, 0))) < 1e-6,
+      `cosinus ${placed.toFixed(6)} au lieu de ${pitched.y.toFixed(6)}`,
+    )
+
+    const keys = new Set(['KeyW'])
+    for (let i = 0; i < 120 && player.crossings === 0; i++) player.update(1 / 60, world, keys)
+    const crossed = dot(player.forward, player.up)
+    add_(
+      'visiteur · la traversée conserve le tangage',
+      player.crossings > 0 && Math.abs(crossed - placed) < 1e-4,
+      `${player.crossings} traversée(s), cosinus ${crossed.toFixed(6)} au lieu de ${placed.toFixed(6)}`,
+    )
+  }
+
+  // 9. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
   const stray = v3(0, 1.65, 0)
   for (const cell of world.cells.values()) {
     const p = resolveAgainstCell(cell, stray, 0.35)
