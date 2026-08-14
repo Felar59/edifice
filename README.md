@@ -66,6 +66,29 @@ une correction près : la version qui circule partout suppose un z de clip dans
 [-1, 1] à la façon d'OpenGL, alors que WebGPU utilise [0, 1]. Recopiée telle
 quelle, elle décale le plan proche. Voir `src/math/mat4.ts`.
 
+**Le haut de la caméra n'est pas la verticale de gravité.** Confondre les deux ne
+se voit pas tant qu'on regarde à l'horizontale. Dès qu'on pique du nez, le repère
+(côté, verticale de gravité, regard) cesse d'être orthogonal — et `invertRigid`,
+qui suppose l'orthonormalité et se contente de transposer la rotation, renvoie
+alors une matrice de vue fausse, sans le moindre message d'erreur. L'image
+cisaille, et les coutures, dont la caméra virtuelle hérite du défaut, se
+remplissent de zones vides. La verticale de gravité ne sert qu'à fixer le roulis.
+
+**Deux pièges à l'instant du franchissement.** Ils se cumulent, et donnaient tous
+deux une image entièrement vide au pire moment.
+
+Le premier : à quelques millimètres de l'ouverture, le quad du portail est plus
+proche que le plan proche, donc entièrement écrêté — il ne reste que le trou dans
+la paroi. Or à cette distance l'ouverture couvre de toute façon tout le champ : on
+peint alors l'écran entier au lieu du quad.
+
+Le second : quand le plan de coupe passe **par** la caméra virtuelle, le plan
+proche oblique dégénère. La troisième ligne de la matrice devient l'opposée de la
+quatrième, tous les fragments atterrissent exactement sur le plan lointain, et la
+comparaison de profondeur `less` échoue partout. La parade est de renoncer à
+l'obliquité dans ce cas, ce qui est correct et pas seulement commode : s'il n'y a
+rien entre la caméra et l'ouverture, il n'y a rien à écarter.
+
 **Une bouche vue de dos ne se dessine pas.** C'est le point qui a coûté le plus
 cher à trouver. Il ne suffit pas de distinguer « avec image » et « sans image » :
 il faut un troisième état, « invisible ». Une bouche prise de dos n'est pas une
@@ -104,13 +127,32 @@ infini sans dérive de la direction du regard ni sortie de cellule. Tous les éc
 mesurés sont actuellement nuls au bit près, ce qui est attendu : les
 transformations sont composées de zéros, de uns et de translations exactes.
 
-**Les points de vue**, capturés dans `shots/` : les sept situations qui trahissent
-un portail mal fait — nez collé à l'ouverture, regard rasant, pile dans
-l'embrasure, récursion, vue en biais, depuis l'autre pièce, cube en vol.
+S'y ajoute l'orthonormalité du repère de la caméra, vérifiée à toutes les
+inclinaisons. C'est l'invariant qui manquait, et son absence a laissé passer le
+défaut le plus visible du prototype.
 
-Les captures sont à regarder ; la comparaison automatique avec des références
-viendra quand le rendu sera stabilisé, sinon on passerait son temps à réviser des
-références.
+**Les points de vue**, capturés dans `shots/` : les dix situations qui trahissent
+un portail mal fait — nez collé à l'ouverture, regard rasant, pile dans
+l'embrasure, récursion, vue en biais, depuis l'autre pièce, tangage dans les deux
+sens, à un cheveu et au micron de la couture, cube en vol.
+
+Chaque capture est **mesurée**, et non seulement enregistrée : une image utile
+n'est jamais un aplat, donc on exige un minimum de relief et de teintes
+distinctes. C'est grossier, et c'est exactement ce qui manquait — les trois
+premiers défauts trouvés au clavier laissaient tous les compteurs du moteur
+intacts. La mesure porte sur le PNG enregistré plutôt que sur le canevas, ce qui
+garantit qu'on mesure exactement l'image qu'on regarde ensuite ; un canevas WebGPU
+ne se relit d'ailleurs pas avec `drawImage` hors de la boucle de rendu.
+`scripts/png.mjs` est un décodeur minimal écrit pour l'occasion, sans dépendance.
+
+Chacun de ces contrôles a été **vu échouer** : les trois défauts ont été
+réintroduits un par un pour vérifier que le test les attrape. Un contrôle de
+régression qu'on n'a jamais vu échouer n'en est pas un — et il s'est trouvé qu'un
+seul des trois se laissait prendre par la mesure d'image, d'où l'invariant sur la
+caméra.
+
+La comparaison au pixel avec des références viendra quand le rendu sera stabilisé,
+sinon on passerait son temps à réviser des références.
 
 ## Ce qui n'est pas fait
 

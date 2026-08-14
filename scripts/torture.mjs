@@ -18,8 +18,9 @@
  */
 
 import { spawn } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { launch } from './browser.mjs'
+import { decode, stats } from './png.mjs'
 
 const PORT = 5190
 const URL = `http://localhost:${PORT}/`
@@ -32,7 +33,22 @@ const VIEWS = [
   { file: '4-recursion', label: 'Récursion — le couloir infini', preset: 3 },
   { file: '5-biais', label: 'Vue en biais depuis le coin', preset: 4 },
   { file: '6-grande-salle', label: 'Depuis la grande salle', preset: 5 },
+  { file: '7-tangage-bas', label: 'Tangage vers le bas', preset: 7 },
+  { file: '8-tangage-haut', label: 'Tangage vers le haut', preset: 8 },
+  { file: '9-au-cheveu', label: 'À un cheveu de la couture', preset: 9 },
+  { file: '10-au-micron', label: 'Au micron de la couture', preset: 10 },
 ]
+
+/**
+ * Une image utile n'est jamais un aplat.
+ *
+ * C'est un critère grossier, et c'est exactement ce qui manquait : les trois
+ * premiers défauts trouvés au clavier — image cisaillée, ouvertures noires, écran
+ * entièrement vide au franchissement — laissaient tous les compteurs intacts. Une
+ * mesure du rendu lui-même les aurait signalés tout de suite.
+ */
+const MIN_SPREAD = 6      // écart-type de luminance
+const MIN_COLOURS = 12    // teintes distinctes, quantifiées à 16 niveaux par canal
 
 async function waitForServer(url, tries = 80) {
   for (let i = 0; i < tries; i++) {
@@ -81,10 +97,16 @@ try {
     const path = `${SHOTS}/${view.file}.png`
     writeFileSync(path, png)
     const state = await browser.eval('window.__edifice.state()')
+    const px = stats(decode(png))
+
+    const flat = px.spread < MIN_SPREAD || px.colours < MIN_COLOURS
+    if (flat) failures++
     console.log(
-      `  ${view.label.padEnd(34)} ${String(state.stats.passes).padStart(2)} passes` +
-        ` · profondeur ${state.stats.deepest} · ${path}`,
+      `  ${flat ? 'ÉCHEC ' : '  ok  '} ${view.label.padEnd(32)}` +
+        ` ${String(state.stats.passes).padStart(2)} passes · prof. ${state.stats.deepest}` +
+        ` · relief ${px.spread.toFixed(1).padStart(5)} · ${String(px.colours).padStart(3)} teintes`,
     )
+    if (flat) console.log(`         l'image est un aplat — voir ${path}`)
   }
 
   // --- Un cube lancé à travers, et on regarde s'il arrive de l'autre côté ---
@@ -97,13 +119,14 @@ try {
   await browser.eval('window.__edifice.goTo(6)')
   await browser.eval('window.__edifice.throwCube()')
   await new Promise((r) => setTimeout(r, 200))
-  writeFileSync(`${SHOTS}/7-cube-en-vol.png`, await browser.screenshotStable())
+  writeFileSync(`${SHOTS}/11-cube-en-vol.png`, await browser.screenshotStable())
   await new Promise((r) => setTimeout(r, 1600))
-  writeFileSync(`${SHOTS}/8-cube-de-lautre-cote.png`, await browser.screenshotStable())
+  writeFileSync(`${SHOTS}/12-cube-de-lautre-cote.png`, await browser.screenshotStable())
   const after = await browser.eval('window.__edifice.state()')
-  console.log(`  ${'Cube lancé à travers'.padEnd(34)} ${SHOTS}/7-cube-en-vol.png, ${SHOTS}/8-cube-de-lautre-cote.png`)
-  if (after.stats.passes < 2) {
-    console.log('  ÉCHEC  plus aucune couture rendue après le lancer')
+  console.log(`  ${'Cube lancé à travers'.padEnd(34)} ${SHOTS}/11-cube-en-vol.png, ${SHOTS}/12-cube-de-lautre-cote.png`)
+  const afterPx = stats(decode(readFileSync(`${SHOTS}/12-cube-de-lautre-cote.png`)))
+  if (after.stats.passes < 2 || afterPx.spread < MIN_SPREAD) {
+    console.log('  ÉCHEC  le rendu s’est dégradé après le lancer')
     failures++
   }
 

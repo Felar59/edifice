@@ -24,6 +24,8 @@ interface DevHook {
   look: (dx: number, dy: number) => void
   throwCube: () => void
   setDepth: (n: number) => void
+  /** Placement exact, pour sonder les cas limites au dixième de millimètre. */
+  teleport: (cell: string, x: number, y: number, z: number, fx: number, fy: number, fz: number) => void
   /** Masque l'écran d'entrée et les panneaux, pour des captures propres. */
   setChrome: (visible: boolean) => void
   state: () => unknown
@@ -119,6 +121,9 @@ async function main(): Promise<void> {
     throwCube: () => projectiles.throwFrom(player, world),
     setDepth: (n) => {
       renderer.maxDepth = n
+    },
+    teleport: (cell, x, y, z, fx, fy, fz) => {
+      player.goTo({ name: 'sonde', cell, pos: { x, y, z }, forward: { x: fx, y: fy, z: fz } })
     },
     setChrome: (visible) => {
       overlay.hidden = !visible

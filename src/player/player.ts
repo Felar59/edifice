@@ -44,6 +44,18 @@ export const PRESETS: Preset[] = [
   // Assez près pour qu'un cube lancé franchisse l'ouverture avant de retomber,
   // assez loin pour qu'on le voie ensuite atterrir de l'autre côté.
   { name: 'Devant l’ouverture, pour lancer', cell: 'hall', pos: v3(0, 1.65, -2.2), forward: v3(0, 0, -1) },
+  // Les trois points de vue ajoutés après les premiers essais au clavier. Le
+  // tangage faussait le repère de la caméra, et l'approche au cheveu près vidait
+  // l'image : trois défauts que les compteurs seuls ne pouvaient pas voir.
+  { name: 'Tangage vers le bas', cell: 'hall', pos: v3(0, 1.65, 2.0), forward: v3(0, -0.62, -0.78) },
+  { name: 'Tangage vers le haut', cell: 'hall', pos: v3(0, 1.65, 2.0), forward: v3(0, 0.55, -0.84) },
+  // Deux distances, parce que deux défauts distincts se cachent là.
+  // À un dixième de millimètre, le quad de l'ouverture est plus proche que le plan
+  // proche et se fait écrêter : c'est le mode plein écran qui sauve l'image.
+  { name: 'À un cheveu de la couture', cell: 'hall', pos: v3(0, 1.65, -4.9999), forward: v3(0, 0, -1) },
+  // Au micron, c'est le plan proche oblique qui dégénère : la troisième ligne de la
+  // matrice devient l'opposée de la quatrième et tout atterrit sur le plan lointain.
+  { name: 'Au micron de la couture', cell: 'hall', pos: v3(0, 1.65, -4.999999), forward: v3(0, 0, -1) },
 ]
 
 export class Player {

@@ -14,6 +14,7 @@
 
 import { create, invertRigid, multiply, transformDir, transformPoint, type Mat4 } from '../math/mat4'
 import { add, cross, dot, len, scale, sub, v3, type Vec3 } from '../math/vec3'
+import { cameraToWorld } from '../render/camera'
 import { advance, resolveAgainstCell } from '../world/motion'
 import type { World } from '../world/types'
 
@@ -177,7 +178,46 @@ export function runSelfTest(world: World): Check[] {
     add_('marche · jamais hors de la cellule', escaped === null, escaped ?? 'toujours dedans')
   }
 
-  // 7. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
+  // 7. Le repère de la caméra doit rester orthonormé à toutes les inclinaisons.
+  //
+  //    C'est l'invariant qui manquait, et son absence a laissé passer le défaut le
+  //    plus visible du prototype. Aucune statistique d'image ne pouvait l'attraper :
+  //    une vue cisaillée a exactement autant de relief qu'une vue correcte, et tous
+  //    les compteurs du moteur restaient justes.
+  //
+  //    L'enjeu est que `invertRigid` n'est valable que sur une base orthonormée.
+  //    Lui donner un repère oblique ne provoque aucune erreur : ça renvoie
+  //    simplement une matrice de vue fausse, en silence.
+  {
+    const gravityUp = v3(0, 1, 0)
+    let worstOrtho = 0
+    let worstNorm = 0
+    let worstDet = 0
+
+    for (let deg = -80; deg <= 80; deg += 5) {
+      const a = (deg * Math.PI) / 180
+      const forward = v3(0, Math.sin(a), -Math.cos(a))
+      const m = cameraToWorld({ cell: 'hall', pos: v3(1, 2, 3), forward, up: gravityUp })
+
+      const cx = v3(m[0]!, m[1]!, m[2]!)
+      const cy = v3(m[4]!, m[5]!, m[6]!)
+      const cz = v3(m[8]!, m[9]!, m[10]!)
+
+      worstOrtho = Math.max(worstOrtho, Math.abs(dot(cx, cy)), Math.abs(dot(cy, cz)), Math.abs(dot(cx, cz)))
+      worstNorm = Math.max(worstNorm, Math.abs(len(cx) - 1), Math.abs(len(cy) - 1), Math.abs(len(cz) - 1))
+      worstDet = Math.max(worstDet, Math.abs(dot(cross(cx, cy), cz) - 1))
+
+      // Et la propriété qui compte vraiment : l'inverse doit être un inverse.
+      const shouldBeIdentity = multiply(create(), invertRigid(create(), m), m)
+      worstOrtho = Math.max(worstOrtho, identityError(shouldBeIdentity))
+    }
+
+    add_('caméra · axes orthogonaux à tout tangage', worstOrtho < EPS, `écart ${fmt(worstOrtho)}`)
+    add_('caméra · axes unitaires', worstNorm < EPS, `écart ${fmt(worstNorm)}`)
+    add_('caméra · repère direct', worstDet < EPS, `écart ${fmt(worstDet)}`)
+  }
+
+  // 8. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
   const stray = v3(0, 1.65, 0)
   for (const cell of world.cells.values()) {
     const p = resolveAgainstCell(cell, stray, 0.35)
