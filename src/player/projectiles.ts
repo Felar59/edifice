@@ -202,11 +202,13 @@ function orthonormalise(p: Projectile): void {
   p.axis = normalize(p.axis)
 }
 
+/**
+ * Un cube est un corps centré : ses « pieds » et son « crâne » sont à égale distance de
+ * son centre. Le sol et le plafond sont désormais traités par la résolution commune,
+ * qui n'avait pas cette notion quand rien ne tombait.
+ */
+const CUBE_BODY = { radius: HALF, eyeHeight: HALF, headroom: HALF }
+
 function clampInside(cell: Cell, p: Vec3): Vec3 {
-  const flat = resolveAgainstCell(cell, p, HALF)
-  return {
-    x: flat.x,
-    y: Math.min(Math.max(flat.y, cell.min.y + HALF), cell.max.y - HALF),
-    z: flat.z,
-  }
+  return resolveAgainstCell(cell, p, CUBE_BODY).pos
 }

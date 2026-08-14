@@ -23,9 +23,9 @@ npm run check      # typage
 
 Il faut un navigateur avec WebGPU : Chrome ou Edge à jour.
 
-Commandes : `ZQSD`/`WASD` pour se déplacer, `Maj` pour courir, `F` pour lancer un
-cube, `R` pour tout retirer, `[` et `]` pour la profondeur de récursion, `H` pour
-masquer les panneaux, `1`–`7` pour les points de vue du test.
+Commandes : `ZQSD`/`WASD` pour se déplacer, `Maj` pour courir, `Espace` pour sauter,
+`F` pour lancer un cube, `R` pour tout retirer, `[` et `]` pour la profondeur de
+récursion, `H` pour masquer les panneaux, chiffres pour les points de vue du test.
 
 ## Ce qui est fait
 
@@ -210,6 +210,32 @@ n'est pas stockée en angles d'Euler mais comme un regard plus une verticale : u
 couture peut faire pivoter le monde n'importe comment, et le tunnel-vrille comme
 la gravité par face exigent que « le haut » cesse d'être une constante.
 
+### La verticalité
+
+On saute et on tombe. Gravité à dix-huit mètres par seconde carrée — près du double du
+réel, ce qui est délibéré : à 9,81 un saut d'un demi-mètre dure près d'une seconde et
+donne une impression de flottement lunaire. Le saut culmine à cinquante-cinq centimètres
+en une demi-seconde.
+
+Le corps a cessé d'être un point le jour où il a pu monter. Il fait un mètre
+quatre-vingts, l'œil à un mètre soixante-cinq, et ces quinze centimètres de crâne ne
+sont pas un détail : ce sont eux qui heurtent le linteau. Sans cette hauteur, on
+entrerait dans une porte en pleine détente, la tête dans le mur — et la traversée
+réussirait, puisque le test de franchissement ne regarde que l'œil.
+
+Deux points d'implémentation méritent d'être notés.
+
+La gravité s'applique **à chaque image, y compris à l'arrêt**. C'est ce qui maintient
+l'appui au sol : le petit déplacement vers le bas est rattrapé par la résolution de
+collision, qui signale le contact. Tester l'appui séparément demanderait un second
+sondage, et le drapeau clignoterait d'une image sur l'autre — de quoi rendre le saut
+capricieux.
+
+Et la hauteur du corps est résolue **avant** de décider s'il passe par une porte. Dans
+l'autre ordre, la gravité fait descendre les pieds d'un cheveu sous le sol pendant le
+pas, le test les croit sous le seuil, refuse le passage, et la paroi arrête net
+quiconque marche vers une porte. On marche alors sur place, sans rien qui l'explique.
+
 Les objets lancés passent par le même code. Un cube qui traverse l'ouverture,
 atterrit de l'autre côté et reste visible **à travers** l'ouverture prouve d'un
 coup que la géométrie, le déplacement et le rendu partagent bien la même
@@ -307,9 +333,6 @@ Par ordre d'arrivée prévue :
 - **Ombres** — une lampe éclaire à travers une cloison. C'est le manque le plus
   visible de l'éclairage actuel, et le prochain morceau sérieux.
 - **Audio** — la spatialisation doit elle aussi traverser les coutures.
-- **Verticalité** — ni saut ni chute. La position verticale ne change qu'en
-  franchissant une couture. C'est le premier manque à combler : l'escalier de Penrose
-  et la gravité par face en dépendent.
 - **Le tunnel-vrille**, la gravité par face, les murs mobiles, l'espace pavé.
   Toute la géométrie tricheuse, qui est la raison d'être du projet.
 - **Rust** — le moteur est en TypeScript. L'étape 1 était un problème de matrices

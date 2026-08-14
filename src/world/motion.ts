@@ -44,6 +44,33 @@ export interface Advance {
   crossings: number
 }
 
+/**
+ * Le volume d'un corps, décrit **relativement à son point de référence** — l'œil pour
+ * le visiteur, le centre pour un cube.
+ *
+ * Un point suffisait tant que rien ne montait ni ne descendait. Dès qu'on saute, il
+ * faut un volume : c'est le crâne qui heurte le linteau, et ce sont les pieds qui
+ * touchent le sol. Sans cette hauteur, on entrerait dans une porte en pleine détente,
+ * la tête dans le mur.
+ */
+export interface Body {
+  /** Demi-largeur horizontale. */
+  radius: number
+  /** Distance du point de référence aux pieds. */
+  eyeHeight: number
+  /** Distance du point de référence au sommet du crâne. */
+  headroom: number
+}
+
+/** Ce que la résolution de collision a rencontré, en plus de la position corrigée. */
+export interface Resolved {
+  pos: Vec3
+  /** Les pieds ont touché le sol de la cellule. */
+  floor: boolean
+  /** Le crâne a touché le plafond. */
+  ceiling: boolean
+}
+
 interface Crossing {
   passage: Passage
   t: number
@@ -142,15 +169,51 @@ export function advance(
 }
 
 /**
- * Collision contre la boîte de la cellule, avec une exception devant chaque
- * ouverture — sans quoi la paroi qui contient la porte arrêterait net celui qui
- * cherche à la franchir.
+ * Collision contre la boîte de la cellule, avec une exception devant chaque ouverture
+ * — sans quoi la paroi qui contient la porte arrêterait net celui qui cherche à la
+ * franchir.
  *
- * L'exception n'est accordée que si le corps est réellement **en face** de
- * l'ouverture, à sa demi-largeur moins le rayon près : on ne passe pas en
- * écorchant le montant.
+ * L'exception n'est accordée que si le corps **passe** réellement par l'ouverture :
+ * à sa demi-largeur moins le rayon près, et le crâne sous le linteau. C'est ce dernier
+ * point qui fait qu'on ne franchit pas une porte en pleine détente, la tête dans le
+ * mur — on se cogne, ce qui est le comportement attendu.
  */
-export function resolveAgainstCell(cell: Cell, p: Vec3, radius: number): Vec3 {
+export function resolveAgainstCell(cell: Cell, p: Vec3, body: Body): Resolved {
+  const { radius } = body
+
+  // Le sol et le plafond **d'abord**, et c'est un ordre qui compte.
+  //
+  // Pendant un pas, la gravité fait descendre les pieds d'un cheveu sous le sol avant
+  // que la collision ne les remonte. Juger la hauteur du corps sur cette position-là
+  // revient à le croire enterré : le test « passe-t-il sous le linteau ? » concluait
+  // que les pieds étaient sous le seuil, refusait le passage, et la paroi arrêtait net
+  // quiconque marchait vers une porte. On marchait sur place, sans rien qui l'explique.
+  let y = p.y
+  let floor = false
+  let ceiling = false
+
+  const lowest = cell.min.y + body.eyeHeight
+  const highest = cell.max.y - body.headroom
+  if (y <= lowest) {
+    y = lowest
+    floor = true
+  }
+  if (y >= highest) {
+    y = highest
+    ceiling = true
+  }
+
+  const feet = y - body.eyeHeight
+  const head = y + body.headroom
+
+  /** Le corps tient-il dans cette ouverture, en largeur comme en hauteur ? */
+  const fits = (m: Mouth, lateral: number): boolean => {
+    if (Math.abs(lateral - lateralCentre(m)) > m.halfWidth - radius) return false
+    const bottom = m.center.y - m.halfHeight
+    const top = m.center.y + m.halfHeight
+    return feet >= bottom - 1e-4 && head <= top + 1e-4
+  }
+
   let clampMinX = true
   let clampMaxX = true
   let clampMinZ = true
@@ -159,21 +222,21 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, radius: number): Vec3 {
   for (const passage of cell.passages) {
     const m = passage.from
     if (Math.abs(m.normal.x) > 0.5) {
-      if (Math.abs(p.z - m.center.z) <= m.halfWidth - radius) {
+      if (fits(m, p.z)) {
         if (m.normal.x > 0) clampMinX = false
         else clampMaxX = false
       }
     } else if (Math.abs(m.normal.z) > 0.5) {
-      if (Math.abs(p.x - m.center.x) <= m.halfWidth - radius) {
+      if (fits(m, p.x)) {
         if (m.normal.z > 0) clampMinZ = false
         else clampMaxZ = false
       }
     }
   }
 
-  // Filet de sécurité : même dans l'embrasure, on ne s'éloigne pas indéfiniment
-  // de la cellule. Si la traversée échouait, le corps s'arrêterait au lieu de
-  // partir dans le vide — un bug visible vaut mieux qu'un bug silencieux.
+  // Filet de sécurité : même dans l'embrasure, on ne s'éloigne pas indéfiniment de la
+  // cellule. Si la traversée échouait, le corps s'arrêterait au lieu de partir dans le
+  // vide — un bug visible vaut mieux qu'un bug silencieux.
   const slack = 1.2
   let { x, z } = p
   x = Math.max(x, cell.min.x + (clampMinX ? radius : -slack))
@@ -181,16 +244,16 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, radius: number): Vec3 {
   z = Math.max(z, cell.min.z + (clampMinZ ? radius : -slack))
   z = Math.min(z, cell.max.z - (clampMaxZ ? radius : -slack))
 
-  // Une fois engagé dans une embrasure, on y reste : sans cette contrainte on
-  // pourrait glisser latéralement et se retrouver dans l'épaisseur de la paroi,
-  // là où il n'y a rien à voir.
+  // Une fois engagé dans une embrasure, on y reste : sans cette contrainte on pourrait
+  // glisser latéralement et se retrouver dans l'épaisseur de la paroi, là où il n'y a
+  // rien à voir.
   //
-  // Encore faut-il savoir **de laquelle** il s'agit. Une première version appliquait
-  // la contrainte de chaque bouche à la suite, ce qui allait tant qu'une paroi n'en
-  // portait qu'une. Dès que la rotonde a eu deux portes sur le même mur, le corps
-  // engagé dans la première se faisait happer devant la seconde : on partait vers une
-  // aile et on arrivait dans une autre. On retient donc, par paroi, la bouche dont on
-  // est le plus proche.
+  // Encore faut-il savoir **de laquelle** il s'agit. Une première version appliquait la
+  // contrainte de chaque bouche à la suite, ce qui allait tant qu'une paroi n'en portait
+  // qu'une. Dès que la rotonde a eu deux portes sur le même mur, le corps engagé dans la
+  // première se faisait happer devant la seconde : on partait vers une aile et on
+  // arrivait dans une autre. On retient donc, par paroi, la bouche dont on est le plus
+  // proche.
   const engage = (
     beyond: boolean,
     onThisFace: (m: Mouth) => boolean,
@@ -222,5 +285,11 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, radius: number): Vec3 {
   x = engage(z < cell.min.z, (m) => m.normal.z > 0.5, (m) => m.center.x, x)
   x = engage(z > cell.max.z, (m) => m.normal.z < -0.5, (m) => m.center.x, x)
 
-  return { x, y: p.y, z }
+  // Le sol est signalé à l'appelant : c'est ce qui autorise à sauter.
+  return { pos: { x, y, z }, floor, ceiling }
+}
+
+/** L'abscisse d'une bouche le long de sa paroi. */
+function lateralCentre(m: Mouth): number {
+  return Math.abs(m.normal.x) > 0.5 ? m.center.z : m.center.x
 }

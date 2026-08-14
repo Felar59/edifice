@@ -29,6 +29,9 @@ export interface Check {
 
 const EPS = 1e-5
 
+/** Un corps de sonde, aux mesures du visiteur. */
+const PROBE_BODY = { radius: 0.35, eyeHeight: 1.65, headroom: 0.15 }
+
 function fmt(n: number): string {
   return n.toExponential(1)
 }
@@ -113,18 +116,24 @@ export function runSelfTest(world: World): Check[] {
   const hall = world.cells.get(HUB)
   if (hall) {
     const mouth = hall.passages[0]!.from
-    const start = add(mouth.center, scale(mouth.normal, 1.5))
+    // À hauteur d'œil, pas à hauteur de bouche : depuis que le corps a des pieds, une
+    // position au centre de la porte serait à cinquante centimètres sous le sol, et la
+    // collision la remonterait — ce qui fausserait l'aller-retour.
+    const start = {
+      ...add(mouth.center, scale(mouth.normal, 1.5)),
+      y: hall.min.y + PROBE_BODY.eyeHeight,
+    }
     const forward = scale(mouth.normal, -1)
 
     const carried = [{ ...forward }]
     const out = advance(world, HUB, start, scale(forward, 3), carried, (cell, p) =>
-      resolveAgainstCell(cell, p, 0.35),
+      resolveAgainstCell(cell, p, PROBE_BODY).pos,
     )
     add_('marche · la couture est bien franchie', out.crossings === 1, `${out.crossings} traversée(s)`)
 
     const backCarried = [{ ...carried[0]! }]
     const home = advance(world, out.cell, out.pos, scale(carried[0]!, -3), backCarried, (cell, p) =>
-      resolveAgainstCell(cell, p, 0.35),
+      resolveAgainstCell(cell, p, PROBE_BODY).pos,
     )
     const err = distance(home.pos, start)
     add_(
@@ -151,7 +160,7 @@ export function runSelfTest(world: World): Check[] {
 
     for (let i = 0; i < 400; i++) {
       const step = advance(world, cell, pos, scale(dir[0]!, 4), dir, (c, p) =>
-        resolveAgainstCell(c, p, 0.35),
+        resolveAgainstCell(c, p, PROBE_BODY).pos,
       )
       cell = step.cell
       pos = step.pos
@@ -257,6 +266,128 @@ export function runSelfTest(world: World): Check[] {
     )
   }
 
+  // 9. La verticalité : on tombe, on atterrit, on saute, et on se cogne au linteau.
+  //
+  //    Quatre propriétés, dont la dernière est la seule vraiment subtile.
+  //
+  //    Le corps a cessé d'être un point le jour où il a pu monter : c'est le crâne qui
+  //    heurte le linteau et ce sont les pieds qui touchent le sol. Sans cette hauteur,
+  //    on entrerait dans une porte en pleine détente, la tête dans le mur — et la
+  //    traversée réussirait, puisque le test de franchissement ne regarde que l'œil.
+  {
+    const marks = getLandmarks()
+    const floorOf = (id: string): number => world.cells.get(id)!.min.y
+    const EYE = 1.65
+    const HEAD = 0.15
+
+    // --- On tombe, et on s'arrête au sol ------------------------------------
+    const faller = new Player()
+    faller.goTo({
+      name: 'chute',
+      cell: marks.hub,
+      pos: add(marks.hubCenter, v3(0, 3, 0)),
+      forward: v3(0, 0, -1),
+    })
+    let frames = 0
+    while (!faller.grounded && frames < 600) {
+      faller.update(1 / 120, world, new Set())
+      frames++
+    }
+    const restY = faller.pos.y
+    add_(
+      'verticalité · la chute s’arrête au sol',
+      faller.grounded && Math.abs(restY - (floorOf(marks.hub) + EYE)) < 1e-6,
+      `œil à ${restY.toFixed(4)} m après ${frames} images, attendu ${(floorOf(marks.hub) + EYE).toFixed(4)}`,
+    )
+    add_(
+      'verticalité · la vitesse retombe à zéro',
+      Math.abs(faller.vertical) < 1e-9,
+      `vitesse ${faller.vertical.toExponential(1)}`,
+    )
+
+    // --- Le saut culmine, puis retombe --------------------------------------
+    const jumper = new Player()
+    jumper.goTo({
+      name: 'saut',
+      cell: marks.hub,
+      pos: marks.hubCenter,
+      forward: v3(0, 0, -1),
+    })
+    jumper.update(1 / 120, world, new Set()) // une image pour toucher le sol
+    const ground = jumper.pos.y
+
+    let apex = ground
+    let airborne = 0
+    jumper.update(1 / 120, world, new Set(['Space']))
+    while (!jumper.grounded && airborne < 600) {
+      jumper.update(1 / 120, world, new Set())
+      apex = Math.max(apex, jumper.pos.y)
+      airborne++
+    }
+    const height = apex - ground
+    add_(
+      'verticalité · le saut culmine puis retombe',
+      jumper.grounded && height > 0.35 && height < 0.85,
+      `${height.toFixed(3)} m d’élévation en ${airborne} images`,
+    )
+
+    // --- On ne traverse pas le sol, même en tombant vite --------------------
+    const diver = new Player()
+    diver.goTo({
+      name: 'plongeon',
+      cell: marks.hub,
+      pos: add(marks.hubCenter, v3(0, 2, 0)),
+      forward: v3(0, 0, -1),
+    })
+    diver.vertical = -28
+    // Un pas de temps volontairement énorme : c'est celui que la boucle de rendu borne,
+    // et donc le pire cas réel.
+    for (let i = 0; i < 6; i++) diver.update(1 / 20, world, new Set())
+    add_(
+      'verticalité · le sol ne se traverse pas à pleine vitesse',
+      diver.pos.y >= floorOf(marks.hub) + EYE - 1e-6,
+      `œil à ${diver.pos.y.toFixed(4)} m, plancher à ${(floorOf(marks.hub) + EYE).toFixed(4)}`,
+    )
+
+    // --- Le linteau arrête celui qui saute ---------------------------------
+    //
+    //    On place le corps en l'air, crâne au-dessus du linteau, juste devant la porte,
+    //    et on pousse fort. La paroi doit tenir.
+    const bumper = new Player()
+    const lintel = marks.seamCenter.y + 1.1
+    bumper.goTo({
+      name: 'linteau',
+      cell: marks.hub,
+      pos: add(marks.seamCenter, scale(marks.seamNormal, 0.6)),
+      forward: { x: -marks.seamNormal.x, y: 0, z: -marks.seamNormal.z },
+    })
+    bumper.pos = { ...bumper.pos, y: lintel - HEAD + 0.12 }
+    bumper.walk(world, 1.5)
+    const stillBefore =
+      (bumper.pos.x - marks.seamCenter.x) * marks.seamNormal.x +
+      (bumper.pos.z - marks.seamCenter.z) * marks.seamNormal.z
+    add_(
+      'verticalité · le linteau arrête celui qui saute trop haut',
+      bumper.crossings === 0 && stillBefore > 0,
+      `${bumper.crossings} traversée(s), marge ${stillBefore.toFixed(3)} m`,
+    )
+
+    // --- Mais franchir en retombant doit marcher ---------------------------
+    const stooper = new Player()
+    stooper.goTo({
+      name: 'retombée',
+      cell: marks.hub,
+      pos: add(marks.seamCenter, scale(marks.seamNormal, 0.6)),
+      forward: { x: -marks.seamNormal.x, y: 0, z: -marks.seamNormal.z },
+    })
+    stooper.walk(world, 1.5)
+    add_(
+      'verticalité · on franchit debout, comme avant',
+      stooper.crossings > 0,
+      `${stooper.crossings} traversée(s) vers ${stooper.cell}`,
+    )
+  }
+
   // 9. L'orientation d'un objet lancé doit traverser la couture avec lui.
   //
   //    Ce qui est vérifié n'est **pas** la continuité de l'orientation dans le repère
@@ -321,7 +452,7 @@ export function runSelfTest(world: World): Check[] {
   // 10. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
   const stray = v3(0, 1.65, 0)
   for (const cell of world.cells.values()) {
-    const p = resolveAgainstCell(cell, stray, 0.35)
+    const p = resolveAgainstCell(cell, stray, PROBE_BODY).pos
     const inside =
       p.x >= cell.min.x - 1.3 && p.x <= cell.max.x + 1.3 && p.z >= cell.min.z - 1.3 && p.z <= cell.max.z + 1.3
     add_(`${cell.id} · collision bornée`, inside, `${p.x.toFixed(2)} ${p.z.toFixed(2)}`)

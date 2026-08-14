@@ -46,6 +46,18 @@ interface DevHook {
   }
   /** Avance dans la direction du regard, par le vrai code de déplacement. */
   walk: (metres: number) => void
+  /** Fait avancer le temps de `seconds`, touches enfoncées données. */
+  tick: (seconds: number, keys?: string[]) => void
+  /**
+   * Suspend la simulation sans arrêter le rendu.
+   *
+   * Sans cela, la boucle d'animation continue de faire avancer le temps entre deux
+   * captures : un saut d'une demi-seconde se joue pendant qu'on photographie, et on
+   * n'en attrape que trois images au hasard. Suspendre rend le temps pilotable, ce qui
+   * servira bien au-delà du saut — les murs mobiles et le tunnel-vrille voudront la
+   * même chose.
+   */
+  setPaused: (paused: boolean) => void
   /** Oriente le regard sans bouger. */
   face: (fx: number, fy: number, fz: number) => void
   /** Placement exact, pour sonder les cas limites au dixième de millimètre. */
@@ -104,7 +116,7 @@ async function main(): Promise<void> {
 
   // --- Clavier --------------------------------------------------------------
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'Tab') e.preventDefault()
+    if (e.code === 'Tab' || e.code === 'Space') e.preventDefault()
 
     // Avec un clavier AZERTY, avancer se fait sur la touche physique `KeyW`, qui
     // porte un Z. Tenir Ctrl en marchant déclenche donc l'annulation du navigateur.
@@ -188,6 +200,13 @@ async function main(): Promise<void> {
       }
     },
     walk: (metres) => player.walk(world, metres),
+    tick: (seconds, pressed = []) => {
+      player.update(seconds, world, new Set(pressed))
+      projectiles.update(seconds, world)
+    },
+    setPaused: (value) => {
+      paused = value
+    },
     face: (fx, fy, fz) => player.face({ x: fx, y: fy, z: fz }),
     teleport: (cell, x, y, z, fx, fy, fz) => {
       player.goTo({ name: 'sonde', cell, pos: { x, y, z }, forward: { x: fx, y: fy, z: fz } })
@@ -202,6 +221,8 @@ async function main(): Promise<void> {
       forward: player.forward,
       up: player.up,
       crossings: player.crossings,
+      vertical: player.vertical,
+      grounded: player.grounded,
       stats: renderer.getStats(),
     }),
   }
@@ -210,6 +231,7 @@ async function main(): Promise<void> {
   // --- Boucle ---------------------------------------------------------------
   let previous = performance.now()
   let fps = 0
+  let paused = false
 
   const frame = (now: number): void => {
     // Onglet en arrière-plan, point d'arrêt dans le débogueur : un pas de temps
@@ -218,8 +240,10 @@ async function main(): Promise<void> {
     previous = now
     fps += (1 / Math.max(dt, 1e-4) - fps) * 0.1
 
-    player.update(dt, world, keys)
-    projectiles.update(dt, world)
+    if (!paused) {
+      player.update(dt, world, keys)
+      projectiles.update(dt, world)
+    }
 
     renderer.render(
       { cell: player.cell, pos: player.pos, forward: player.forward, up: player.up },

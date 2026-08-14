@@ -9,14 +9,35 @@
  * global seraient à jeter au premier virage.
  */
 
-import { advance, resolveAgainstCell } from '../world/motion'
+import { advance, resolveAgainstCell, type Body } from '../world/motion'
 import { getLandmarks } from '../world/world'
 import type { World } from '../world/types'
 import { add, cross, dot, len, normalize, rotateAxis, scale, sub, v3, type Vec3 } from '../math/vec3'
 
-const RADIUS = 0.35
+/**
+ * Le corps du visiteur.
+ *
+ * Un mètre quatre-vingts, l'œil à un mètre soixante-cinq. Ces quinze centimètres de
+ * crâne ne sont pas un détail : ce sont eux qui heurtent le linteau, et donc eux qui
+ * empêchent d'entrer dans une porte en pleine détente.
+ */
+const BODY: Body = { radius: 0.35, eyeHeight: 1.65, headroom: 0.15 }
+
 const WALK = 3.4
 const SPRINT = 6.8
+
+/**
+ * Gravité, en mètres par seconde carrée.
+ *
+ * Presque le double du réel. C'est délibéré : à 9,81 un saut d'un demi-mètre dure près
+ * d'une seconde, ce qui donne une impression de flottement lunaire. Les jeux à la
+ * première personne tournent tous autour de vingt.
+ */
+const GRAVITY = 18
+/** De quoi culminer à un peu plus d'un demi-mètre. */
+const JUMP_SPEED = 4.6
+/** Vitesse de chute plafonnée, pour ne pas traverser un sol en une image. */
+const MAX_FALL = 28
 const LOOK_SENSITIVITY = 0.0022
 /** Marge d'inclinaison, pour ne jamais aligner le regard avec la verticale. */
 const PITCH_LIMIT = 0.06
@@ -128,6 +149,10 @@ export class Player {
   forward: Vec3
   up: Vec3
   crossings = 0
+  /** Vitesse le long de la verticale locale : négative en chute. */
+  vertical = 0
+  /** Les pieds touchent le sol, donc on peut sauter. */
+  grounded = false
 
   constructor() {
     // On entre par le centre de la rotonde : c'est de là qu'on voit la couronne des
@@ -144,6 +169,8 @@ export class Player {
     this.pos = { ...preset.pos }
     this.forward = normalize(preset.forward)
     this.up = v3(0, 1, 0)
+    this.vertical = 0
+    this.grounded = false
     this.renormalise()
   }
 
@@ -164,6 +191,17 @@ export class Player {
   }
 
   update(dt: number, world: World, keys: Set<string>): void {
+    // La gravité s'applique d'abord, et **à chaque image**, y compris à l'arrêt.
+    // C'est ce qui maintient `grounded` : le petit déplacement vers le bas est
+    // rattrapé par la résolution de collision, qui signale le sol. Tester
+    // l'appui au sol séparément demanderait un second sondage, et le drapeau
+    // clignoterait d'une image sur l'autre — de quoi rendre le saut capricieux.
+    if (this.grounded && (keys.has('Space') || keys.has('KeyE'))) {
+      this.vertical = JUMP_SPEED
+      this.grounded = false
+    }
+    this.vertical = Math.max(this.vertical - GRAVITY * dt, -MAX_FALL)
+
     // Base horizontale : le regard projeté sur le plan perpendiculaire à la
     // verticale locale. C'est ce qui fait qu'on ne décolle pas en regardant en l'air.
     let fwdH = sub(this.forward, scale(this.up, dot(this.forward, this.up)))
@@ -177,11 +215,17 @@ export class Player {
     if (keys.has('KeyS') || keys.has('ArrowDown')) az -= 1
     if (keys.has('KeyD') || keys.has('ArrowRight')) ax += 1
     if (keys.has('KeyA') || keys.has('ArrowLeft')) ax -= 1
-    if (ax === 0 && az === 0) return
 
     const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? SPRINT : WALK
-    const dir = normalize(add(scale(fwdH, az), scale(rightH, ax)))
-    this.move(world, scale(dir, speed * dt))
+    const horizontal =
+      ax === 0 && az === 0
+        ? { x: 0, y: 0, z: 0 }
+        : scale(normalize(add(scale(fwdH, az), scale(rightH, ax))), speed * dt)
+
+    // Un seul déplacement, horizontal et vertical réunis : c'est ce qui permet à un
+    // saut en diagonale de franchir une porte correctement, le découpage en sous-pas
+    // traitant les deux composantes ensemble.
+    this.move(world, add(horizontal, scale(this.up, this.vertical * dt)))
   }
 
   /**
@@ -207,16 +251,26 @@ export class Player {
   private move(world: World, delta: Vec3): void {
     if (len(delta) < 1e-12) return
 
+    let landed = false
+    let bumped = false
+
     // La direction du regard et la verticale locale voyagent avec le corps.
     const carried = [this.forward, this.up]
-    const result = advance(world, this.cell, this.pos, delta, carried, (cell, p) =>
-      resolveAgainstCell(cell, p, RADIUS),
-    )
+    const result = advance(world, this.cell, this.pos, delta, carried, (cell, p) => {
+      const resolved = resolveAgainstCell(cell, p, BODY)
+      if (resolved.floor) landed = true
+      if (resolved.ceiling) bumped = true
+      return resolved.pos
+    })
     this.forward = carried[0]!
     this.up = carried[1]!
     this.cell = result.cell
     this.pos = result.pos
     this.crossings += result.crossings
+
+    this.grounded = landed
+    if (landed && this.vertical < 0) this.vertical = 0
+    if (bumped && this.vertical > 0) this.vertical = 0
 
     if (result.crossings > 0) this.renormalise()
   }
