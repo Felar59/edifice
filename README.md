@@ -8,9 +8,10 @@ Le plan de travail complet — les six moments signature, les onze machines, les
 lots et leurs portes de sortie — vit dans `PLAN.md`, à la racine du dossier du
 portfolio. Ce dépôt-ci contient le moteur.
 
-**État : le socle est posé, et la structure du musée avec lui.** Une rotonde à huit
-portes, sept ailes vides qui attendent chacune sa tricherie géométrique, des portails
-qu'on n'arrive pas à prendre en défaut, et un éclairage qui franchit les ouvertures.
+**État : le premier moment signature tourne.** Une rotonde à huit portes, des portails
+qu'on n'arrive pas à prendre en défaut, un éclairage qui franchit les ouvertures, le
+saut et la chute — et le **tunnel-vrille**, dont la section pivote d'un quart de tour
+sur dix-huit mètres, gravité comprise. Six ailes attendent encore leur mécanique.
 
 ## Démarrer
 
@@ -210,6 +211,54 @@ n'est pas stockée en angles d'Euler mais comme un regard plus une verticale : u
 couture peut faire pivoter le monde n'importe comment, et le tunnel-vrille comme
 la gravité par face exigent que « le haut » cesse d'être une constante.
 
+### Le tunnel-vrille
+
+Un couloir dont la section pivote autour de l'axe de marche. On y entre normalement ;
+au fil des mètres la section tourne, et la gravité avec elle. On ne saute pas, on ne
+tombe pas, on ne sent aucune transition — et au bout, en se retournant, la porte
+d'entrée est **couchée sur le côté**. Un quart de tour sur dix-huit mètres, soit cinq
+degrés par mètre, soit un dixième de degré par sous-pas de marche.
+
+**Pourquoi une cellule spéciale, et pas trente cellules pivotées.** L'espace cousu sait
+déjà faire tourner un repère : c'est exactement ce que fait une couture. Découper le
+tunnel en trente segments reliés par des coutures de trois degrés aurait donc marché
+sans une ligne de moteur en plus — sauf au rendu, où regarder le tunnel dans sa longueur
+demanderait trente niveaux de récursion de portails, chacun une passe plein écran. Le
+tunnel est donc une seule cellule, dont le repère est une fonction continue de la
+distance parcourue.
+
+**Ce qui tourne.** Pas la position : elle vit dans le repère du monde, et la géométrie
+est construite vrillée. Ce qui tourne, ce sont les directions attachées au visiteur — son
+regard, sa verticale, sa vitesse — d'un petit angle à chaque sous-pas. C'est pour cela
+qu'on ne sent rien : il n'y a jamais de saut, seulement une rotation trop lente pour
+être perçue autrement que par ses conséquences.
+
+Transporter la verticale sans transporter le regard serait l'erreur naturelle — on pense
+« la gravité tourne » et on oublie que la tête tourne avec. L'angle entre les deux
+changerait alors au fil de la marche : on avancerait tout droit et l'image piquerait
+lentement du nez.
+
+**Le pas se calcule en coordonnées locales, pas mondiales.** Marcher en ligne droite
+dans le monde à travers un tube qui tourne dérive latéralement dans le repère du tube :
+vingt-trois centimètres par passage, et l'on finit plaqué contre une paroi, hors
+d'atteinte de la porte. Marcher droit dans un couloir, c'est avancer le long de l'axe
+sans changer sa place dans la section — ce qui décrit une hélice dans le monde, et c'est
+bien ce qu'on fait quand on suit un couloir qui vrille.
+
+**Les quatre faces sont de couleurs franchement distinctes.** Une section carrée qui
+tourne d'un quart de tour se superpose à elle-même : sans cela, le tunnel aurait la même
+silhouette à ses deux bouts et la vrille serait parfaitement invisible.
+
+**La vrille s'arrête aux extrémités du tube.** Les bouches des coutures sont en retrait,
+au fond de leur embrasure, mais portent le repère de la section qu'elles ferment — c'est
+ce qui fait coïncider l'embrasure et la paroi qu'elle perce. Sans ce bornage, le visiteur
+accumulerait dans l'embrasure un degré et quart de plus que la bouche ne le prévoit, et
+la couture emporterait ce décalage dans la rotonde : on s'y retrouverait debout de
+travers, un peu plus à chaque tour.
+
+Enfin, la couture de sortie **absorbe** la vrille accumulée, puisqu'une transformation
+rigide emporte le repère entier. On ressort donc parfaitement d'aplomb, sans à-coup.
+
 ### La verticalité
 
 On saute et on tombe. Gravité à dix-huit mètres par seconde carrée — près du double du
@@ -377,7 +426,7 @@ jamais.
 
 ```
 src/math/      vecteurs, matrices, plan proche oblique
-src/world/     cellules, coutures, géométrie, déplacement, éclairage
+src/world/     cellules, coutures, géométrie, déplacement, éclairage, vrille
 src/render/    initialisation WebGPU, rendu récursif des portails
 src/player/    visiteur, objets lancés
 src/dev/       auto-test des invariants

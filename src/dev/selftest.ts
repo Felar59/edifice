@@ -18,6 +18,7 @@ import { Player } from '../player/player'
 import { Projectiles } from '../player/projectiles'
 import { cameraToWorld } from '../render/camera'
 import { advance, resolveAgainstCell } from '../world/motion'
+import { frameAt, toLocal } from '../world/twist'
 import { getLandmarks, HUB } from '../world/world'
 import type { World } from '../world/types'
 
@@ -180,7 +181,9 @@ export function runSelfTest(world: World): Check[] {
     add_(
       'marche · le couloir ne se referme jamais',
       total > 20,
-      `${total} traversées sur 1600 m`,
+      `${total} traversées sur 1600 m · arrêté dans ${cell} en ` +
+        `(${pos.x.toFixed(2)}, ${pos.y.toFixed(2)}, ${pos.z.toFixed(2)})` +
+        ` · direction (${dir[0]!.x.toFixed(3)}, ${dir[0]!.y.toFixed(3)}, ${dir[0]!.z.toFixed(3)})`,
     )
     add_(
       'marche · le regard ne dérive pas',
@@ -447,6 +450,101 @@ export function runSelfTest(world: World): Check[] {
       worstJump < 0.12,
       `saut maximal ${worstJump.toFixed(4)} par image (rotation propre : ${(4.5 * step).toFixed(4)})`,
     )
+  }
+
+  // 10. Le tunnel-vrille.
+  //
+  //    Quatre propriétés, et la deuxième est la seule qui demande de la réflexion.
+  //
+  //    **La vrille est complète.** D'un bout à l'autre, la verticale locale doit avoir
+  //    tourné de l'angle annoncé — un quart de tour. C'est ce qui fait que le sol de
+  //    l'entrée devient exactement le mur de gauche.
+  //
+  //    **Le regard ne dérive pas.** L'angle entre le regard et la verticale locale doit
+  //    rester constant sur toute la longueur. Si seule la verticale tournait, cet angle
+  //    changerait au fil de la marche : on avancerait tout droit et l'image piquerait
+  //    lentement du nez. C'est pourquoi le regard est transporté lui aussi.
+  //
+  //    **Pas de dérive latérale.** Marcher droit dans le couloir doit garder sa place
+  //    dans la section. Un pas exprimé en coordonnées du monde plutôt que locales dérive
+  //    de vingt-cinq centimètres par passage : on finit plaqué contre une paroi, hors
+  //    d'atteinte de la porte, et le couloir infini se referme.
+  //
+  //    **On ressort debout.** La couture de sortie absorbe la vrille accumulée, puisque
+  //    c'est une transformation rigide et qu'elle emporte le repère entier.
+  {
+    const tube = world.cells.get('vrille')
+    if (!tube?.twist) {
+      add_('vrille · le tube existe', false, 'l’aile vrille n’a pas de vrille')
+    } else {
+      const twist = tube.twist
+      const marks = getLandmarks()
+      const walker = new Player()
+      walker.goTo(
+        {
+          name: 'vrille',
+          cell: marks.hub,
+          pos: add(marks.seamCenter, scale(marks.seamNormal, 0.5)),
+          forward: { x: -marks.seamNormal.x, y: 0, z: -marks.seamNormal.z },
+        },
+        world,
+      )
+
+      let guard = 0
+      while (walker.cell !== 'vrille' && guard++ < 40) walker.walk(world, 0.2)
+
+      const entry = toLocal(twist, walker.pos)
+      const upAtEntry = { ...walker.up }
+
+      // Le regard est incliné **de biais** avant de mesurer, et ce n'est pas un détail :
+      // en visant exactement l'axe, l'angle avec la verticale reste nul quoi qu'il
+      // arrive, puisque la verticale tourne autour de cet axe. L'invariant serait vide,
+      // et il l'a été — il laissait passer un transport qui oubliait le regard.
+      const atEntry = frameAt(twist, entry.s)
+      walker.face(
+        normalize(add(scale(twist.axis, 0.9), scale(atEntry.up, -0.4))),
+      )
+      const tiltAtEntry = dot(walker.forward, walker.up)
+
+      let worstTilt = 0
+      guard = 0
+      while (walker.cell === 'vrille' && toLocal(twist, walker.pos).s < twist.length - 0.4 && guard++ < 400) {
+        walker.walk(world, 0.2)
+        if (walker.cell === 'vrille') {
+          worstTilt = Math.max(worstTilt, Math.abs(dot(walker.forward, walker.up) - tiltAtEntry))
+        }
+      }
+
+      const exit = toLocal(twist, walker.pos)
+      const turned = Math.acos(Math.max(-1, Math.min(1, dot(upAtEntry, walker.up))))
+      const expected = (twist.turn * (exit.s - entry.s)) / twist.length
+
+      add_(
+        'vrille · la verticale tourne de l’angle annoncé',
+        Math.abs(turned - expected) < 0.02,
+        `${((turned * 180) / Math.PI).toFixed(1)}° sur ${(exit.s - entry.s).toFixed(1)} m,` +
+          ` attendu ${((expected * 180) / Math.PI).toFixed(1)}°`,
+      )
+      add_(
+        'vrille · le regard ne dérive pas',
+        worstTilt < 2e-3,
+        `écart maximal d’inclinaison ${worstTilt.toExponential(1)}`,
+      )
+      add_(
+        'vrille · pas de dérive latérale',
+        Math.abs(exit.u - entry.u) < 0.03,
+        `${(exit.u - entry.u).toFixed(4)} m de déport sur ${(exit.s - entry.s).toFixed(1)} m`,
+      )
+
+      guard = 0
+      while (walker.cell === 'vrille' && guard++ < 40) walker.walk(world, 0.2)
+      const uprightness = dot(walker.up, v3(0, 1, 0))
+      add_(
+        'vrille · on ressort debout',
+        walker.cell === marks.hub && uprightness > 1 - 1e-6,
+        `cellule ${walker.cell}, verticale à ${(Math.acos(Math.min(1, uprightness)) * 180 / Math.PI).toFixed(2)}° de l’aplomb`,
+      )
+    }
   }
 
   // 10. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.

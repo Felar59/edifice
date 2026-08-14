@@ -150,7 +150,7 @@ async function main(): Promise<void> {
       default: {
         const digit = /^Digit([1-9])$/.exec(e.code)
         const preset = digit ? presets()[Number(digit[1]) - 1] : undefined
-        if (preset) player.goTo(preset)
+        if (preset) player.goTo(preset, world)
       }
     }
   })
@@ -163,7 +163,7 @@ async function main(): Promise<void> {
     selfTest: () => runSelfTest(world),
     goTo: (index) => {
       const preset = presets()[index]
-      if (preset) player.goTo(preset)
+      if (preset) player.goTo(preset, world)
     },
     look: (dx, dy) => player.look(dx, dy),
     throwCube: () => projectiles.throwFrom(player, world),
@@ -209,7 +209,7 @@ async function main(): Promise<void> {
     },
     face: (fx, fy, fz) => player.face({ x: fx, y: fy, z: fz }),
     teleport: (cell, x, y, z, fx, fy, fz) => {
-      player.goTo({ name: 'sonde', cell, pos: { x, y, z }, forward: { x: fx, y: fy, z: fz } })
+      player.goTo({ name: 'sonde', cell, pos: { x, y, z }, forward: { x: fx, y: fy, z: fz } }, world)
     },
     setChrome: (visible) => {
       overlay.hidden = !visible

@@ -9,7 +9,7 @@
  * global seraient à jeter au premier virage.
  */
 
-import { advance, resolveAgainstCell, type Body } from '../world/motion'
+import { advance, localUp, resolveAgainstCell, type Body } from '../world/motion'
 import { getLandmarks } from '../world/world'
 import type { World } from '../world/types'
 import { add, cross, dot, len, normalize, rotateAxis, scale, sub, v3, type Vec3 } from '../math/vec3'
@@ -164,11 +164,15 @@ export class Player {
     this.up = v3(0, 1, 0)
   }
 
-  goTo(preset: Preset): void {
+  goTo(preset: Preset, world?: World): void {
     this.cell = preset.cell
     this.pos = { ...preset.pos }
     this.forward = normalize(preset.forward)
-    this.up = v3(0, 1, 0)
+    // Une téléportation n'a parcouru aucun chemin : sa verticale ne peut pas être
+    // transportée, elle doit être lue sur place. Dans un tube vrillé, la verticale du
+    // monde n'a aucun sens.
+    const cell = world?.cells.get(preset.cell)
+    this.up = cell ? localUp(cell, this.pos, v3(0, 1, 0)) : v3(0, 1, 0)
     this.vertical = 0
     this.grounded = false
     this.renormalise()

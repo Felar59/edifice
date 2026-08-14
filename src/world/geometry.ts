@@ -8,6 +8,7 @@
  */
 
 import type { F32 } from '../f32'
+import { frameAt, toWorld, type Twist } from './twist'
 import { add, cross, len, normalize, scale, sub, type Vec3 } from '../math/vec3'
 
 /** position (3) · normale (3) · uv (2) · couleur (3) */
@@ -205,6 +206,135 @@ export function buildRoom(min: Vec3, max: Vec3, pal: RoomPalette, holes: RoomHol
   })
 
   return new Float32Array(out)
+}
+
+
+/**
+ * Les quatre faces d'un tube vrillé, chacune de sa couleur.
+ *
+ * Elles doivent être **distinguables**, et ce n'est pas une coquetterie. Une section
+ * carrée qui tourne de quatre-vingt-dix degrés se superpose à elle-même : sans couleurs
+ * distinctes, le tunnel aurait exactement la même silhouette à ses deux bouts et la
+ * vrille serait invisible. C'est en voyant le sol devenir le mur de gauche qu'on
+ * comprend ce qui s'est passé.
+ */
+export interface TubePalette {
+  floor: Color
+  ceiling: Color
+  left: Color
+  right: Color
+}
+
+/**
+ * Le maillage d'un tube à section carrée qui pivote autour de son axe.
+ *
+ * Les sommets sont posés dans le repère local puis renvoyés dans le monde ; les
+ * normales sont prises au repère de leur propre station, ce qui donne un ombrage
+ * continu le long de la vrille plutôt que des facettes.
+ */
+export function buildTwistedTube(
+  twist: Twist,
+  palette: TubePalette,
+  stations = 90,
+): F32 {
+  const out: number[] = []
+  const h = twist.halfSize
+
+  const push = (station: number, u: number, v: number, normal: Vec3, colour: Color): void => {
+    const p = toWorld(twist, { s: station, u, v })
+    out.push(
+      p.x, p.y, p.z,
+      normal.x, normal.y, normal.z,
+      // Les coordonnées de texture suivent le tube et non le monde : le quadrillage
+      // reste régulier alors même que la géométrie se tord.
+      station, u + v,
+      colour[0], colour[1], colour[2],
+    )
+  }
+
+  for (let i = 0; i < stations; i++) {
+    const s0 = (i * twist.length) / stations
+    const s1 = ((i + 1) * twist.length) / stations
+    const f0 = frameAt(twist, s0)
+    const f1 = frameAt(twist, s1)
+
+    // Chaque face est donnée dans l'ordre qui rend sa normale intérieure au tube :
+    // avec le tri des faces arrière, se tromper la rend simplement invisible.
+    const faces: {
+      colour: Color
+      corners: [number, number][]
+      normals: [Vec3, Vec3]
+    }[] = [
+      {
+        colour: palette.floor,
+        corners: [[-h, -h], [-h, -h], [h, -h], [h, -h]],
+        normals: [f0.up, f1.up],
+      },
+      {
+        colour: palette.ceiling,
+        corners: [[h, h], [h, h], [-h, h], [-h, h]],
+        normals: [{ x: -f0.up.x, y: -f0.up.y, z: -f0.up.z }, { x: -f1.up.x, y: -f1.up.y, z: -f1.up.z }],
+      },
+      {
+        colour: palette.left,
+        corners: [[-h, h], [-h, h], [-h, -h], [-h, -h]],
+        normals: [f0.right, f1.right],
+      },
+      {
+        colour: palette.right,
+        corners: [[h, -h], [h, -h], [h, h], [h, h]],
+        normals: [
+          { x: -f0.right.x, y: -f0.right.y, z: -f0.right.z },
+          { x: -f1.right.x, y: -f1.right.y, z: -f1.right.z },
+        ],
+      },
+    ]
+
+    for (const face of faces) {
+      const [a, b, c, d] = face.corners
+      const [n0, n1] = face.normals
+      // Deux triangles : (A, B, C) puis (A, C, D), A et D à la station de départ.
+      push(s0, a![0], a![1], n0, face.colour)
+      push(s1, b![0], b![1], n1, face.colour)
+      push(s1, c![0], c![1], n1, face.colour)
+
+      push(s0, a![0], a![1], n0, face.colour)
+      push(s1, c![0], c![1], n1, face.colour)
+      push(s0, d![0], d![1], n0, face.colour)
+    }
+  }
+
+  return new Float32Array(out)
+}
+
+/**
+ * Un fond de tube : la paroi qui ferme une extrémité, percée de sa porte.
+ *
+ * `atStart` distingue les deux bouts, dont les repères sont opposés — la normale doit
+ * dans les deux cas regarder vers l'intérieur du tube.
+ */
+export function pushTubeCap(
+  out: number[],
+  twist: Twist,
+  atStart: boolean,
+  colour: Color,
+  hole?: Hole,
+): void {
+  const h = twist.halfSize
+  const s = atStart ? 0 : twist.length
+  const { right, up } = frameAt(twist, s)
+
+  const origin = toWorld(twist, { s, u: atStart ? -h : h, v: -h })
+  const rightEdge = scale(right, atStart ? 2 * h : -2 * h)
+  const upEdge = scale(up, 2 * h)
+
+  pushWall(out, {
+    origin,
+    right: rightEdge,
+    up: upEdge,
+    color: colour,
+    ...(hole ? { holes: [hole] } : {}),
+  })
 }
 
 /** Un cube centré sur l'origine, pour l'objet qu'on lance à travers la couture. */

@@ -30,6 +30,8 @@ import { create, fromBasis, invertRigid, multiply, type Mat4 } from '../math/mat
 import { add, cross, neg, scale, type Vec3 } from '../math/vec3'
 import {
   buildRoom,
+  buildTwistedTube,
+  pushTubeCap,
   pushWall,
   type Color,
   type Hole,
@@ -37,6 +39,7 @@ import {
   type RoomPalette,
 } from './geometry'
 import { mouthRadiance, type CellLighting, type Colour } from './light'
+import { frameAt, makeTwist, toWorld } from './twist'
 import type { Cell, Mouth, Passage, World } from './types'
 
 const DOOR_HALF_W = 0.9
@@ -243,6 +246,26 @@ function lightingFor(box: Box, tint: Colour, mouths: Mouth[]): CellLighting {
   }
 }
 
+/**
+ * L'éclairage du tube : des lampes posées sur l'axe même.
+ *
+ * Sur l'axe, donc à équidistance des quatre faces, qu'elles éclairent également quelle
+ * que soit l'orientation de la section. Les placer au « plafond » n'aurait aucun sens
+ * ici : le plafond devient un mur au fil de la vrille.
+ */
+function tubeLighting(tint: Colour): CellLighting {
+  const lamps = [1.5, 5.5, 9, 12.5, 16.5]
+  return {
+    ambient: [tint[0] * 0.06, tint[1] * 0.06, tint[2] * 0.06],
+    lights: lamps.map((s) => ({
+      position: toWorld(VRILLE, { s, u: 0, v: 0 }),
+      colour: tint,
+      intensity: 4.5,
+      radius: 6,
+    })),
+  }
+}
+
 /** Une aile : ce qu'elle mesure, où sa porte se trouve, et ce qui viendra dedans. */
 interface Wing {
   id: string
@@ -261,6 +284,55 @@ interface Wing {
 const HUB_BOX: Box = { min: { x: -7, y: 0, z: -7 }, max: { x: 7, y: 5, z: 7 } }
 
 /**
+ * Le tunnel-vrille.
+ *
+ * Dix-huit mètres, une section carrée de trois mètres, un quart de tour d'un bout à
+ * l'autre. Le quart de tour n'est pas choisi au hasard : c'est celui qui fait que le
+ * sol de l'entrée devient exactement le mur de gauche.
+ *
+ * Cinq degrés par mètre, soit un dixième de degré par sous-pas de marche. On ne le sent
+ * pas. On s'en aperçoit en se retournant : la porte d'entrée est couchée sur le côté.
+ */
+const VRILLE = makeTwist({
+  origin: { x: 101.5, y: 1.5, z: 100 },
+  axis: { x: 0, y: 0, z: 1 },
+  length: 18,
+  halfSize: 1.5,
+  turn: Math.PI / 2,
+  up0: { x: 0, y: 1, z: 0 },
+})
+
+/**
+ * Une bouche au bout du tube.
+ *
+ * Son repère est celui de la section qu'elle ferme, et non celui du monde : à la
+ * sortie, le « haut » de la porte pointe vers le côté. C'est ce qui fait que la couture
+ * vers la rotonde absorbe la vrille accumulée — on ressort debout, sans à-coup, parce
+ * qu'une couture est une transformation rigide et qu'elle emporte le repère entier.
+ *
+ * Le centre est décalé du fond de l'embrasure, mais le repère reste celui de la section
+ * du fond : sans cela l'embrasure serait construite avec une orientation d'un degré
+ * différente de la paroi qu'elle perce, et le raccord se verrait.
+ */
+function tubeMouth(id: string, atStart: boolean): Mouth {
+  const s = atStart ? 0 : VRILLE.length
+  const { right, up } = frameAt(VRILLE, s)
+  const face = toWorld(VRILLE, { s, u: 0, v: -VRILLE.halfSize + DOOR_HALF_H })
+  const normal = atStart ? VRILLE.axis : neg(VRILLE.axis)
+
+  return {
+    id,
+    cell: 'vrille',
+    center: add(face, scale(normal, -REVEAL)),
+    right: atStart ? right : neg(right),
+    up,
+    normal,
+    halfWidth: DOOR_HALF_W,
+    halfHeight: DOOR_HALF_H,
+  }
+}
+
+/**
  * Les sept ailes, une par tricherie géométrique du lot 2.
  *
  * Les proportions ne sont pas arbitraires : chacune est déjà taillée pour ce qu'elle
@@ -270,13 +342,16 @@ const HUB_BOX: Box = { min: { x: -7, y: 0, z: -7 }, max: { x: 7, y: 5, z: 7 } }
 const WINGS: Wing[] = [
   {
     id: 'vrille',
-    box: { min: { x: 100, y: 0, z: 100 }, max: { x: 103, y: 3.2, z: 118 } },
+    // Boîte englobante seulement : la collision d'un tube vrillé se fait dans son
+    // repère redressé, pas contre ces bornes. Elles restent justes, une section carrée
+    // pivotée débordant de son demi-côté fois racine de deux.
+    box: { min: { x: 99.3, y: -0.7, z: 99.7 }, max: { x: 103.7, y: 3.7, z: 118.3 } },
     wall: 'north',
     lateral: 101.5,
     tint: [0.55, 0.8, 0.7],
     hubWall: 'north',
     hubLateral: -3.5,
-    purpose: 'le tunnel-vrille : la section pivotera autour de l’axe de marche, gravité comprise',
+    purpose: 'le tunnel-vrille : un quart de tour sur dix-huit mètres, gravité comprise',
   },
   {
     id: 'gravite',
@@ -383,18 +458,18 @@ export function buildWorld(): World {
 
   // --- Les bouches d'abord : l'éclairage en dépend --------------------------
   for (const wing of WINGS) {
-    const wingMouth = mouth(wing.id, `${wing.id}.porte`, wing.box, wing.wall, wing.lateral)
-    const mouths = [wingMouth]
-    const holes: RoomHoles = { [wing.wall]: [holeOf(wingMouth)] }
+    const twisted = wing.id === 'vrille'
+    const mouths = twisted
+      ? [tubeMouth('vrille.porte', true), tubeMouth('vrille.retour', false)]
+      : [mouth(wing.id, `${wing.id}.porte`, wing.box, wing.wall, wing.lateral)]
+    const holes: RoomHoles = twisted ? {} : { [wing.wall]: [holeOf(mouths[0]!)] }
 
-    if (wing.id === 'vrille') {
-      // La seconde extrémité, qui referme la boucle sur la rotonde.
-      const far = mouth(wing.id, 'vrille.retour', wing.box, LOOP_BACK.wingWall, wing.lateral)
-      mouths.push(far)
-      holes[LOOP_BACK.wingWall] = [holeOf(far)]
-    }
-
-    wingData.push({ wing, mouths, holes, lighting: lightingFor(wing.box, wing.tint, mouths) })
+    wingData.push({
+      wing,
+      mouths,
+      holes,
+      lighting: twisted ? tubeLighting(wing.tint) : lightingFor(wing.box, wing.tint, mouths),
+    })
     hubMouths.push({
       mouth: mouth(HUB, `${HUB}.vers-${wing.id}`, HUB_BOX, wing.hubWall, wing.hubLateral),
       wall: wing.hubWall,
@@ -469,16 +544,40 @@ export function buildWorld(): World {
   for (const entry of wingData) {
     const extra: number[] = []
     for (const m of entry.mouths) pushReveal(extra, m, tinted(entry.wing.tint, 0.55))
+
+    const twisted = entry.wing.id === 'vrille'
+    if (twisted) {
+      // Les deux fonds du tube, percés de leur porte.
+      pushTubeCap(extra, VRILLE, true, tinted(entry.wing.tint, 0.4), holeOf(entry.mouths[0]!))
+      pushTubeCap(extra, VRILLE, false, tinted(entry.wing.tint, 0.4), holeOf(entry.mouths[1]!))
+    }
+
     cells.push({
       id: entry.wing.id,
       min: entry.wing.box.min,
       max: entry.wing.box.max,
       verts: concat(
-        buildRoom(entry.wing.box.min, entry.wing.box.max, paletteFor(entry.wing.tint), entry.holes),
+        twisted
+          ? buildTwistedTube(VRILLE, {
+              // Quatre faces franchement distinctes : une section carrée qui tourne
+              // d'un quart de tour se superpose à elle-même, et sans ces couleurs la
+              // vrille serait parfaitement invisible.
+              floor: [0.58, 0.36, 0.2],
+              ceiling: [0.2, 0.26, 0.24],
+              left: [0.33, 0.47, 0.42],
+              right: [0.47, 0.63, 0.57],
+            })
+          : buildRoom(
+              entry.wing.box.min,
+              entry.wing.box.max,
+              paletteFor(entry.wing.tint),
+              entry.holes,
+            ),
         extra,
       ),
       passages: wingPassages.get(entry.wing.id)!,
       lighting: entry.lighting,
+      ...(twisted ? { twist: VRILLE } : {}),
     })
   }
 

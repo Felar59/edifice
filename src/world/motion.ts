@@ -14,6 +14,7 @@
 
 import { transformDir, transformPoint } from '../math/mat4'
 import { add, dot, len, scale, sub, type Vec3 } from '../math/vec3'
+import { frameAt, toLocal, toWorld, transport, transportAngle } from './twist'
 import type { Cell, Mouth, Passage, World } from './types'
 
 /** Longueur maximale d'un sous-pas, en mètres. */
@@ -161,7 +162,55 @@ export function advance(
       continue
     }
 
-    current = resolve(cell, add(current, seg))
+    // Dans un tube vrillé, le pas est exprimé dans le **repère local**, pas dans celui
+    // du monde.
+    //
+    // Marcher en ligne droite dans le monde à travers un tube qui tourne dérive
+    // latéralement dans le repère du tube : les coordonnées locales d'un déplacement
+    // rectiligne tournent à mesure que le repère tourne. On finissait plaqué contre une
+    // paroi au bout de deux allers-retours, hors d'atteinte de la porte.
+    //
+    // Marcher droit dans un couloir, c'est augmenter l'abscisse le long de l'axe sans
+    // changer sa place dans la section. Ce qui décrit une hélice dans le monde — et
+    // c'est bien ce qu'on fait quand on suit un couloir qui vrille.
+    const candidate = cell.twist
+      ? (() => {
+          const local = toLocal(cell.twist, current)
+          const frame = frameAt(cell.twist, local.s)
+          return toWorld(cell.twist, {
+            s: local.s + dot(seg, cell.twist.axis),
+            u: local.u + dot(seg, frame.right),
+            v: local.v + dot(seg, frame.up),
+          })
+        })()
+      : add(current, seg)
+
+    const next = resolve(cell, candidate)
+
+    // Dans un tube vrillé, tout ce qui est attaché au corps tourne avec le repère
+    // local, d'un angle proportionnel au chemin parcouru le long de l'axe.
+    //
+    // Appliqué à chaque sous-pas — donc tous les quatre centimètres — c'est un dixième
+    // de degré : imperceptible sur le coup, décisif au bout du tunnel. Et c'est bien
+    // une rotation continue, jamais un saut : c'est pour cela qu'on ne sent rien.
+    //
+    // Le reste du déplacement tourne aussi. Sans quoi, en marchant de côté, on suivrait
+    // une droite du monde pendant que le tube pivote autour de soi.
+    if (cell.twist) {
+      const angle = transportAngle(
+        cell.twist,
+        toLocal(cell.twist, current).s,
+        toLocal(cell.twist, next).s,
+      )
+      if (angle !== 0) {
+        for (let k = 0; k < carried.length; k++) {
+          carried[k] = transport(cell.twist, angle, carried[k]!)
+        }
+        remaining = transport(cell.twist, angle, remaining)
+      }
+    }
+
+    current = next
     remaining = sub(remaining, seg)
   }
 
@@ -179,6 +228,7 @@ export function advance(
  * mur — on se cogne, ce qui est le comportement attendu.
  */
 export function resolveAgainstCell(cell: Cell, p: Vec3, body: Body): Resolved {
+  if (cell.twist) return resolveInsideTube(cell, p, body)
   const { radius } = body
 
   // Le sol et le plafond **d'abord**, et c'est un ordre qui compte.
@@ -292,4 +342,74 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, body: Body): Resolved {
 /** L'abscisse d'une bouche le long de sa paroi. */
 function lateralCentre(m: Mouth): number {
   return Math.abs(m.normal.x) > 0.5 ? m.center.z : m.center.x
+}
+
+/**
+ * Collision dans un tube vrillé : on redresse, on résout, on retord.
+ *
+ * Tout le travail se fait dans le repère qui suit la vrille, où le tube redevient une
+ * boîte droite. C'est ce qui permet de garder une résolution simple malgré une
+ * géométrie qui se tord : la difficulté est absorbée par le changement de repère, pas
+ * par le code de collision.
+ */
+function resolveInsideTube(cell: Cell, p: Vec3, body: Body): Resolved {
+  const twist = cell.twist!
+  const h = twist.halfSize
+  const local = toLocal(twist, p)
+
+  // La hauteur d'abord, comme dans une pièce droite, et pour la même raison : juger la
+  // taille du corps sur une position non résolue le croirait enterré.
+  let v = local.v
+  let floor = false
+  let ceiling = false
+  const lowest = -h + body.eyeHeight
+  const highest = h - body.headroom
+  if (v <= lowest) {
+    v = lowest
+    floor = true
+  }
+  if (v >= highest) {
+    v = highest
+    ceiling = true
+  }
+
+  const feet = v - body.eyeHeight
+  const head = v + body.headroom
+  let u = Math.min(Math.max(local.u, -h + body.radius), h - body.radius)
+
+  // Les deux bouts du tube, avec l'exception devant chaque porte.
+  let s = local.s
+  let openAtStart = false
+  let openAtEnd = false
+
+  for (const passage of cell.passages) {
+    const m = passage.from
+    const door = toLocal(twist, m.center)
+    if (Math.abs(u - door.u) > m.halfWidth - body.radius) continue
+    if (feet < door.v - m.halfHeight - 1e-4) continue
+    if (head > door.v + m.halfHeight + 1e-4) continue
+
+    // La normale d'une bouche de tube regarde vers l'intérieur : le long de l'axe à
+    // l'entrée, à contresens à la sortie.
+    if (dot(m.normal, twist.axis) > 0) openAtStart = true
+    else openAtEnd = true
+  }
+
+  const slack = 1.2
+  s = Math.max(s, openAtStart ? -slack : body.radius)
+  s = Math.min(s, openAtEnd ? twist.length + slack : twist.length - body.radius)
+
+  return { pos: toWorld(twist, { s, u, v }), floor, ceiling }
+}
+
+/**
+ * La verticale locale à un endroit donné d'une cellule.
+ *
+ * Dans une pièce droite c'est celle qu'on transporte ; dans un tube vrillé elle se
+ * déduit de la position. Sert à replacer proprement un visiteur téléporté, dont les
+ * directions ne viennent d'aucun trajet.
+ */
+export function localUp(cell: Cell, p: Vec3, fallback: Vec3): Vec3 {
+  if (!cell.twist) return fallback
+  return frameAt(cell.twist, toLocal(cell.twist, p).s).up
 }

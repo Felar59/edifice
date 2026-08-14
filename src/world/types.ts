@@ -2,6 +2,7 @@ import type { F32 } from '../f32'
 import type { Mat4 } from '../math/mat4'
 import type { Vec3 } from '../math/vec3'
 import type { CellLighting, Colour } from './light'
+import type { Twist } from './twist'
 
 /**
  * Une **bouche** de couture : une ouverture rectangulaire posée sur une paroi.
@@ -57,6 +58,14 @@ export interface Cell {
   passages: Passage[]
   /** Lampes et ambiance propres à la cellule. */
   lighting: CellLighting
+  /**
+   * Si la cellule est un tube vrillé, sa description.
+   *
+   * Sa présence change deux choses : la collision se fait dans le repère redressé, et
+   * les directions attachées au visiteur tournent au fil de sa progression le long de
+   * l'axe.
+   */
+  twist?: Twist
 }
 
 export interface World {
