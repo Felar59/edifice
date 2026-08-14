@@ -216,8 +216,20 @@ la gravité par face exigent que « le haut » cesse d'être une constante.
 Un couloir dont la section pivote autour de l'axe de marche. On y entre normalement ;
 au fil des mètres la section tourne, et la gravité avec elle. On ne saute pas, on ne
 tombe pas, on ne sent aucune transition — et au bout, en se retournant, la porte
-d'entrée est **couchée sur le côté**. Un quart de tour sur dix-huit mètres, soit cinq
-degrés par mètre, soit un dixième de degré par sous-pas de marche.
+d'entrée est **couchée sur le côté**. Vingt-deux mètres, un quart de tour, une section
+de quatre mètres quarante.
+
+**Les six premiers mètres sont parfaitement droits.** Depuis le seuil, le couloir se
+présente comme un couloir : droit, banal, rien à signaler. La vrille ne commence qu'une
+fois qu'on s'y est engagé, et en fondu — trois t carré moins deux t cube, dont la pente
+est nulle aux deux bouts. Elle arrive donc de nulle part, sans début perceptible. Une
+vrille répartie sur toute la longueur se verrait dès l'entrée, et l'on saurait à quoi
+s'attendre.
+
+Cette pente nulle aux extrémités n'est pas qu'une affaire de mise en scène. Un profil
+linéaire tourne encore à pleine vitesse au moment où l'on borne l'angle en sortant du
+tube : la dérivée saute, ce qui laisse un pli dans la géométrie et un à-coup dans la
+caméra. En fondu, le bornage ne se voit pas, parce qu'il n'y a plus rien à borner.
 
 **Pourquoi une cellule spéciale, et pas trente cellules pivotées.** L'espace cousu sait
 déjà faire tourner un repère : c'est exactement ce que fait une couture. Découper le
@@ -252,9 +264,9 @@ silhouette à ses deux bouts et la vrille serait parfaitement invisible.
 **La vrille s'arrête aux extrémités du tube.** Les bouches des coutures sont en retrait,
 au fond de leur embrasure, mais portent le repère de la section qu'elles ferment — c'est
 ce qui fait coïncider l'embrasure et la paroi qu'elle perce. Sans ce bornage, le visiteur
-accumulerait dans l'embrasure un degré et quart de plus que la bouche ne le prévoit, et
-la couture emporterait ce décalage dans la rotonde : on s'y retrouverait debout de
-travers, un peu plus à chaque tour.
+accumulerait dans l'embrasure un peu plus que la bouche ne le prévoit, et la couture
+emporterait ce décalage dans la rotonde : on s'y retrouverait debout de travers, un peu
+plus à chaque tour.
 
 Enfin, la couture de sortie **absorbe** la vrille accumulée, puisqu'une transformation
 rigide emporte le repère entier. On ressort donc parfaitement d'aplomb, sans à-coup.

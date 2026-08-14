@@ -45,8 +45,17 @@ export interface Twist {
   length: number
   /** Demi-côté de la section carrée. */
   halfSize: number
-  /** Angle total de la vrille, en radians, réparti uniformément sur la longueur. */
+  /** Angle total de la vrille, en radians. */
   turn: number
+  /**
+   * Longueur d'amorce parfaitement droite, au départ.
+   *
+   * C'est ce qui fait l'effet. Depuis le seuil, le couloir se présente comme un couloir
+   * — droit, banal, sans rien à signaler. La vrille ne commence qu'une fois qu'on s'y est
+   * engagé, et elle arrive de nulle part. Une vrille répartie sur toute la longueur se
+   * voit dès l'entrée, et l'on sait à quoi s'attendre.
+   */
+  straight: number
   /** Repère de référence à l'entrée : le côté et le haut, perpendiculaires à l'axe. */
   right0: Vec3
   up0: Vec3
@@ -65,19 +74,34 @@ export interface Local {
 /**
  * L'angle de vrille atteint à une distance donnée.
  *
- * Borné aux deux extrémités : au-delà du tube, l'angle cesse d'évoluer.
+ * Le profil n'est pas linéaire, et c'est délibéré.
  *
- * Ce n'est pas une précaution mais une nécessité. Les bouches des coutures sont posées
- * au fond de leur embrasure, donc **en retrait** des extrémités du tube, alors que leur
- * repère est celui de la section qu'elles ferment — c'est ce qui fait coïncider
- * l'embrasure et la paroi qu'elle perce. Sans ce bornage, la vrille continuerait dans
- * l'embrasure et le visiteur y accumulerait un degré et quart de plus que la bouche ne
- * le prévoit. La couture emporterait ce décalage dans la rotonde, où l'on se
- * retrouverait debout de travers — et un peu plus à chaque tour.
+ * D'abord une **amorce droite** : depuis le seuil, le couloir se présente comme un
+ * couloir. Puis une montée **en fondu** — trois t carré moins deux t cube — dont la
+ * pente est nulle aux deux bouts. La vrille s'installe donc sans début perceptible, et
+ * s'achève de même.
+ *
+ * Cette pente nulle aux extrémités n'est pas qu'une affaire de goût. Un profil linéaire
+ * tourne déjà à pleine vitesse au moment où l'on borne l'angle en sortant du tube : la
+ * dérivée saute, ce qui laisse un pli dans la géométrie et un à-coup dans la caméra. En
+ * fondu, le bornage ne se voit pas, parce qu'il n'y a plus rien à borner.
+ *
+ * Le bornage lui-même reste nécessaire : les bouches des coutures sont posées au fond de
+ * leur embrasure, donc en retrait des extrémités du tube, alors que leur repère est celui
+ * de la section qu'elles ferment — c'est ce qui fait coïncider l'embrasure et la paroi
+ * qu'elle perce. Sans lui, le visiteur accumulerait dans l'embrasure un peu plus que la
+ * bouche ne le prévoit, et la couture emporterait ce décalage dans la pièce d'à côté, où
+ * l'on se retrouverait debout de travers.
  */
 export function angleAt(twist: Twist, s: number): number {
   const clamped = Math.min(Math.max(s, 0), twist.length)
-  return (twist.turn * clamped) / twist.length
+  if (clamped <= twist.straight) return 0
+
+  const span = twist.length - twist.straight
+  if (span <= 0) return twist.turn
+
+  const t = (clamped - twist.straight) / span
+  return twist.turn * t * t * (3 - 2 * t)
 }
 
 /** Le repère local à une distance donnée. */
@@ -137,10 +161,20 @@ export function makeTwist(spec: {
   length: number
   halfSize: number
   turn: number
+  straight: number
   up0: Vec3
 }): Twist {
   const axis = normalize(spec.axis)
   const up0 = normalize(sub(spec.up0, scale(axis, dot(spec.up0, axis))))
   const right0 = cross(up0, axis)
-  return { origin: spec.origin, axis, length: spec.length, halfSize: spec.halfSize, turn: spec.turn, right0, up0 }
+  return {
+    origin: spec.origin,
+    axis,
+    length: spec.length,
+    halfSize: spec.halfSize,
+    turn: spec.turn,
+    straight: spec.straight,
+    right0,
+    up0,
+  }
 }

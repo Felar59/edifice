@@ -254,7 +254,7 @@ function lightingFor(box: Box, tint: Colour, mouths: Mouth[]): CellLighting {
  * ici : le plafond devient un mur au fil de la vrille.
  */
 function tubeLighting(tint: Colour): CellLighting {
-  const lamps = [1.5, 5.5, 9, 12.5, 16.5]
+  const lamps = [1.5, 5.5, 9.5, 13.5, 17.5, 20.5]
   return {
     ambient: [tint[0] * 0.06, tint[1] * 0.06, tint[2] * 0.06],
     lights: lamps.map((s) => ({
@@ -286,19 +286,27 @@ const HUB_BOX: Box = { min: { x: -7, y: 0, z: -7 }, max: { x: 7, y: 5, z: 7 } }
 /**
  * Le tunnel-vrille.
  *
- * Dix-huit mètres, une section carrée de trois mètres, un quart de tour d'un bout à
- * l'autre. Le quart de tour n'est pas choisi au hasard : c'est celui qui fait que le
- * sol de l'entrée devient exactement le mur de gauche.
+ * Vingt-deux mètres, une section carrée de quatre mètres quarante, un quart de tour. Le
+ * quart de tour n'est pas choisi au hasard : c'est celui qui fait que le sol de l'entrée
+ * devient exactement le mur de gauche.
  *
- * Cinq degrés par mètre, soit un dixième de degré par sous-pas de marche. On ne le sent
- * pas. On s'en aperçoit en se retournant : la porte d'entrée est couchée sur le côté.
+ * Les six premiers mètres sont **parfaitement droits**. Depuis le seuil, le couloir se
+ * présente donc comme un couloir : droit, banal, rien à signaler. La vrille ne commence
+ * qu'une fois qu'on s'y est engagé, et en fondu — elle arrive de nulle part. Une vrille
+ * répartie sur toute la longueur se verrait dès l'entrée, et l'on saurait à quoi
+ * s'attendre.
+ *
+ * La section est large : quatre mètres quarante, contre trois auparavant. Un couloir
+ * étroit qui tourne devient étouffant, et surtout la torsion se lit mal quand les parois
+ * sont à portée de main.
  */
 const VRILLE = makeTwist({
-  origin: { x: 101.5, y: 1.5, z: 100 },
+  origin: { x: 101.5, y: 2.2, z: 100 },
   axis: { x: 0, y: 0, z: 1 },
-  length: 18,
-  halfSize: 1.5,
+  length: 22,
+  halfSize: 2.2,
   turn: Math.PI / 2,
+  straight: 6,
   up0: { x: 0, y: 1, z: 0 },
 })
 
@@ -345,7 +353,7 @@ const WINGS: Wing[] = [
     // Boîte englobante seulement : la collision d'un tube vrillé se fait dans son
     // repère redressé, pas contre ces bornes. Elles restent justes, une section carrée
     // pivotée débordant de son demi-côté fois racine de deux.
-    box: { min: { x: 99.3, y: -0.7, z: 99.7 }, max: { x: 103.7, y: 3.7, z: 118.3 } },
+    box: { min: { x: 98.3, y: -1, z: 99.7 }, max: { x: 104.7, y: 5.4, z: 122.3 } },
     wall: 'north',
     lateral: 101.5,
     tint: [0.55, 0.8, 0.7],
@@ -558,15 +566,21 @@ export function buildWorld(): World {
       max: entry.wing.box.max,
       verts: concat(
         twisted
-          ? buildTwistedTube(VRILLE, {
+          ? buildTwistedTube(
+              VRILLE,
+              {
               // Quatre faces franchement distinctes : une section carrée qui tourne
               // d'un quart de tour se superpose à elle-même, et sans ces couleurs la
               // vrille serait parfaitement invisible.
-              floor: [0.58, 0.36, 0.2],
-              ceiling: [0.2, 0.26, 0.24],
-              left: [0.33, 0.47, 0.42],
-              right: [0.47, 0.63, 0.57],
-            })
+                floor: [0.58, 0.36, 0.2],
+                ceiling: [0.2, 0.26, 0.24],
+                left: [0.33, 0.47, 0.42],
+                right: [0.47, 0.63, 0.57],
+              },
+              // Un anneau tous les quinze centimètres : la vrille est plus rapide en son
+              // milieu qu'un profil linéaire, et des facettes s'y verraient.
+              150,
+            )
           : buildRoom(
               entry.wing.box.min,
               entry.wing.box.max,

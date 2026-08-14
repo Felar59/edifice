@@ -18,7 +18,7 @@ import { Player } from '../player/player'
 import { Projectiles } from '../player/projectiles'
 import { cameraToWorld } from '../render/camera'
 import { advance, resolveAgainstCell } from '../world/motion'
-import { frameAt, toLocal } from '../world/twist'
+import { angleAt, frameAt, toLocal } from '../world/twist'
 import { getLandmarks, HUB } from '../world/world'
 import type { World } from '../world/types'
 
@@ -506,6 +506,16 @@ export function runSelfTest(world: World): Check[] {
       )
       const tiltAtEntry = dot(walker.forward, walker.up)
 
+      // L'amorce doit être franchement droite : c'est elle qui fait l'effet. Depuis le
+      // seuil, le couloir se présente comme un couloir, et la vrille arrive de nulle
+      // part. Répartie sur toute la longueur, elle se verrait dès l'entrée.
+      add_(
+        'vrille · une amorce droite existe',
+        twist.straight >= 2 && angleAt(twist, twist.straight) === 0,
+        `${twist.straight.toFixed(1)} m sans rotation, puis` +
+          ` ${((twist.turn * 180) / Math.PI).toFixed(0)}° sur les ${(twist.length - twist.straight).toFixed(1)} m suivants`,
+      )
+
       let worstTilt = 0
       guard = 0
       while (walker.cell === 'vrille' && toLocal(twist, walker.pos).s < twist.length - 0.4 && guard++ < 400) {
@@ -517,7 +527,10 @@ export function runSelfTest(world: World): Check[] {
 
       const exit = toLocal(twist, walker.pos)
       const turned = Math.acos(Math.max(-1, Math.min(1, dot(upAtEntry, walker.up))))
-      const expected = (twist.turn * (exit.s - entry.s)) / twist.length
+      // L'angle attendu est lu sur le profil et non recalculé : celui-ci n'est pas
+      // linéaire — amorce droite puis montée en fondu — et le supposer tel ferait
+      // échouer l'invariant pour une bonne raison de dessin.
+      const expected = angleAt(twist, exit.s) - angleAt(twist, entry.s)
 
       add_(
         'vrille · la verticale tourne de l’angle annoncé',
