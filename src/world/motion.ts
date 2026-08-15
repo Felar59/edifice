@@ -37,6 +37,43 @@ const NUDGE = 1e-3
  * C'était un vrai défaut, et rare : un pas qui tombait pile sur le plan laissait le
  * corps dans sa cellule de départ, sans portail dessiné, donc devant un aplat gris.
  */
+/**
+ * Un millimètre de tolérance sur la largeur d'une ouverture.
+ *
+ * Le corps s'arrête à un rayon d'une paroi, et l'ouverture d'à côté s'arrête au même
+ * endroit : dans une salle pavée, dont les quatre parois **sont** des ouvertures, les deux
+ * contraintes se rencontrent exactement dans chaque angle. Et deux flottants qui devraient
+ * être égaux ne le sont pas toujours — cinq mètres moins quatre mètres soixante-cinq ne
+ * font pas tout à fait trente-cinq centimètres — de sorte qu'on se retrouvait **coincé dans
+ * le coin d'une salle qui n'a pas de coin**.
+ *
+ * Un millimètre suffit à le régler et ne coûte rien : il ne rend franchissable que ce qui
+ * l'était déjà à un millimètre près.
+ */
+const JAMB = 1e-3
+
+/**
+ * Cette bouche couvre-t-elle sa paroi tout entière ?
+ *
+ * Alors il n'y a pas de paroi, et rien à rater : le corps ne peut pas se cogner à ce qui
+ * n'existe pas, ni manquer une ouverture aussi large que la pièce. Tous les tests
+ * d'encombrement sont donc à passer, et c'est ce qui fait tenir la salle pavée.
+ *
+ * Sans cela, ses quatre angles étaient des pièges. Le corps s'y arrête à un rayon de deux
+ * parois à la fois ; pour franchir l'une, il doit tenir dans l'ouverture de l'autre, ce
+ * qu'il ne fait pas d'un demi-rayon. On restait **coincé dans le coin d'une salle qui n'a
+ * pas de coin** — et l'on n'aurait pas trouvé pourquoi, puisque rien, à l'écran, ne se
+ * trouve à cet endroit.
+ */
+function fillsTheWall(cell: Cell, m: Mouth): boolean {
+  const eps = 1e-6
+  if (Math.abs(m.up.y) < 0.9) return false
+  if (m.halfHeight < (cell.max.y - cell.min.y) / 2 - eps) return false
+  const across =
+    Math.abs(m.normal.x) > 0.5 ? cell.max.z - cell.min.z : cell.max.x - cell.min.x
+  return m.halfWidth >= across / 2 - eps
+}
+
 const PLANE_EPS = 1e-4
 const MAX_ITERATIONS = 96
 
@@ -122,7 +159,7 @@ function findCrossing(cell: Cell, from: Vec3, seg: Vec3, body?: Body): Crossing 
     const rel = sub(add(from, scale(seg, t)), m.center)
     const across = Math.abs(dot(rel, m.right))
     const along = dot(rel, m.up)
-    if (body) {
+    if (body && !fillsTheWall(cell, m)) {
       // Un corps, avec sa largeur et sa taille. Un cube lancé n'en a pas : il passe par où
       // son centre passe, ce qui lui va — il est plus petit que toutes les ouvertures.
       // Deux centimètres de mou en hauteur, et ils sont nécessaires : pendant un pas, la
@@ -131,7 +168,7 @@ function findCrossing(cell: Cell, from: Vec3, seg: Vec3, body?: Body): Crossing 
       // normalement. C'est le même piège que dans `resolveAgainstCell`, et il se tend une
       // seconde fois ici. Deux centimètres suffisent — un saut, lui, monte d'un demi-mètre.
       const sag = 0.02
-      if (across > m.halfWidth - body.radius) continue
+      if (across > m.halfWidth - body.radius + JAMB) continue
       if (along - body.eyeHeight < -m.halfHeight - sag) continue
       if (along + body.headroom > m.halfHeight + sag) continue
     } else {
@@ -323,7 +360,8 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, body: Body): Resolved {
 
   /** Le corps tient-il dans cette ouverture, en largeur comme en hauteur ? */
   const fits = (m: Mouth, lateral: number): boolean => {
-    if (Math.abs(lateral - lateralCentre(m)) > m.halfWidth - radius) return false
+    if (fillsTheWall(cell, m)) return true
+    if (Math.abs(lateral - lateralCentre(m)) > m.halfWidth - radius + JAMB) return false
     const bottom = m.center.y - m.halfHeight
     const top = m.center.y + m.halfHeight
     return feet >= bottom - 1e-4 && head <= top + 1e-4
@@ -389,7 +427,9 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, body: Body): Resolved {
         nearest = m
       }
     }
-    if (!nearest) return current
+    // Une paroi entièrement ouverte ne retient personne dans une embrasure : il n'y en a
+    // pas. On y circule librement d'un bord à l'autre.
+    if (!nearest || fillsTheWall(cell, nearest)) return current
 
     const limit = nearest.halfWidth - radius
     const centre = lateralOf(nearest)

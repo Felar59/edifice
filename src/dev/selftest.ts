@@ -1270,7 +1270,80 @@ export function runSelfTest(world: World): Check[] {
     )
   }
 
-  // 16. Une couture qui relie une cellule à elle-même ne transmet aucune lumière.
+  // 16. Le réseau d'une salle pavée s'accorde à ses coutures.
+  //
+  //    Une salle pavée est décrite **deux fois** : par ses coutures, qui disent où le corps
+  //    se retrouve quand il sort d'un côté, et par son réseau, qui dit où l'on dessine ses
+  //    copies. Rien n'oblige les deux à s'accorder — et s'ils divergent, le musée devient
+  //    un mensonge : on voit une salle à dix mètres, on y marche, et l'on arrive ailleurs.
+  //
+  //    Le contrôle est exact. Chaque couture d'une salle en réseau doit être une **pure
+  //    translation** d'un pas du réseau, ni plus ni moins : pas de rotation, pas de dérive,
+  //    pas un centimètre de trop.
+  {
+    const wrong: string[] = []
+    for (const cell of world.cells.values()) {
+      if (!cell.lattice) continue
+      for (const passage of cell.passages) {
+        if (passage.to.cell !== cell.id) continue
+        const t = passage.transform
+        // La partie rotation doit être l'identité.
+        const rot = create()
+        rot.set(t)
+        rot[12] = 0; rot[13] = 0; rot[14] = 0
+        if (identityError(rot) > EPS) {
+          wrong.push(`${passage.from.id} tourne`)
+          continue
+        }
+        const step = { x: Math.abs(t[12]!), y: Math.abs(t[13]!), z: Math.abs(t[14]!) }
+        const alongX = step.x > 0 && step.z === 0
+        const wanted = alongX ? cell.lattice.x : cell.lattice.z
+        const got = alongX ? step.x : step.z
+        if (step.y !== 0 || Math.abs(got - wanted) > EPS) {
+          wrong.push(`${passage.from.id} translate de ${got.toFixed(4)} au lieu de ${wanted}`)
+        }
+      }
+    }
+    add_(
+      'pavé · le réseau s’accorde aux coutures',
+      wrong.length === 0,
+      wrong.length === 0 ? 'chaque couture vaut un pas du réseau' : wrong.join(' ; '),
+    )
+  }
+
+  // 17. Et l'on revient chez soi en marchant tout droit.
+  //
+  //    C'est la promesse de la salle : elle n'a pas de bord. Un pas de réseau parcouru en
+  //    ligne droite doit ramener **exactement** au point de départ — pas à un centimètre
+  //    près, exactement, sans quoi tourner en rond quelques minutes suffirait à dériver.
+  {
+    for (const cell of world.cells.values()) {
+      if (!cell.lattice) continue
+      const start = {
+        x: cell.min.x + 2,
+        y: cell.min.y + PROBE_BODY.eyeHeight,
+        z: cell.max.z - 1,
+      }
+      const walker = new Player()
+      walker.goTo({ name: 'pavé', cell: cell.id, pos: start, forward: v3(0, 0, -1) }, world)
+      // Le pas du réseau, en marchant : on s'arrête dès qu'on a repassé sa cote de départ.
+      let drift = Infinity
+      for (let i = 0; i < 600; i++) {
+        walker.update(1 / 60, world, new Set(['KeyW']))
+        if (walker.crossings > 0 && walker.pos.z <= start.z) {
+          drift = Math.hypot(walker.pos.x - start.x, walker.pos.y - start.y)
+          break
+        }
+      }
+      add_(
+        `${cell.id} · marcher tout droit ramène au départ`,
+        drift < 1e-6,
+        drift === Infinity ? 'le tour n’a pas été bouclé' : `dérive latérale ${fmt(drift)} m`,
+      )
+    }
+  }
+
+  // 18. Une couture qui relie une cellule à elle-même ne transmet aucune lumière.
   //
   //    La radiance d'une bouche sert à faire entrer chez soi l'éclairage d'ailleurs. Quand
   //    cet ailleurs est ici, il est déjà compté par les lampes de la salle, et l'ajouter une
@@ -1297,7 +1370,7 @@ export function runSelfTest(world: World): Check[] {
     )
   }
 
-  // 17. Aucune cellule ne dépasse le budget de lampes du nuanceur.
+  // 19. Aucune cellule ne dépasse le budget de lampes du nuanceur.
   //
   //    Le dépassement est **silencieux** : le rendu prend les premières et laisse tomber le
   //    reste. Une salle mal éclairée n'a alors aucune cause visible, et l'on cherche du côté
@@ -1318,7 +1391,7 @@ export function runSelfTest(world: World): Check[] {
     )
   }
 
-  // 18. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
+  // 20. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
   const stray = v3(0, 1.65, 0)
   for (const cell of world.cells.values()) {
     const p = resolveAgainstCell(cell, stray, PROBE_BODY).pos

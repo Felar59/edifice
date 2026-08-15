@@ -49,6 +49,9 @@ const VIEWS = [
   { file: '16-six-sols', label: 'La salle aux six sols', preset: 14 },
   // L'escalier de Penrose. Le raccord est dans le champ : s'il se voyait, c'est ici.
   { file: '17-escalier', label: 'L’escalier sans fin', preset: 15 },
+  // La salle pavée. Ce qui doit se voir : des copies parfaitement alignées, et une
+  // répétition qui s'éteint dans le brouillard plutôt que de s'arrêter sur un bord.
+  { file: '18-sans-bord', label: 'La salle sans bord', preset: 16 },
 ]
 
 /**

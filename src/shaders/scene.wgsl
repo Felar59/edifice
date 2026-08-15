@@ -19,6 +19,7 @@ struct Uniforms {
   fog      : vec4<f32>,   // rgb = couleur du fond, a = densité
   ambient  : vec4<f32>,   // plancher de luminosité de la cellule
   params   : vec4<f32>,   // x : nombre de lampes ; y : nombre d'ouvertures
+  lattice  : vec4<f32>,   // xyz : décalage de la copie, pour que l'éclairage se répète
   lights   : array<Light, 12>,
   mouths   : array<MouthLight, 8>,
 };
@@ -31,6 +32,15 @@ struct VSOut {
   @location(1) normal : vec3<f32>,
   @location(2) uv     : vec2<f32>,
   @location(3) color  : vec3<f32>,
+  /**
+   * La position ramenée dans la copie de référence du réseau.
+   *
+   * Elle vaut `world` partout ailleurs. Dans une salle qui se répète, chaque copie est
+   * dessinée décalée du pas du réseau, et il faut l'éclairer **comme la copie centrale** —
+   * sans quoi les lampes resteraient au même endroit du monde et les copies s'assombriraient
+   * en s'éloignant, ce qui trahirait aussitôt la répétition.
+   */
+  @location(4) local  : vec3<f32>,
 };
 
 @vertex
@@ -44,6 +54,7 @@ fn vs(
   let w = u.model * vec4<f32>(pos, 1.0);
   out.clip = u.viewProj * w;
   out.world = w.xyz;
+  out.local = w.xyz - u.lattice.xyz;
   out.normal = (u.model * vec4<f32>(nrm, 0.0)).xyz;
   out.uv = uv;
   out.color = col;
@@ -133,12 +144,12 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
 
   let lightCount = u32(u.params.x);
   for (var i = 0u; i < lightCount; i++) {
-    light += pointLight(in.world, n, u.lights[i]);
+    light += pointLight(in.local, n, u.lights[i]);
   }
 
   let mouthCount = u32(u.params.y);
   for (var i = 0u; i < mouthCount; i++) {
-    light += mouthLight(in.world, n, u.mouths[i]);
+    light += mouthLight(in.local, n, u.mouths[i]);
   }
 
   var rgb = in.color * light;

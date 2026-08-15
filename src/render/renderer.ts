@@ -50,7 +50,7 @@ import { MAX_LIGHTS, MAX_MOUTH_LIGHTS } from '../world/light'
  * retrouvées lues six lampes trop tôt — et le nuanceur aurait éclairé la salle avec des
  * morceaux de position de lampe.
  */
-const HEADER_FLOATS = 48
+const HEADER_FLOATS = 52
 const MOUTH_BLOCK = HEADER_FLOATS + MAX_LIGHTS * 8
 const SCENE_FLOATS = MOUTH_BLOCK + MAX_MOUTH_LIGHTS * 16
 import type { Cell, Mouth, Passage, World } from '../world/types'
@@ -117,6 +117,8 @@ export interface DynObject {
 
 export interface RenderStats {
   passes: number
+  /** Copies de réseau dessinées : le coût de la salle pavée. */
+  copies: number
   deepest: number
   skipped: number
 }
@@ -134,8 +136,15 @@ interface CellMesh {
 }
 
 export class Renderer {
-  /** Profondeur de récursion maximale. Réglable à chaud, c'est un outil de mise au point. */
-  maxDepth = 3
+  /**
+   * Profondeur de récursion maximale.
+   *
+   * Douze, et non trois : depuis que le budget de passes se dépense par ordre de surface à
+   * l'écran, c'est lui qui borne le travail, et la profondeur n'est plus qu'un garde-fou. La
+   * salle pavée y gagne tout — son couloir de copies s'enfonçait sur trois longueurs, avec
+   * un mur gris au bout ; il s'enfonce maintenant jusqu'à ce que le brouillard s'en charge.
+   */
+  maxDepth = 12
   /** Garde-fou : plafond du nombre de passes par image. */
   maxPasses = 24
   fovY = (72 * Math.PI) / 180
@@ -179,7 +188,7 @@ export class Renderer {
   private readonly freeTargets: Target[] = []
   private readonly allTargets: Target[] = []
 
-  private stats: RenderStats = { passes: 0, deepest: 0, skipped: 0 }
+  private stats: RenderStats = { passes: 0, deepest: 0, skipped: 0, copies: 0 }
 
   // Matrices réutilisées d'une image sur l'autre : rien ici ne doit allouer par
   // image, sinon le ramasse-miettes se réveille au pire moment.
@@ -222,7 +231,11 @@ export class Renderer {
     this.sceneModule = device.createShaderModule({ code: sceneShader, label: 'scene' })
     this.portalModule = device.createShaderModule({ code: portalShader, label: 'portal' })
 
-    this.sceneUniforms = new Ring(device, SCENE_STRIDE, 256, 'uniformes de scène')
+    // Deux mille blocs : une salle en réseau en consomme un par copie et par objet, et
+    // dépasser la capacité ne se voit pas — l'anneau repart au début et réécrit par-dessus
+    // des blocs déjà encodés, si bien que des salles entières se dessinent avec l'éclairage
+    // d'une autre. Mieux vaut trois mégaoctets qu'une corruption silencieuse.
+    this.sceneUniforms = new Ring(device, SCENE_STRIDE, 2048, 'uniformes de scène')
     this.portalUniforms = new Ring(device, PORTAL_STRIDE, 256, 'uniformes de portail')
 
     this.sceneBindGroup = device.createBindGroup({
@@ -307,7 +320,7 @@ export class Renderer {
     const cell = world.cells.get(camera.cell)
     if (!cell) throw new Error(`Cellule inconnue : ${camera.cell}`)
 
-    this.stats = { passes: 0, deepest: 0, skipped: 0 }
+    this.stats = { passes: 0, deepest: 0, skipped: 0, copies: 0 }
     this.sceneUniforms.reset()
     this.portalUniforms.reset()
 
@@ -374,9 +387,19 @@ export class Renderer {
       target: Target | null
       visible: boolean
       polygon: Vec3[]
+      /** Fraction de l'écran couverte : c'est elle qui décide de l'ordre des passes. */
+      cover: number
     }[] = []
     for (const passage of cell.passages) {
       const mouth = passage.from
+      // **Une couture de réseau ne se dessine pas.** Ce qu'elle montrerait — la salle
+      // voisine, c'est-à-dire la même — est déjà dessiné, et bien mieux : par la copie
+      // suivante du réseau, sans passe plein écran et sans coupure au bout de trois
+      // longueurs. Elle continue de servir au déplacement, et à lui seul.
+      if (cell.lattice && passage.to.cell === cell.id) {
+        children.push({ passage, target: null, visible: false, polygon: [], cover: 0 })
+        continue
+      }
       const dist = dot(mouth.normal, sub(camPos, mouth.center))
 
       // Le seuil sur la distance est zéro, et non un epsilon confortable : écarter
@@ -384,23 +407,30 @@ export class Renderer {
       // dessiner pendant l'image du franchissement, c'est-à-dire au pire moment.
       const polygon = dist <= 0 ? [] : this.mouthPolygon(mouth, camPos, viewFwd)
       const cover = polygon.length < 3 ? 0 : this.coverage(polygon, viewProj)
-      if (cover <= 0) {
-        children.push({ passage, target: null, visible: false, polygon: [] })
+      children.push({ passage, target: null, visible: cover > 0, polygon, cover })
+    }
+
+    // **Le budget va d'abord à ce qui occupe le plus d'écran.**
+    //
+    // La récursion est en profondeur d'abord, et le nombre de passes par image est plafonné.
+    // Prises dans l'ordre où elles sont déclarées, une bouche minuscule pouvait donc épuiser
+    // le budget en s'enfonçant, et laisser sans image celle qui remplit la moitié de l'écran
+    // — un aplat de brouillard à deux mètres du visiteur, alors que le fond du couloir était
+    // dessiné jusqu'au bout. Trié, le budget se dépense là où il se voit, et s'épuiser ne
+    // coûte plus que les lointains, c'est-à-dire ce que le brouillard efface déjà.
+    for (const child of [...children].sort((a, b) => b.cover - a.cover)) {
+      if (!child.visible) continue
+      if (depth >= this.maxDepth || this.stats.passes >= this.maxPasses || child.cover < MIN_COVERAGE) {
+        this.stats.skipped++
         continue
       }
-
-      let child: Target | null = null
-      if (depth < this.maxDepth && this.stats.passes < this.maxPasses && cover >= MIN_COVERAGE) {
-        child = this.acquireTarget()
-        const childCam = multiply(create(), passage.transform, camWorld)
-        const childProj = this.obliqueFor(proj, passage.to, childCam)
-        const destCell = world.cells.get(passage.to.cell)
-        if (!destCell) throw new Error(`Cellule de destination inconnue : ${passage.to.cell}`)
-        this.renderNode(encoder, destCell, childCam, childProj, depth + 1, child, objects, world)
-      } else {
-        this.stats.skipped++
-      }
-      children.push({ passage, target: child, visible: true, polygon })
+      const target = this.acquireTarget()
+      const childCam = multiply(create(), child.passage.transform, camWorld)
+      const childProj = this.obliqueFor(proj, child.passage.to, childCam)
+      const destCell = world.cells.get(child.passage.to.cell)
+      if (!destCell) throw new Error(`Cellule de destination inconnue : ${child.passage.to.cell}`)
+      this.renderNode(encoder, destCell, childCam, childProj, depth + 1, target, objects, world)
+      child.target = target
     }
 
     // --- 2. Puis la cellule elle-même. --------------------------------------
@@ -428,10 +458,14 @@ export class Renderer {
 
     const mesh = this.meshes.get(cell.id)
     if (mesh) {
-      const offset = this.writeSceneUniforms(viewProj, IDENTITY, camPos, cell)
-      pass.setBindGroup(0, this.sceneBindGroup, [offset])
       pass.setVertexBuffer(0, mesh.buffer)
-      pass.draw(mesh.vertexCount)
+      for (const shift of this.lattice(cell, camPos, viewFwd)) {
+        const model = translation(shift)
+        const offset = this.writeSceneUniforms(viewProj, model, camPos, cell, shift)
+        pass.setBindGroup(0, this.sceneBindGroup, [offset])
+        pass.draw(mesh.vertexCount)
+        this.stats.copies++
+      }
     }
 
     // Les objets ne sont dessinés que dans la cellule où ils se trouvent — ce qui
@@ -440,10 +474,18 @@ export class Renderer {
     if (this.objectMesh) {
       for (const obj of objects) {
         if (obj.cell !== cell.id) continue
-        const offset = this.writeSceneUniforms(viewProj, obj.model, camPos, cell)
-        pass.setBindGroup(0, this.sceneBindGroup, [offset])
-        pass.setVertexBuffer(0, this.objectMesh.buffer)
-        pass.draw(this.objectMesh.vertexCount)
+        // Un cube posé dans une salle qui se répète se répète avec elle : ne dessiner que
+        // le sien reviendrait à dire laquelle des copies est la vraie.
+        // Les objets ne se répètent que sur les copies voisines. Un cube fait trente-quatre
+        // centimètres : à deux salles de distance il ne couvre plus un pixel, et son absence
+        // ne se remarque pas — alors que le dessiner coûterait autant que la salle.
+        for (const shift of this.lattice(cell, camPos, viewFwd, 1)) {
+          const model = multiply(create(), translation(shift), obj.model)
+          const offset = this.writeSceneUniforms(viewProj, model, camPos, cell, shift)
+          pass.setBindGroup(0, this.sceneBindGroup, [offset])
+          pass.setVertexBuffer(0, this.objectMesh.buffer)
+          pass.draw(this.objectMesh.vertexCount)
+        }
       }
     }
 
@@ -587,12 +629,63 @@ export class Renderer {
     return (w * h) / 4
   }
 
-  private writeSceneUniforms(viewProj: Mat4, model: Mat4, camPos: Vec3, cell: Cell): number {
+  /**
+   * Les décalages des copies à dessiner pour cette cellule.
+   *
+   * Une seule, nulle, pour toutes les salles ordinaires. Pour une salle en réseau, la grille
+   * des copies, débarrassée de ce qui est franchement derrière l'œil ou au-delà de
+   * l'horizon : dessiner ce qui ne peut pas se voir coûterait autant que le reste, et le
+   * reste est déjà presque gratuit.
+   */
+  private lattice(cell: Cell, camPos: Vec3, viewFwd: Vec3, cap = Infinity): Vec3[] {
+    if (!cell.lattice) return [ORIGIN]
+    const { x: stepX, z: stepZ } = cell.lattice
+    const radius = Math.min(cell.lattice.radius, cap)
+    const centre = {
+      x: (cell.min.x + cell.max.x) / 2,
+      y: (cell.min.y + cell.max.y) / 2,
+      z: (cell.min.z + cell.max.z) / 2,
+    }
+    const half = Math.hypot(cell.max.x - cell.min.x, cell.max.z - cell.min.z) / 2
+    const reach = 3 / (cell.fog ?? FOG_DENSITY) + half
+
+    const out: Vec3[] = []
+    for (let i = -radius; i <= radius; i++) {
+      for (let j = -radius; j <= radius; j++) {
+        const shift = { x: i * stepX, y: 0, z: j * stepZ }
+        const to = {
+          x: centre.x + shift.x - camPos.x,
+          y: centre.y - camPos.y,
+          z: centre.z + shift.z - camPos.z,
+        }
+        const d = Math.hypot(to.x, to.y, to.z)
+        if (d > reach) continue
+        // Franchement derrière : la copie où l'on se tient et ses voisines immédiates
+        // restent, puisqu'on en voit toujours un morceau de côté.
+        if (d > half * 2 && dot(to, viewFwd) < 0) continue
+        out.push(shift)
+      }
+    }
+    return out
+  }
+
+  private writeSceneUniforms(
+    viewProj: Mat4,
+    model: Mat4,
+    camPos: Vec3,
+    cell: Cell,
+    /** Décalage de la copie de réseau qu'on dessine, nul pour tout le reste. */
+    shift: Vec3 = ORIGIN,
+  ): number {
     const s = this.scratch
     s.set(viewProj, 0)
     s.set(model, 16)
     s[32] = camPos.x; s[33] = camPos.y; s[34] = camPos.z; s[35] = 1
-    s[36] = FOG_COLOR[0]; s[37] = FOG_COLOR[1]; s[38] = FOG_COLOR[2]; s[39] = FOG_DENSITY
+    // La densité du brouillard peut être propre à la cellule. Une salle qui se répète sans
+    // fin a besoin d'un horizon plus proche que les autres : c'est le brouillard, et lui
+    // seul, qui rend la coupure de récursion invisible.
+    s[36] = FOG_COLOR[0]; s[37] = FOG_COLOR[1]; s[38] = FOG_COLOR[2]
+    s[39] = cell.fog ?? FOG_DENSITY
 
     const { ambient, lights } = cell.lighting
     s[40] = ambient[0]; s[41] = ambient[1]; s[42] = ambient[2]; s[43] = 0
@@ -600,6 +693,7 @@ export class Renderer {
     const lightCount = Math.min(lights.length, MAX_LIGHTS)
     const mouthCount = Math.min(cell.passages.length, MAX_MOUTH_LIGHTS)
     s[44] = lightCount; s[45] = mouthCount; s[46] = 0; s[47] = 0
+    s[48] = shift.x; s[49] = shift.y; s[50] = shift.z; s[51] = 0
 
     for (let i = 0; i < MAX_LIGHTS; i++) {
       const o = HEADER_FLOATS + i * 8
@@ -766,7 +860,16 @@ export class Renderer {
   }
 }
 
-const IDENTITY = create()
+const ORIGIN: Vec3 = { x: 0, y: 0, z: 0 }
+
+/** Une matrice de translation pure, pour poser une copie de réseau. */
+function translation(v: Vec3): Mat4 {
+  const m = create()
+  m[12] = v.x
+  m[13] = v.y
+  m[14] = v.z
+  return m
+}
 
 /**
  * Tampon d'uniformes circulaire, découpé en blocs alignés. Une passe = un bloc,

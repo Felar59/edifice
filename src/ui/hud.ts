@@ -69,6 +69,7 @@ export class Hud {
       '',
       `passes       ${d.stats.passes}`,
       `profondeur   ${d.stats.deepest} / ${d.maxDepth}`,
+      `copies       ${d.stats.copies}`,
       `écartées     ${d.stats.skipped}`,
       `cubes        ${d.projectiles}`,
     ].join('\n')

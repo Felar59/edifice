@@ -724,6 +724,136 @@ const SIX_FLOORS: RoomPalette = {
 }
 
 /** L'aile qui l'accueille : celle réservée à ce qui se contient soi-même. */
+/**
+ * **L'espace pavé** — une salle dont les quatre parois sont cousues deux à deux.
+ *
+ * On y marche tout droit et l'on revient à son point de départ sans avoir tourné, sans
+ * avoir rien franchi de visible. Le nord donne sur le sud, l'est sur l'ouest : la salle est
+ * un tore, et un tore n'a pas de bord.
+ *
+ * Ce n'est pas un couloir qui reboucle comme le tunnel : ici, **on voit la répétition**. À
+ * travers la paroi nord on voit la salle depuis sa paroi sud, donc l'édicule du centre, et
+ * derrière lui la même salle encore, et ainsi de suite jusqu'à ce que le brouillard s'en
+ * mêle. Un damier d'édicules identiques s'étend dans les quatre directions. En se
+ * retournant, on s'y voit soi-même de dos — ou plutôt on verrait, si le visiteur avait un
+ * corps à montrer.
+ *
+ * Trois points de construction méritent d'être notés.
+ *
+ * **Les parois ne sont pas percées, elles sont l'ouverture.** Une couture y occupe le mur
+ * entier, du sol au plafond et d'un angle à l'autre ; il n'y a donc aucune paroi à
+ * dessiner, et pas d'embrasure non plus — une embrasure suppose une épaisseur, et il n'y a
+ * rien à traverser.
+ *
+ * **La porte de sortie est au milieu de la salle**, dans un édicule, et non dans une paroi
+ * — il n'y a plus de paroi où la percer. C'est la même mécanique que le coffre du
+ * reliquaire : une bouche portée par un bloc plein, avec sa collision propre.
+ *
+ * **Une couture qui relie la salle à elle-même ne transmet pas de lumière**, et les quatre
+ * en sont. L'éclairage se recopie tout seul d'une copie à l'autre, puisque c'est le même.
+ */
+const PAVE_WING = 'pave'
+const PAVE_BOX: Box = { min: { x: 400, y: 0, z: 400 }, max: { x: 410, y: 4, z: 410 } }
+
+/** L'édicule du centre, et sa porte : la seule issue. */
+const KIOSK: Box = { min: { x: 403.5, y: 0, z: 403.5 }, max: { x: 406.5, y: 2.5, z: 406.5 } }
+const KIOSK_FACE: Wall = 'north'
+
+/**
+ * Les cinq bouches de la salle pavée : la porte de l'édicule, et les quatre parois.
+ *
+ * Les rectangles des parois font **exactement** la taille de la paroi. Une bouche plus
+ * large déborderait sur celle d'à côté et l'on verrait, dans chaque angle, un éclat de
+ * l'image voisine ; une bouche plus étroite laisserait une bande de mur qu'on ne peut pas
+ * franchir, dans une salle qui n'a pas de mur.
+ *
+ * Le corps s'arrête à un rayon des parois latérales, et la bouche s'arrête au même endroit :
+ * les deux contraintes se rencontrent **exactement** dans l'angle. C'est pourquoi les tests
+ * de franchissement s'accordent un millimètre de tolérance — deux flottants qui devraient
+ * être égaux ne le sont pas toujours, et un angle où l'on reste coincé dans une salle sans
+ * bord serait le comble.
+ */
+function paveMouths(): { door: Mouth; walls: [Mouth, Mouth, Mouth, Mouth] } {
+  const cx = (PAVE_BOX.min.x + PAVE_BOX.max.x) / 2
+  const cz = (PAVE_BOX.min.z + PAVE_BOX.max.z) / 2
+  const cy = (PAVE_BOX.min.y + PAVE_BOX.max.y) / 2
+  const halfX = (PAVE_BOX.max.x - PAVE_BOX.min.x) / 2
+  const halfZ = (PAVE_BOX.max.z - PAVE_BOX.min.z) / 2
+  const halfY = (PAVE_BOX.max.y - PAVE_BOX.min.y) / 2
+  const up = { x: 0, y: 1, z: 0 }
+  const face = (
+    id: string,
+    center: Vec3,
+    right: Vec3,
+    normal: Vec3,
+    halfWidth: number,
+  ): Mouth => ({ id, cell: PAVE_WING, center, right, up, normal, halfWidth, halfHeight: halfY })
+
+  return {
+    door: blockMouth(PAVE_WING, 'pave.porte', KIOSK, KIOSK_FACE, cx),
+    walls: [
+      // Nord (z = min), normale vers l'intérieur : right × up = normal.
+      face(
+        'pave.nord',
+        { x: cx, y: cy, z: PAVE_BOX.min.z },
+        { x: 1, y: 0, z: 0 },
+        { x: 0, y: 0, z: 1 },
+        halfX,
+      ),
+      face(
+        'pave.sud',
+        { x: cx, y: cy, z: PAVE_BOX.max.z },
+        { x: -1, y: 0, z: 0 },
+        { x: 0, y: 0, z: -1 },
+        halfX,
+      ),
+      face(
+        'pave.ouest',
+        { x: PAVE_BOX.min.x, y: cy, z: cz },
+        { x: 0, y: 0, z: -1 },
+        { x: 1, y: 0, z: 0 },
+        halfZ,
+      ),
+      face(
+        'pave.est',
+        { x: PAVE_BOX.max.x, y: cy, z: cz },
+        { x: 0, y: 0, z: 1 },
+        { x: -1, y: 0, z: 0 },
+        halfZ,
+      ),
+    ],
+  }
+}
+
+/**
+ * L'éclairage de la salle pavée : quatre lampes au plafond, aux quarts de la salle.
+ *
+ * La disposition compte plus qu'ailleurs. Ce qu'on voit à travers une paroi est la salle
+ * elle-même, translatée : si l'éclairage n'était pas symétrique par cette translation, la
+ * copie d'à côté serait éclairée autrement que celle où l'on se tient, et la répétition
+ * cesserait d'être crédible. Ici la symétrie est gratuite — c'est la même salle, donc les
+ * mêmes lampes —, mais poser les lampes aux quarts plutôt qu'au centre évite en plus qu'une
+ * bande sombre coure le long des parois, c'est-à-dire au raccord de deux copies.
+ */
+function paveLighting(tint: Colour): CellLighting {
+  const lights = []
+  for (const fx of [0.25, 0.75]) {
+    for (const fz of [0.25, 0.75]) {
+      lights.push({
+        position: {
+          x: PAVE_BOX.min.x + (PAVE_BOX.max.x - PAVE_BOX.min.x) * fx,
+          y: PAVE_BOX.max.y - 0.35,
+          z: PAVE_BOX.min.z + (PAVE_BOX.max.z - PAVE_BOX.min.z) * fz,
+        },
+        colour: tint,
+        intensity: 5,
+        radius: 9,
+      })
+    }
+  }
+  return { ambient: [tint[0] * 0.07, tint[1] * 0.07, tint[2] * 0.07], lights }
+}
+
 const RELIQUARY_WING = 'recursive'
 /**
  * Le côté du coffre : deux mètres cinquante, trente centimètres de plus que sa porte.
@@ -897,10 +1027,12 @@ const WINGS: Wing[] = [
     purpose: 'l’escalier de Penrose : des marches sans fin autour d’un pilier',
   },
   {
-    id: 'pave',
-    box: { min: { x: 400, y: 0, z: 400 }, max: { x: 412, y: 12, z: 412 } },
+    id: PAVE_WING,
+    box: PAVE_BOX,
+    // La salle pavée n'a pas de paroi où percer sa porte : celle-ci est portée par
+    // l'édicule du centre, et ces deux champs ne servent alors à rien.
     wall: 'east',
-    lateral: 406,
+    lateral: 405,
     tint: [0.88, 0.55, 0.9],
     hubWall: 'east',
     hubLateral: 3.5,
@@ -976,6 +1108,9 @@ export interface Landmarks {
   stairCell: string
   stairPos: Vec3
   stairForward: Vec3
+  pavedCell: string
+  pavedPos: Vec3
+  pavedForward: Vec3
   /** La liste des ailes et de ce qu'elles accueilleront, pour l'affichage. */
   wings: { id: string; purpose: string }[]
 }
@@ -1004,6 +1139,7 @@ export function buildWorld(): World {
   // suivantes sont propres à l'aile. Le tunnel en a une seconde à son autre bout, et la
   // salle du reliquaire en a deux : celle du coffre et celle par où la nef ressort.
   const stair = stairMouths()
+  const pave = paveMouths()
 
   for (const wing of WINGS) {
     const twisted = wing.id === 'vrille'
@@ -1012,8 +1148,10 @@ export function buildWorld(): World {
 
     const mouths = twisted
       ? [tubeMouth('vrille.porte', true), tubeMouth('vrille.retour', false)]
-      : wing.id === PENROSE_WING
-        ? [stair.entry, stair.down, ...stair.seams]
+      : wing.id === PAVE_WING
+        ? [pave.door, ...pave.walls]
+        : wing.id === PENROSE_WING
+          ? [stair.entry, stair.down, ...stair.seams]
         : [mouth(wing.id, `${wing.id}.porte`, wing.box, wing.wall, wing.lateral)]
     if (chest) {
       mouths.push(
@@ -1022,7 +1160,10 @@ export function buildWorld(): World {
       )
     }
 
-    const holes: RoomHoles = twisted ? {} : { [wing.wall]: [holeOf(mouths[0]!)] }
+    // La salle pavée ne perce aucune paroi : elle n'en a pas. Ses quatre côtés sont des
+    // coutures pleine hauteur, et sa porte est dans l'édicule du milieu.
+    const holes: RoomHoles =
+      twisted || wing.id === PAVE_WING ? {} : { [wing.wall]: [holeOf(mouths[0]!)] }
     // L'escalier a deux portes, à deux angles différents du pilier.
     if (wing.id === PENROSE_WING) holes.north = [holeOf(mouths[1]!)]
     // La porte du coffre ne perce aucune paroi de la salle : elle perce le coffre.
@@ -1038,7 +1179,9 @@ export function buildWorld(): World {
           ? cubeLighting(wing.box, wing.tint, mouths)
           : wing.id === PENROSE_WING
             ? stairLighting(wing.tint)
-            : lightingFor(wing.box, wing.tint, mouths),
+            : wing.id === PAVE_WING
+              ? paveLighting(wing.tint)
+              : lightingFor(wing.box, wing.tint, mouths),
       ...(chest ? { chest } : {}),
     })
     hubMouths.push({
@@ -1138,6 +1281,30 @@ export function buildWorld(): World {
   wingPassages.get(PENROSE_WING)!.push(...stairSeams, intoLower)
   const lowerPassages: Passage[] = [outOfLower]
 
+  // **Les deux coutures de la salle pavée**, nord contre sud et ouest contre est.
+  //
+  // Elles ont chacune leur jumelle, contrairement aux raccords de l'escalier : on les
+  // franchit dans les deux sens, et franchir puis revenir sur ses pas doit ramener très
+  // exactement où l'on était. C'est ce qui fait de la salle un tore et non un piège.
+  //
+  // Les deux bouches d'une même couture se font face sans tourner, donc la transformation
+  // est une **pure translation** — de la largeur de la salle, exactement. Rien ne pivote,
+  // rien ne change d'échelle : on ne peut pas s'apercevoir qu'on l'a franchie.
+  const paveWing = wingData.find((entry) => entry.wing.id === PAVE_WING)!
+  const [northSouth, southNorth] = makePassages(
+    paveWing.mouths[1]!,
+    paveWing.lighting,
+    paveWing.mouths[2]!,
+    paveWing.lighting,
+  )
+  const [westEast, eastWest] = makePassages(
+    paveWing.mouths[3]!,
+    paveWing.lighting,
+    paveWing.mouths[4]!,
+    paveWing.lighting,
+  )
+  wingPassages.get(PAVE_WING)!.push(northSouth, southNorth, westEast, eastWest)
+
   const chestWing = wingData.find((entry) => entry.wing.id === RELIQUARY_WING)!
   const [intoChest, outOfChest] = makePassages(
     chestWing.mouths[1]!,
@@ -1171,6 +1338,7 @@ export function buildWorld(): World {
   for (const entry of wingData) {
     const sixSided = entry.wing.id === GRAVITY_WING
     const stairs = entry.wing.id === PENROSE_WING
+    const paved = entry.wing.id === PAVE_WING
     const extra: number[] = []
     for (const m of entry.mouths) {
       // **Une embrasure posée dans une pièce n'a pas de seuil à dessiner.**
@@ -1185,7 +1353,12 @@ export function buildWorld(): World {
       //
       // On ne dessine donc pas la nôtre. Le sol de la salle est déjà là, au même endroit,
       // et il traverse l'embrasure sans rupture.
-      const inTheOpen = entry.chest !== undefined && m === entry.mouths[1]
+      // Une bouche posée en pleine salle — celle d'un coffre, celle d'un édicule — n'a pas
+      // de seuil à dessiner : le sol passe déjà dessous.
+      const inTheOpen = (entry.chest !== undefined && m === entry.mouths[1]) || paved
+      // Les parois de la salle pavée sont des ouvertures pleine hauteur : ni jambage ni
+      // linteau, il n'y a pas d'épaisseur à traverser.
+      if (paved && entry.mouths.indexOf(m) >= 1) continue
       // Les raccords de l'escalier ne sont pas des portes mais des plans en travers de la
       // volée : ni jambage ni linteau, sans quoi on verrait un cadre flotter au milieu des
       // marches — et c'est précisément ce qu'il ne faut pas voir. Seules les deux premières
@@ -1209,6 +1382,18 @@ export function buildWorld(): World {
       // Les deux fonds du tube, percés de leur porte.
       pushTubeCap(extra, VRILLE, true, tinted(entry.wing.tint, 0.4), holeOf(entry.mouths[0]!))
       pushTubeCap(extra, VRILLE, false, tinted(entry.wing.tint, 0.4), holeOf(entry.mouths[1]!))
+    }
+
+    // L'édicule de la salle pavée : le seul objet de la pièce, donc le seul repère — et
+    // c'est à lui qu'on voit que la salle se répète, puisqu'on en aperçoit un damier.
+    if (paved) {
+      pushBlock(
+        extra,
+        KIOSK.min,
+        KIOSK.max,
+        { side: tinted(entry.wing.tint, 0.36), top: tinted(entry.wing.tint, 0.46) },
+        { face: KIOSK_FACE, hole: holeOf(entry.mouths[0]!) },
+      )
     }
 
     // Le coffre, posé au milieu de sa salle. Il est d'une matière franchement autre que
@@ -1257,6 +1442,7 @@ export function buildWorld(): World {
               sixSided ? SIX_FLOORS : paletteFor(entry.wing.tint),
               entry.holes,
               sixSided ? { border: GRIP, edge: GRIP_COLOUR } : undefined,
+              paved,
             ),
         extra,
       ),
@@ -1264,6 +1450,20 @@ export function buildWorld(): World {
       lighting: entry.lighting,
       ...(twisted ? { twist: VRILLE } : {}),
       ...(entry.chest ? { blocks: [{ ...entry.chest, door: entry.mouths[1]! }] } : {}),
+      ...(paved
+        ? {
+            blocks: [{ ...KIOSK, door: entry.mouths[0]! }],
+            // Le réseau : quatre copies de part et d'autre, soit quatre-vingt-une salles.
+            // C'est moins cher qu'une seule passe de portail, et il n'y a plus de coupure.
+            lattice: {
+              x: PAVE_BOX.max.x - PAVE_BOX.min.x,
+              z: PAVE_BOX.max.z - PAVE_BOX.min.z,
+              radius: 4,
+            },
+            // Un horizon plus proche qu'ailleurs : c'est lui qui efface le bord du réseau.
+            fog: 0.055,
+          }
+        : {}),
       ...(sixSided ? { gravity: { grip: GRIP } } : {}),
       ...(stairs
         ? {
@@ -1371,6 +1571,12 @@ export function buildWorld(): World {
     stairCell: PENROSE_WING,
     stairPos: stairView.pos,
     stairForward: stairView.forward,
+    // Le long d'un côté de la salle pavée, l'édicule à main droite : le regard file entre
+    // deux rangées de copies jusqu'au brouillard, et c'est la seule image qui dise à la
+    // fois « une salle » et « sans fin ».
+    pavedCell: PAVE_WING,
+    pavedPos: { x: PAVE_BOX.min.x + 1.2, y: PAVE_BOX.min.y + 1.65, z: PAVE_BOX.max.z - 1 },
+    pavedForward: { x: 0, y: 0, z: -1 },
     wings: WINGS.map((w) => ({ id: w.id, purpose: w.purpose })),
   }
 

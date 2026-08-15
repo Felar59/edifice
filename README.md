@@ -13,9 +13,10 @@ qu'on n'arrive pas à prendre en défaut, un éclairage qui franchit les ouvertu
 saut et la chute. Puis quatre tricheries géométriques : le **tunnel-vrille**, dont la
 section pivote d'un quart de tour, gravité comprise ; le **volume impossible**, un coffre
 de deux mètres cinquante qui contient la salle de douze où il est posé ; la **gravité par
-face**, un cube dont les six parois sont des sols ; et l'**escalier de Penrose**, deux étages
-qu'on monte indéfiniment sans jamais passer de l'un à l'autre — il faut descendre pour cela.
-Trois ailes attendent encore leur mécanique.
+face**, un cube dont les six parois sont des sols ; l'**escalier de Penrose**, deux étages
+qu'on monte indéfiniment sans jamais passer de l'un à l'autre — il faut descendre pour cela ;
+et l'**espace pavé**, une salle sans bord où l'on voit s'étendre le damier de ses propres
+copies. Deux ailes attendent encore leur mécanique.
 
 ## Démarrer
 
@@ -42,8 +43,8 @@ rigide : franchir cette ouverture, c'est changer de repère.
 
 Le plan du musée est une **rotonde** de 14 × 5 × 14, percée de huit portes, et sept
 **ailes** — une par tricherie géométrique : le tunnel-vrille, le reliquaire, la gravité par
-face et l'escalier de Penrose, qui tournent ; l'espace pavé, les murs mobiles et la
-perspective forcée, qui attendent. Les trois dernières sont vides, et c'est voulu : on les
+face, l'escalier de Penrose et l'espace pavé, qui tournent ; les murs mobiles et la
+perspective forcée, qui attendent. Les deux dernières sont vides, et c'est voulu : on les
 remplira une par une, chacune avec son propre problème. S'y ajoute la **salle basse**, où
 l'escalier descend, et qui n'a pas de porte sur la rotonde.
 
@@ -585,6 +586,57 @@ l'enfoncement d'un pas, et non vers le haut, où elle exigeait une taille. L'inv
 les deux corps au même endroit — c'est la question qu'il fallait poser : le sol ne doit pas
 dépendre de la taille de qui s'y pose.
 
+### L'espace pavé
+
+Une salle de dix mètres dont les parois opposées sont cousues deux à deux : le nord donne
+sur le sud, l'est sur l'ouest. On y marche tout droit et l'on revient à son point de départ
+sans avoir tourné et sans avoir rien franchi de visible. **La salle est un tore, et un tore
+n'a pas de bord.**
+
+Ce n'est pas le tunnel qui reboucle : ici, on *voit* la répétition. Un damier d'édicules
+identiques s'étend dans les quatre directions jusqu'à ce que le brouillard s'en mêle, et
+chacun est celui devant lequel on se tient.
+
+**Ses parois ne sont pas percées : elles sont l'ouverture.** Une couture y occupe le mur
+entier, du sol au plafond et d'un angle à l'autre. Il n'y a donc aucune paroi à dessiner, et
+pas d'embrasure non plus — une embrasure suppose une épaisseur, et il n'y a rien à traverser.
+La porte de sortie est alors au milieu de la salle, dans un édicule : il n'y a plus de mur où
+la percer. C'est la mécanique du coffre du reliquaire, réemployée telle quelle.
+
+**On ne dessine pas les copies avec des portails.** C'était le premier réflexe — une paroi
+est une couture, une couture se rend par une passe — et c'était le mauvais. Chaque copie
+coûtait une cible plein écran, le budget de passes s'épuisait au bout de trois longueurs, et
+le couloir se terminait sur un aplat gris qui ruinait tout.
+
+Il y a bien plus simple, et c'est ce que fait *Manifold Garden* : la transformation d'une
+copie à l'autre étant une **pure translation**, on dessine tout bêtement la même géométrie
+plusieurs fois, décalée du pas du réseau. Vingt quadrilatères quatre-vingt-une fois coûtent
+moins qu'une seule passe de portail. Le couloir de copies s'enfonce alors jusqu'à l'horizon,
+sans coupure d'aucune sorte — mesuré : **une passe de rendu au lieu de vingt-quatre**.
+
+Les coutures restent, mais pour le déplacement seulement. Elles ramènent le visiteur dans la
+copie centrale dès qu'il en sort, ce qui garde ses coordonnées bornées et les erreurs
+d'arrondi avec elles. La salle est donc décrite **deux fois** — par ses coutures, qui disent
+où le corps se retrouve, et par son réseau, qui dit où l'on dessine. Rien n'oblige les deux à
+s'accorder, et s'ils divergent le musée devient un mensonge : on voit une salle à dix mètres,
+on y marche, et l'on arrive ailleurs. D'où l'invariant qui exige de chaque couture qu'elle
+soit exactement une translation d'un pas du réseau.
+
+Deux détails que la répétition impose.
+
+**L'éclairage se calcule dans la copie de référence.** Les lampes sont posées en coordonnées
+du monde ; une copie décalée de dix mètres serait donc éclairée par les lampes de la copie
+centrale, c'est-à-dire de travers, et s'assombrirait en s'éloignant. Le nuanceur ramène donc
+la position du fragment dans la copie de référence avant d'éclairer — une soustraction, et la
+répétition redevient exacte.
+
+**Les quatre angles étaient des pièges.** Le corps s'arrête à un rayon d'une paroi ; pour
+franchir l'une des deux ouvertures qui se rencontrent dans un angle, il devait tenir dans
+l'autre, ce qu'il ne fait pas d'un demi-rayon. On restait **coincé dans le coin d'une salle
+qui n'a pas de coin** — et rien, à l'écran, ne se trouve à cet endroit pour l'expliquer. La
+règle qui manquait : une bouche qui couvre toute sa paroi n'a pas de paroi autour d'elle,
+donc rien à rater, donc aucun test d'encombrement à passer.
+
 ### La verticalité
 
 On saute et on tombe. Gravité à dix-huit mètres par seconde carrée — près du double du
@@ -637,6 +689,13 @@ recherche de deux faces qui partagent un plan *et* des pixels. C'est la cause d'
 grésillement qu'on attribue toujours au rendu, jamais à la construction — et le seul cas
 que le musée ait connu était le seuil d'une embrasure posée en plein milieu d'une salle,
 là où le sol passait déjà.
+
+Ceux de la salle pavée tiennent en deux phrases, et la seconde est la plus utile : **le
+réseau s'accorde aux coutures** — chaque couture doit être exactement une translation d'un pas
+du réseau, sans rotation et sans un centimètre de trop — et **marcher tout droit ramène au
+départ**, avec une dérive latérale nulle au milliardième de mètre près. La salle étant décrite
+deux fois, par ses coutures et par son réseau, c'est la seule façon de garantir que ce qu'on
+voit est bien ce où l'on va.
 
 S'y ajoute **toute porte perce sa paroi** : au centre d'une porte, dans le plan de sa paroi,
 il ne doit y avoir aucune surface. Une bouche et son trou sont décrits séparément, et rien ne

@@ -231,6 +231,15 @@ export function buildRoom(
   pal: RoomPalette,
   holes: RoomHoles = {},
   panels?: Panels,
+  /**
+   * Ne dessiner que le sol et le plafond, les quatre côtés restant ouverts.
+   *
+   * C'est ce qu'il faut pour une salle pavée : ses parois ne sont pas percées d'une porte,
+   * **elles sont l'ouverture**. Une couture y occupe le mur entier, et ce qu'on voit à
+   * travers est la même salle. Dessiner un mur derrière serait dessiner ce que personne ne
+   * peut voir, et le premier écart d'un millimètre le ferait apparaître.
+   */
+  openWalls = false,
 ): F32 {
   const out: number[] = []
   const emit = (spec: WallSpec): void => {
@@ -255,6 +264,8 @@ export function buildRoom(
     up: { x: 0, y: 0, z: dz },
     color: pal.ceiling,
   })
+  if (openWalls) return new Float32Array(out)
+
   // Paroi nord (z = min.z), normale +Z : right = +X, up = +Y.
   emit({
     origin: { x: min.x, y: min.y, z: min.z },

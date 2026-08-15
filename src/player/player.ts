@@ -165,6 +165,15 @@ export function presets(): Preset[] {
       pos: marks.stairPos,
       forward: marks.stairForward,
     },
+    // La salle pavée, le long d'un côté. Ce point de vue teste la seule chose qui puisse
+    // s'y casser sans qu'on la voie ailleurs : que les copies s'alignent exactement, et
+    // que la répétition s'éteigne dans le brouillard au lieu de s'arrêter sur un bord.
+    {
+      name: 'La salle sans bord',
+      cell: marks.pavedCell,
+      pos: marks.pavedPos,
+      forward: marks.pavedForward,
+    },
   ]
   return cached
 }

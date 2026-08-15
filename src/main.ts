@@ -25,6 +25,8 @@ interface DevHook {
   look: (dx: number, dy: number) => void
   throwCube: () => void
   setDepth: (n: number) => void
+  /** Plafond du nombre de passes par image — le vrai budget de la récursion. */
+  setPasses: (n: number) => void
   /**
    * Distance signée minimale du visiteur aux plans des bouches de sa cellule.
    *
@@ -185,6 +187,9 @@ async function main(): Promise<void> {
     throwCube: () => projectiles.throwFrom(player, world),
     setDepth: (n) => {
       renderer.maxDepth = n
+    },
+    setPasses: (n) => {
+      renderer.maxPasses = n
     },
     clearance: () => {
       const cell = world.cells.get(player.cell)!

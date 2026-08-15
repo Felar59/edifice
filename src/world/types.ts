@@ -185,6 +185,42 @@ export interface Cell {
    * les directions attachées au visiteur tournent au fil de sa progression le long de
    * l'axe.
    */
+  /**
+   * Densité du brouillard propre à la cellule, si elle en demande une.
+   *
+   * Une salle qui se répète a besoin d'un horizon plus proche que les autres : les copies
+   * s'arrêtent forcément quelque part, et c'est le brouillard, et lui seul, qui fait que
+   * cette limite ne se lit pas comme un mur.
+   */
+  fog?: number
+
+  /**
+   * **Le réseau : la cellule se répète, et on la dessine répétée.**
+   *
+   * Une salle dont les parois opposées sont cousues est un tore, et l'on y voit une infinité
+   * de copies d'elle-même. Le rendu par portails saurait le montrer — chaque paroi est une
+   * couture comme une autre — mais mal : chaque copie coûterait une passe plein écran, le
+   * budget s'épuiserait au bout de trois longueurs, et l'on verrait un mur de brouillard au
+   * fond du couloir.
+   *
+   * Il y a bien plus simple, et c'est ce que fait *Manifold Garden* : puisque la
+   * transformation d'une copie à l'autre est une **pure translation**, on dessine tout
+   * bêtement la même géométrie plusieurs fois, décalée du pas du réseau. Vingt quadrilatères
+   * quatre-vingts fois, c'est moins qu'une seule passe de portail — et le couloir de copies
+   * s'enfonce alors jusqu'à l'horizon, sans coupure d'aucune sorte.
+   *
+   * Les coutures restent, mais pour le **déplacement** seulement : elles ramènent le
+   * visiteur dans la copie centrale dès qu'il en sort, ce qui garde ses coordonnées bornées
+   * et les erreurs d'arrondi avec elles.
+   */
+  lattice?: {
+    /** Pas du réseau selon x et z. */
+    x: number
+    z: number
+    /** Nombre de copies de part et d'autre, dans chaque direction. */
+    radius: number
+  }
+
   twist?: Twist
 }
 
