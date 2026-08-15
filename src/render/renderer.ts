@@ -35,7 +35,7 @@ import {
   type Mat4,
 } from '../math/mat4'
 import type { F32 } from '../f32'
-import { dot, sub, type Vec3 } from '../math/vec3'
+import { add, dot, neg, sub, type Vec3 } from '../math/vec3'
 import { cameraToWorld, type Camera } from './camera'
 
 export type { Camera }
@@ -106,6 +106,16 @@ const NEAR = 0.004
  * entière, donc l'image.
  */
 const EYE_EPS = 1e-7
+
+/**
+ * Distance au-delà de laquelle on cesse de répéter un objet dans les copies d'un réseau.
+ *
+ * Dix-huit mètres : au-delà, un cube de trente-quatre centimètres ne pèse plus rien à
+ * l'écran, et chaque copie coûte un bloc d'uniformes et un appel de dessin. En deçà, ne pas
+ * le répéter se voit tout de suite — une salle qui se répète dont les objets, eux, ne se
+ * répètent pas désigne aussitôt laquelle des copies est la vraie.
+ */
+const OBJECT_REACH = 18
 
 /** Une bouche dont la surface à l'écran tombe sous ce seuil ne mérite pas une passe. */
 const MIN_COVERAGE = 0.00004
@@ -340,6 +350,7 @@ export class Renderer {
       { colorView: canvasView, depthView: this.mainDepth.depthView },
       objects,
       world,
+      this.maxPasses,
     )
 
     this.device.queue.submit([encoder.finish()])
@@ -354,9 +365,24 @@ export class Renderer {
     target: { colorView: GPUTextureView; depthView: GPUTextureView },
     objects: DynObject[],
     world: World,
+    /**
+     * Nombre de passes que ce sous-arbre a le droit de consommer, celle-ci comprise.
+     *
+     * **Le budget se partage, il ne se dispute pas.** Sans quota, la première ouverture
+     * traitée s'enfonçait aussi loin que le budget le permettait et le vidait pour ses
+     * sœurs. Dans une salle en réseau, où l'on voit vingt portes identiques, cela donnait
+     * deux portes montrant la rotonde et dix-huit trous noirs — c'est-à-dire l'illusion
+     * exactement à l'envers : la copie où l'on se tient devenait la seule vraie.
+     *
+     * Chaque enfant reçoit donc une part de ce qui reste. Là où il y a peu d'ouvertures, la
+     * part est grosse et la récursion s'enfonce ; là où il y en a vingt, chacune a droit à
+     * son image, et c'est tout ce qu'on lui demande.
+     */
+    quota = Infinity,
   ): void {
     this.stats.deepest = Math.max(this.stats.deepest, depth)
     this.stats.passes++
+    const spentAtEntry = this.stats.passes
 
     const camPos = origin(camWorld)
     const view = invertRigid(create(), camWorld)
@@ -384,30 +410,45 @@ export class Renderer {
 
     const children: {
       passage: Passage
+      /** La copie du réseau où se trouve cette ouverture — nulle partout ailleurs. */
+      shift: Vec3
       target: Target | null
       visible: boolean
       polygon: Vec3[]
       /** Fraction de l'écran couverte : c'est elle qui décide de l'ordre des passes. */
       cover: number
     }[] = []
+
+    // **Chaque copie a sa porte, et chaque porte donne sur la rotonde.**
+    //
+    // Une salle en réseau est dessinée autant de fois qu'elle a de copies visibles ; ses
+    // ouvertures le sont donc aussi, et chacune doit montrer ce qu'il y a derrière. Ne
+    // rendre que celle de la copie centrale laissait toutes les autres en trou noir : on
+    // s'approchait, la rotonde apparaissait dans l'encadrement, et l'illusion tombait — la
+    // copie où l'on se tient cessait d'être une copie comme les autres.
+    //
+    // Le coût reste borné par le budget de passes, qui se dépense par ordre de surface à
+    // l'écran : les portes proches ont leur image, les lointaines s'éteignent dans le
+    // brouillard, et c'est exactement ce qu'on veut d'une porte à quarante mètres.
+    const shifts = this.lattice(cell, camPos, viewFwd)
     for (const passage of cell.passages) {
-      const mouth = passage.from
       // **Une couture de réseau ne se dessine pas.** Ce qu'elle montrerait — la salle
       // voisine, c'est-à-dire la même — est déjà dessiné, et bien mieux : par la copie
       // suivante du réseau, sans passe plein écran et sans coupure au bout de trois
       // longueurs. Elle continue de servir au déplacement, et à lui seul.
-      if (cell.lattice && passage.to.cell === cell.id) {
-        children.push({ passage, target: null, visible: false, polygon: [], cover: 0 })
-        continue
-      }
-      const dist = dot(mouth.normal, sub(camPos, mouth.center))
+      if (cell.lattice && passage.to.cell === cell.id) continue
 
-      // Le seuil sur la distance est zéro, et non un epsilon confortable : écarter
-      // une bouche dont on n'est qu'à un dixième de millimètre revenait à ne rien
-      // dessiner pendant l'image du franchissement, c'est-à-dire au pire moment.
-      const polygon = dist <= 0 ? [] : this.mouthPolygon(mouth, camPos, viewFwd)
-      const cover = polygon.length < 3 ? 0 : this.coverage(polygon, viewProj)
-      children.push({ passage, target: null, visible: cover > 0, polygon, cover })
+      for (const shift of shifts) {
+        const mouth = moved(passage.from, shift)
+        const dist = dot(mouth.normal, sub(camPos, mouth.center))
+
+        // Le seuil sur la distance est zéro, et non un epsilon confortable : écarter
+        // une bouche dont on n'est qu'à un dixième de millimètre revenait à ne rien
+        // dessiner pendant l'image du franchissement, c'est-à-dire au pire moment.
+        const polygon = dist <= 0 ? [] : this.mouthPolygon(mouth, camPos, viewFwd)
+        const cover = polygon.length < 3 ? 0 : this.coverage(polygon, viewProj)
+        children.push({ passage, shift, target: null, visible: cover > 0, polygon, cover })
+      }
     }
 
     // **Le budget va d'abord à ce qui occupe le plus d'écran.**
@@ -418,18 +459,43 @@ export class Renderer {
     // — un aplat de brouillard à deux mètres du visiteur, alors que le fond du couloir était
     // dessiné jusqu'au bout. Trié, le budget se dépense là où il se voit, et s'épuiser ne
     // coûte plus que les lointains, c'est-à-dire ce que le brouillard efface déjà.
-    for (const child of [...children].sort((a, b) => b.cover - a.cover)) {
-      if (!child.visible) continue
-      if (depth >= this.maxDepth || this.stats.passes >= this.maxPasses || child.cover < MIN_COVERAGE) {
+    const ranked = [...children].filter((c) => c.visible).sort((a, b) => b.cover - a.cover)
+    let waiting = ranked.length
+    for (const child of ranked) {
+      const mine = quota - (this.stats.passes - spentAtEntry) - 1
+      const share = Math.max(1, Math.floor(mine / waiting))
+      waiting--
+      if (
+        depth >= this.maxDepth ||
+        this.stats.passes >= this.maxPasses ||
+        mine < 1 ||
+        child.cover < MIN_COVERAGE
+      ) {
         this.stats.skipped++
         continue
       }
       const target = this.acquireTarget()
-      const childCam = multiply(create(), child.passage.transform, camWorld)
+      // Ce qu'on voit par la porte d'une copie décalée de `s`, c'est ce qu'on verrait par
+      // la porte de la copie centrale depuis un point reculé de `s`.
+      const through =
+        child.shift === ORIGIN
+          ? child.passage.transform
+          : multiply(create(), child.passage.transform, translation(neg(child.shift)))
+      const childCam = multiply(create(), through, camWorld)
       const childProj = this.obliqueFor(proj, child.passage.to, childCam)
       const destCell = world.cells.get(child.passage.to.cell)
       if (!destCell) throw new Error(`Cellule de destination inconnue : ${child.passage.to.cell}`)
-      this.renderNode(encoder, destCell, childCam, childProj, depth + 1, target, objects, world)
+      this.renderNode(
+        encoder,
+        destCell,
+        childCam,
+        childProj,
+        depth + 1,
+        target,
+        objects,
+        world,
+        share,
+      )
       child.target = target
     }
 
@@ -476,10 +542,14 @@ export class Renderer {
         if (obj.cell !== cell.id) continue
         // Un cube posé dans une salle qui se répète se répète avec elle : ne dessiner que
         // le sien reviendrait à dire laquelle des copies est la vraie.
-        // Les objets ne se répètent que sur les copies voisines. Un cube fait trente-quatre
-        // centimètres : à deux salles de distance il ne couvre plus un pixel, et son absence
-        // ne se remarque pas — alors que le dessiner coûterait autant que la salle.
-        for (const shift of this.lattice(cell, camPos, viewFwd, 1)) {
+        // Les objets se répètent comme la salle, mais on s'arrête à ce qui se voit encore.
+        // Un cube fait trente-quatre centimètres : au-delà de vingt-cinq mètres il ne couvre
+        // plus grand-chose, et le dessiner coûterait un bloc d'uniformes par copie.
+        for (const shift of shifts) {
+          const dx = obj.model[12]! + shift.x - camPos.x
+          const dy = obj.model[13]! + shift.y - camPos.y
+          const dz = obj.model[14]! + shift.z - camPos.z
+          if (dx * dx + dy * dy + dz * dz > OBJECT_REACH * OBJECT_REACH) continue
           const model = multiply(create(), translation(shift), obj.model)
           const offset = this.writeSceneUniforms(viewProj, model, camPos, cell, shift)
           pass.setBindGroup(0, this.sceneBindGroup, [offset])
@@ -491,9 +561,14 @@ export class Renderer {
 
     // --- 3. Les ouvertures, peintes avec l'image de l'autre côté. ------------
     pass.setPipeline(this.portalPipeline(colorFormat))
-    for (const { target: child, visible, polygon } of children) {
+    for (const { passage, target: child, visible, polygon } of children) {
       if (!visible) continue
-      const offset = this.writePortalUniforms(viewProj, polygon, child !== null)
+      const offset = this.writePortalUniforms(
+        viewProj,
+        polygon,
+        child !== null,
+        child ? FOG_COLOR : this.behind(passage, polygon, camPos, cell),
+      )
       pass.setBindGroup(0, this.portalUniformBindGroup, [offset])
       pass.setBindGroup(1, child ? this.textureBindGroup(child.colorView) : this.blankBindGroup)
       // Trois triangles en éventail : de quoi couvrir cinq sommets.
@@ -741,7 +816,12 @@ export class Renderer {
     return this.sceneUniforms.write(s, SCENE_FLOATS)
   }
 
-  private writePortalUniforms(viewProj: Mat4, polygon: Vec3[], hasImage: boolean): number {
+  private writePortalUniforms(
+    viewProj: Mat4,
+    polygon: Vec3[],
+    hasImage: boolean,
+    fallback: readonly [number, number, number] = FOG_COLOR,
+  ): number {
     const s = this.scratch
     s.set(viewProj, 0)
     for (let i = 0; i < 5; i++) {
@@ -755,13 +835,41 @@ export class Renderer {
     s[37] = polygon.length
     s[38] = 0
     s[39] = 0
-    // Au fond de la récursion, l'ouverture prend la couleur du brouillard : la
-    // coupure se confond alors avec l'éloignement, et ne se voit pas.
-    s[40] = FOG_COLOR[0]
-    s[41] = FOG_COLOR[1]
-    s[42] = FOG_COLOR[2]
+    // Au fond du budget, l'ouverture prend la couleur de ce qu'il y a derrière, noyée dans
+    // le brouillard selon sa distance. Le brouillard seul en faisait un **trou noir** : une
+    // salle éclairée vue par une porte lointaine devenait un rectangle sombre, ce qui se
+    // remarque bien davantage qu'une lueur imprécise.
+    s[40] = fallback[0]
+    s[41] = fallback[1]
+    s[42] = fallback[2]
     s[43] = 1
     return this.portalUniforms.write(s, 44)
+  }
+
+  /**
+   * La couleur d'une ouverture qu'on n'a pas les moyens de dessiner.
+   *
+   * L'ambiance de la pièce d'en face, éclaircie pour valoir une paroi éclairée, puis noyée
+   * dans le brouillard selon la distance — exactement comme le serait la géométrie qu'on
+   * renonce à rendre. De près, on n'y a jamais recours ; de loin, cela vaut mieux que le
+   * gris du brouillard, qui creuse un trou là où il devrait y avoir une lueur.
+   */
+  private behind(
+    passage: Passage,
+    polygon: Vec3[],
+    camPos: Vec3,
+    cell: Cell,
+  ): [number, number, number] {
+    const ambient = this.world?.cells.get(passage.to.cell)?.lighting.ambient ?? FOG_COLOR
+    const at = polygon[0] ?? passage.from.center
+    const d = Math.hypot(at.x - camPos.x, at.y - camPos.y, at.z - camPos.z)
+    const haze = 1 - Math.exp(-d * (cell.fog ?? FOG_DENSITY))
+    const lit = 4
+    return [
+      ambient[0] * lit * (1 - haze) + FOG_COLOR[0] * haze,
+      ambient[1] * lit * (1 - haze) + FOG_COLOR[1] * haze,
+      ambient[2] * lit * (1 - haze) + FOG_COLOR[2] * haze,
+    ]
   }
 
   private textureBindGroup(view: GPUTextureView): GPUBindGroup {
@@ -861,6 +969,12 @@ export class Renderer {
 }
 
 const ORIGIN: Vec3 = { x: 0, y: 0, z: 0 }
+
+/** La même bouche, dans une autre copie du réseau. */
+function moved(m: Mouth, shift: Vec3): Mouth {
+  if (shift.x === 0 && shift.y === 0 && shift.z === 0) return m
+  return { ...m, center: add(m.center, shift) }
+}
 
 /** Une matrice de translation pure, pour poser une copie de réseau. */
 function translation(v: Vec3): Mat4 {

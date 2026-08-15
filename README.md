@@ -622,13 +622,37 @@ s'accorder, et s'ils divergent le musée devient un mensonge : on voit une salle
 on y marche, et l'on arrive ailleurs. D'où l'invariant qui exige de chaque couture qu'elle
 soit exactement une translation d'un pas du réseau.
 
-Deux détails que la répétition impose.
+**Chaque copie a sa porte, et chaque porte donne sur la rotonde.** Ne rendre que celle de la
+copie centrale laissait toutes les autres en trou noir : on s'approchait, la rotonde
+apparaissait dans l'encadrement, et l'illusion tombait — la copie où l'on se tient cessait
+d'être une copie comme les autres. Les ouvertures des copies sont donc des portails de plein
+droit, et leur caméra virtuelle se déduit de la même transformation reculée d'un pas du
+réseau : ce qu'on voit par la porte d'une copie décalée de *s*, c'est ce qu'on verrait par la
+porte centrale depuis un point reculé de *s*.
+
+Cela a demandé de reprendre la façon dont le budget de passes se dépense. **Il se partage, il
+ne se dispute pas.** Chaque ouverture s'enfonçait jusqu'à épuisement du budget, si bien que la
+première traitée le vidait pour ses sœurs : deux portes montrant la rotonde et dix-huit trous
+noirs. Chaque enfant reçoit maintenant une part de ce qui reste — grosse là où il y a peu
+d'ouvertures, donc la récursion s'enfonce ; petite là où il y en a vingt, donc chacune a droit
+à son image, et c'est tout ce qu'on lui demande.
+
+Et une ouverture qu'on renonce à dessiner ne prend plus la couleur du brouillard mais celle de
+ce qu'il y a derrière, noyée dans le brouillard selon sa distance. Le gris creusait un trou là
+où il devait y avoir une lueur.
+
+Trois détails que la répétition impose.
 
 **L'éclairage se calcule dans la copie de référence.** Les lampes sont posées en coordonnées
 du monde ; une copie décalée de dix mètres serait donc éclairée par les lampes de la copie
 centrale, c'est-à-dire de travers, et s'assombrirait en s'éloignant. Le nuanceur ramène donc
 la position du fragment dans la copie de référence avant d'éclairer — une soustraction, et la
 répétition redevient exacte.
+
+**Les objets se répètent avec la salle.** Un cube lancé apparaît dans les copies voisines,
+jusqu'à dix-huit mètres — au-delà, il ne pèse plus rien à l'écran. Ne pas le faire se voyait
+aussitôt : une salle qui se répète dont les objets ne se répètent pas désigne du doigt laquelle
+des copies est la vraie.
 
 **Les quatre angles étaient des pièges.** Le corps s'arrête à un rayon d'une paroi ; pour
 franchir l'une des deux ouvertures qui se rencontrent dans un angle, il devait tenir dans
