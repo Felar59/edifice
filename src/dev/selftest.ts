@@ -574,13 +574,14 @@ export function runSelfTest(world: World): Check[] {
   //    **La porte laisse passer.** L'exception d'ouverture existe déjà pour les parois ;
   //    il fallait la même pour les blocs, sans quoi le coffre serait hermétique.
   //
-  //    **On ressort dans la salle de départ, ailleurs.** C'est la boucle : deux
-  //    traversées, la même cellule au bout, et une bonne dizaine de mètres entre le point
-  //    d'entrée et le point de sortie. Sans cette distance, rien ne distinguerait la
-  //    boucle d'un aller-retour par la même porte.
+  //    **On ressort dans la salle de départ, ailleurs.** C'est toute l'affaire : une
+  //    traversée, la **même cellule** au bout, et une bonne distance entre l'entrée et la
+  //    sortie. La couture a ses deux bouches dans la même pièce, ce qui est un cas que le
+  //    moteur n'avait jamais rencontré — et qu'il traite sans rien de particulier,
+  //    puisqu'il relie des bouches et non des pièces.
   //
   //    **Le contenu ne tient pas dans le contenant.** Le rapport des volumes est l'énoncé
-  //    même de la tricherie ; le mesurer évite qu'un jour on rétrécisse la nef sans s'en
+  //    même de la tricherie ; le mesurer évite qu'un jour on rapetisse la salle sans s'en
   //    apercevoir, et que le musée se mette à mentir un peu moins.
   {
     const marks = getLandmarks()
@@ -633,8 +634,17 @@ export function runSelfTest(world: World): Check[] {
         `arrêté à ${gap.toFixed(3)} m de la paroi, rayon ${PROBE_BODY.radius}`,
       )
 
-      // La boucle : on entre par la porte du coffre, on traverse la nef, on ressort.
+      // La boucle : on entre par la porte du coffre, et l'on ressort **dans la même
+      // salle**, par le mur du fond. C'est là toute l'affaire, et c'est ce qu'on mesure :
+      // une traversée, la même cellule au bout, et une bonne distance entre les deux —
+      // sans quoi rien ne distinguerait la chose d'une porte qui donne sur elle-même.
       const seamInto = room.passages.find((p) => p.from === chest.door)
+      add_(
+        'reliquaire · le coffre donne sur sa propre salle',
+        seamInto !== undefined && seamInto.to.cell === room.id,
+        seamInto ? `vers ${seamInto.to.id}, cellule ${seamInto.to.cell}` : 'couture introuvable',
+      )
+
       const visitor = new Player()
       visitor.goTo(
         { name: 'reliquaire', cell: marks.chestCell, pos: marks.chestPos, forward: marks.chestForward },
@@ -644,45 +654,33 @@ export function runSelfTest(world: World): Check[] {
 
       let guard = 0
       while (visitor.crossings === 0 && guard++ < 60) visitor.walk(world, 0.2)
-      const nave = world.cells.get(visitor.cell)
       add_(
         'reliquaire · la porte du coffre laisse entrer',
-        visitor.crossings === 1 && visitor.cell !== room.id,
+        visitor.crossings === 1,
         `${visitor.crossings} traversée(s), cellule ${visitor.cell}`,
       )
-
-      // Dans la nef, on vise l'autre porte — celle par où l'on n'est pas entré. Marcher
-      // droit devant soi ne prouverait rien : on entre en biais, et seize mètres plus loin
-      // on est contre un mur, ce qui ne dit ni que la salle est traversable ni qu'elle ne
-      // l'est pas.
-      const back = nave?.passages.find((p) => p.from !== seamInto?.to)
-      if (back) visitor.face(normalize(sub(back.from.center, visitor.pos)))
-
-      guard = 0
-      while (visitor.crossings === 1 && guard++ < 160) visitor.walk(world, 0.2)
       add_(
-        'reliquaire · la nef ressort dans la salle de départ',
-        visitor.crossings === 2 && visitor.cell === room.id,
-        `${visitor.crossings} traversée(s), cellule ${visitor.cell}`,
+        'reliquaire · on ressort dans la salle de départ',
+        visitor.crossings === 1 && visitor.cell === room.id,
+        `cellule ${visitor.cell} après ${visitor.crossings} traversée(s)`,
       )
       add_(
         'reliquaire · on ressort ailleurs qu’on est entré',
-        distance(visitor.pos, start) > 8,
+        distance(visitor.pos, start) > 6,
         `${distance(visitor.pos, start).toFixed(1)} m entre le seuil du coffre et la sortie`,
       )
 
-      // Le rapport des volumes, qui est l'énoncé de la tricherie.
-      if (nave) {
-        const volume = (c: { min: Vec3; max: Vec3 }): number =>
-          (c.max.x - c.min.x) * (c.max.y - c.min.y) * (c.max.z - c.min.z)
-        const ratio = volume(nave) / volume(chest)
-        add_(
-          'reliquaire · le contenu ne tient pas dans le contenant',
-          ratio > 30,
-          `la nef fait ${ratio.toFixed(0)} fois le volume du coffre,` +
-            ` et ${(volume(nave) / volume(room)).toFixed(1)} fois celui de la salle`,
-        )
-      }
+      // Le rapport des volumes, qui est l'énoncé de la tricherie. La salle est ici son
+      // propre contenu : le coffre contient la pièce où il est posé.
+      const volume = (c: { min: Vec3; max: Vec3 }): number =>
+        (c.max.x - c.min.x) * (c.max.y - c.min.y) * (c.max.z - c.min.z)
+      const ratio = volume(room) / volume(chest)
+      add_(
+        'reliquaire · le contenu ne tient pas dans le contenant',
+        ratio > 30,
+        `le coffre contient une salle ${ratio.toFixed(0)} fois plus grande que lui —` +
+          ` et c'est la sienne`,
+      )
 
       // Et rien ne rétrécit en passant : les deux bouches ont la même taille, ce qui est
       // la condition pour que la transformation reste rigide. Le jour où l'on voudra une

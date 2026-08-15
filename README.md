@@ -12,7 +12,8 @@ portfolio. Ce dépôt-ci contient le moteur.
 qu'on n'arrive pas à prendre en défaut, un éclairage qui franchit les ouvertures, le
 saut et la chute — le **tunnel-vrille**, dont la section pivote d'un quart de tour sur
 dix-huit mètres, gravité comprise — et le **volume impossible** : un coffre de deux mètres
-cinquante qui contient une nef de seize. Cinq ailes attendent encore leur mécanique.
+cinquante qui contient la salle de douze où il est posé. Cinq ailes attendent encore leur
+mécanique.
 
 ## Démarrer
 
@@ -41,8 +42,7 @@ Le plan du musée est une **rotonde** de 14 × 5 × 14, percée de huit portes, 
 **ailes** — une par tricherie géométrique : le tunnel-vrille et le reliquaire, qui
 tournent ; la gravité par face, l'escalier de Penrose, l'espace pavé, les murs mobiles et
 la perspective forcée, qui attendent. Les cinq dernières sont vides, et c'est voulu : on
-les remplira une par une, chacune avec son propre problème. S'y ajoute la **nef** du
-reliquaire, qui n'a pas de porte sur la rotonde : on n'y entre que par le coffre.
+les remplira une par une, chacune avec son propre problème.
 
 Les ailes sont éloignées de **centaines de mètres** les unes des autres et de la
 rotonde. Aucune ne se touche. Ce n'est pas de l'économie de place mais une précaution
@@ -280,8 +280,16 @@ ordinaire, celle de partout ailleurs : un mètre quatre-vingts sur deux mètres 
 occupe donc presque toute la face, et c'est là que le compte cesse d'y être — une porte à
 hauteur d'homme dans une boîte à peine plus haute qu'elle.
 
-Derrière : une nef de seize mètres sur seize, haute de huit. **Cent trente et une fois le
-volume du coffre**, et deux fois et demie celui de la salle où le coffre est posé.
+Et derrière cette porte, il n'y a pas d'autre salle : **il y a celle-ci.** Le coffre
+débouche par la porte du mur du fond, à huit mètres de là. On entre dans une boîte de deux
+mètres cinquante et l'on ressort dans la pièce de douze mètres où elle est posée.
+
+Le contenant contient donc son contenant — **cinquante-cinq fois son propre volume**. Ce
+n'est pas le chiffre qui compte, c'est la circularité. Une salle séparée, si vaste
+soit-elle, reste une pièce qu'on n'avait jamais vue, et le visiteur peut toujours se dire
+qu'elle est ailleurs. Ici il n'y a pas d'ailleurs : il regarde par la petite porte et il
+voit, de dos, le coffre où il regarde, et derrière lui la porte par laquelle il est entré
+dans la salle.
 
 **Aucune tricherie d'échelle.** Les deux bouches de la couture ont exactement la même
 taille, la transformation reste rigide, et le visiteur garde sa stature. Ce n'est ni une
@@ -289,12 +297,10 @@ illusion d'optique ni un rétrécissement : on fait le tour du coffre, on le mes
 regard, et rien ne change. C'est ce que le plan appelait le meilleur rapport effet/effort
 du projet, et il avait raison — l'espace cousu le donne presque pour rien.
 
-**La nef ressort dans la salle de départ.** Sa seconde porte s'ouvre dans le mur d'en face
-de la pièce au coffre : on entre dans une boîte de deux mètres cinquante, on marche seize
-mètres, et l'on ressort par un mur qui était derrière soi — avec le coffre, intact et
-minuscule, entre soi et la porte d'entrée. Sans cette boucle, la nef serait un cul-de-sac
-dont on ressortirait par où l'on est entré, ce qui laisse au visiteur la ressource de
-croire à un simple couloir.
+**Une couture dont les deux bouches sont dans la même cellule.** C'est le premier cas du
+genre, et il n'a rien demandé : l'espace cousu relie des bouches, pas des pièces, et rien
+dans le rendu ni dans le déplacement ne supposait qu'elles appartiennent à deux salles
+distinctes. Une pièce peut donc se recoller à elle-même. L'espace pavé s'en servira.
 
 Deux choses ont demandé du travail, et une troisième a demandé de l'humilité.
 
@@ -324,8 +330,8 @@ différences restent exactes — une contrainte à connaître avant de poser une
 
 Enfin, le point de vue du test est pris **de trois quarts, et de loin**. De face et de
 près, le coffre remplit le champ et redevient ce qu'il n'est pas : une porte dans un mur.
-Il faut voir deux de ses faces, ses arêtes contre la salle, et la nef par l'ouverture. Un
-volume impossible qu'il faut expliquer est un volume raté.
+Il faut voir deux de ses faces, ses arêtes contre la salle, et par l'ouverture cette même
+salle vue du fond. Un volume impossible qu'il faut expliquer est un volume raté.
 
 ### La verticalité
 
@@ -375,11 +381,11 @@ défaut le plus visible du prototype.
 
 S'y ajoutent les invariants du reliquaire, dont trois qui ne parlent pas de coutures mais
 de matière : on ne traverse pas un bloc plein, on n'y reste pas **pris** — un point posé
-en son centre doit ressortir, et ressortir dehors —, et la boucle boucle : deux traversées,
-la salle de départ au bout, et une dizaine de mètres entre le seuil du coffre et la sortie.
-S'y ajoute le rapport des volumes, qui est l'énoncé même de la tricherie : le mesurer évite
-qu'on rétrécisse un jour la nef sans s'en apercevoir, et que le musée se mette à mentir un
-peu moins.
+en son centre doit ressortir, et ressortir dehors —, et la boucle boucle : une traversée,
+**la même cellule** au bout, et une dizaine de mètres entre le seuil du coffre et la
+sortie. S'y ajoute le rapport des volumes, qui est l'énoncé même de la tricherie : le
+mesurer évite qu'on rapetisse un jour la salle sans s'en apercevoir, et que le musée se
+mette à mentir un peu moins.
 
 **Les points de vue**, capturés dans `shots/` : les dix situations qui trahissent
 un portail mal fait — nez collé à l'ouverture, regard rasant, pile dans

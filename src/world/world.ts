@@ -312,29 +312,27 @@ const VRILLE = makeTwist({
 })
 
 /**
- * **Le reliquaire** — le premier volume impossible du musée.
+ * **Le reliquaire** — le volume impossible du musée, et il l'est en boucle.
  *
- * Au centre de la salle, un coffre de deux mètres soixante. Dans sa face, une porte
+ * Au centre de la salle, un coffre de deux mètres cinquante. Dans sa face, une porte
  * ordinaire, celle de partout ailleurs : un mètre quatre-vingts sur deux mètres vingt.
  * Elle occupe donc presque toute la face, et c'est là que le compte cesse d'y être —
  * une porte à hauteur d'homme dans une boîte à peine plus haute qu'elle.
  *
- * Derrière : une nef de seize mètres sur seize, haute de huit. Trente-six fois le volume
- * du coffre qui la contient, et plus du double de celui de la salle où le coffre est
- * posé.
+ * Et derrière cette porte, il n'y a pas d'autre salle : **il y a celle-ci**. Le coffre
+ * débouche par la porte du mur du fond, à huit mètres de là. On entre dans une boîte de
+ * deux mètres cinquante et l'on ressort dans la pièce de douze mètres où elle est posée.
  *
- * **Aucune tricherie d'échelle.** Les deux bouches de la couture ont exactement la même
- * taille, la transformation reste rigide, et le visiteur garde sa stature. C'est bien un
- * plein volume qu'on a rangé dans une boîte trop petite, pas une illusion d'optique ni
- * un rétrécissement : on peut faire le tour du coffre, le mesurer du regard, et rien ne
- * change. Le plan appelle cela le meilleur rapport effet/effort du projet, et il a
- * raison — l'espace cousu le donne presque pour rien.
+ * Le contenant contient donc son contenant. Cinquante-cinq fois son propre volume, ce qui
+ * est déjà absurde, mais ce n'est pas le plus fort : ce qui l'est, c'est que le coffre ne
+ * contient pas *une* salle plus grande, il contient **la sienne**. Une nef séparée, si
+ * vaste soit-elle, reste une pièce qu'on n'avait jamais vue, et le visiteur peut toujours
+ * se dire qu'elle est ailleurs. Là, il n'y a pas d'ailleurs : il regarde par la petite
+ * porte et il voit, de dos, le sol qu'il foule et la boîte où il regarde.
  *
- * **La nef ressort dans la salle de départ.** Sa seconde porte s'ouvre dans le mur d'en
- * face de la pièce au coffre : on entre dans une boîte de deux mètres soixante et on
- * ressort seize mètres plus loin par un mur qui était derrière soi, avec le coffre —
- * intact, minuscule — entre soi et la porte d'entrée. C'est le moment où l'on se retourne
- * pour vérifier.
+ * **Aucune tricherie d'échelle.** Les deux bouches ont exactement la même taille, la
+ * transformation reste rigide, et le visiteur garde sa stature. On peut faire le tour du
+ * coffre, le mesurer du regard, et rien ne change.
  */
 /** L'aile qui l'accueille : celle réservée à ce qui se contient soi-même. */
 const RELIQUARY_WING = 'recursive'
@@ -352,9 +350,9 @@ const RELIQUARY_WING = 'recursive'
  * restent exactes. C'est une contrainte à connaître avant de poser une cote, pas après.
  */
 const RELIQUARY_SIDE = 2.5
-/** La paroi du coffre qu'on perce, et celle de la salle par où la nef ressort. */
+/** La paroi du coffre qu'on perce, et celle de la salle par où l'on en ressort. */
 const RELIQUARY_FACE: Wall = 'west'
-const NAVE_EXIT_WALL: Wall = 'east'
+const RELIQUARY_EXIT_WALL: Wall = 'east'
 
 /** Le coffre, posé au milieu de sa salle et sur son sol. */
 function reliquaryIn(box: Box): Box {
@@ -374,13 +372,6 @@ function middleOf(box: Box, wall: Wall): number {
     : (box.min.z + box.max.z) / 2
 }
 
-/** La nef, rangée à deux cents mètres de la salle qui la contient. */
-const NAVE_BOX: Box = { min: { x: 800, y: 0, z: 800 }, max: { x: 816, y: 8, z: 816 } }
-const NAVE = 'reliquaire'
-const NAVE_TINT: Colour = [0.42, 0.72, 0.95]
-/** Par où l'on entre dans la nef, et par où l'on en sort. Aux deux bouts, seize mètres. */
-const NAVE_ENTRY_WALL: Wall = 'north'
-const NAVE_RETURN_WALL: Wall = 'south'
 
 /**
  * Une bouche percée dans la face d'un bloc plein.
@@ -429,44 +420,6 @@ function blockMouth(cell: string, id: string, box: Box, wall: Wall, lateral: num
         right: { x: 0, y: 0, z: -1 },
         normal: { x: 1, y: 0, z: 0 },
       }
-  }
-}
-
-/**
- * L'éclairage de la nef.
- *
- * Six lampes, le maximum que le nuanceur accepte, et il les faut toutes : une salle de
- * seize mètres éclairée par une seule source centrale a des coins parfaitement noirs, ce
- * qui ne dit pas « grand » mais « inachevé ». Quatre lampes hautes en carré, plus une
- * applique au-dessus de chaque porte pour que la nef ait de quoi transmettre par ses
- * ouvertures.
- */
-function naveLighting(mouths: Mouth[]): CellLighting {
-  const tint = NAVE_TINT
-  // Suspendues bas, et non collées au plafond. Une lampe à huit mètres du sol perd
-  // quarante fois son intensité avant de l'atteindre : la nef paraissait alors plus sombre
-  // que la salle où l'on se tient, ce qui inverse exactement ce qu'on veut raconter — la
-  // boîte doit contenir plus grand **et** plus clair que ce qui l'entoure.
-  const quarter = (t: number, u: number): Vec3 => ({
-    x: NAVE_BOX.min.x + (NAVE_BOX.max.x - NAVE_BOX.min.x) * t,
-    y: NAVE_BOX.max.y - 2.5,
-    z: NAVE_BOX.min.z + (NAVE_BOX.max.z - NAVE_BOX.min.z) * u,
-  })
-
-  return {
-    ambient: [tint[0] * 0.07, tint[1] * 0.07, tint[2] * 0.07],
-    lights: [
-      { position: quarter(0.28, 0.28), colour: tint, intensity: 14, radius: 16 },
-      { position: quarter(0.72, 0.28), colour: tint, intensity: 14, radius: 16 },
-      { position: quarter(0.28, 0.72), colour: tint, intensity: 14, radius: 16 },
-      { position: quarter(0.72, 0.72), colour: tint, intensity: 14, radius: 16 },
-      ...mouths.map((m) => ({
-        position: add(add(m.center, scale(m.normal, REVEAL + 0.7)), { x: 0, y: 1.4, z: 0 }),
-        colour: tint,
-        intensity: 5,
-        radius: 7,
-      })),
-    ],
   }
 }
 
@@ -651,13 +604,13 @@ export function buildWorld(): World {
     if (chest) {
       mouths.push(
         blockMouth(wing.id, 'reliquaire.coffre', chest, RELIQUARY_FACE, middleOf(chest, RELIQUARY_FACE)),
-        mouth(wing.id, 'reliquaire.sortie', wing.box, NAVE_EXIT_WALL, middleOf(wing.box, NAVE_EXIT_WALL)),
+        mouth(wing.id, 'reliquaire.sortie', wing.box, RELIQUARY_EXIT_WALL, middleOf(wing.box, RELIQUARY_EXIT_WALL)),
       )
     }
 
     const holes: RoomHoles = twisted ? {} : { [wing.wall]: [holeOf(mouths[0]!)] }
     // La porte du coffre ne perce aucune paroi de la salle : elle perce le coffre.
-    if (chest) holes[NAVE_EXIT_WALL] = [holeOf(mouths[2]!)]
+    if (chest) holes[RELIQUARY_EXIT_WALL] = [holeOf(mouths[2]!)]
 
     wingData.push({
       wing,
@@ -716,31 +669,24 @@ export function buildWorld(): World {
   hubPassages.push(hubToLoop)
   wingPassages.get('vrille')!.push(loopToHub)
 
-  // Les deux coutures du reliquaire : le coffre vers la nef, et la nef vers le mur d'en
-  // face de la salle où le coffre est posé. La seconde est ce qui referme la boucle —
-  // sans elle, la nef serait un cul-de-sac et il faudrait ressortir par où l'on est
-  // entré, ce qui laisse au visiteur la possibilité de croire à un simple couloir.
+  // **La couture du reliquaire a ses deux bouches dans la même cellule.**
+  //
+  // C'est le premier cas du genre, et il ne demande rien de particulier : l'espace cousu
+  // relie des bouches, pas des pièces, et rien dans le rendu ni dans le déplacement ne
+  // suppose qu'elles appartiennent à deux cellules distinctes. Une salle peut donc se
+  // recoller à elle-même — ce qui servira encore à l'espace pavé.
+  //
+  // Ce que cela donne : on entre dans une boîte de deux mètres cinquante et l'on ressort
+  // par le mur du fond de la pièce où elle est posée. Et par la petite porte, on voit
+  // cette même pièce, vue du fond : son sol, ses murs, et le coffre lui-même, de dos.
   const chestWing = wingData.find((entry) => entry.wing.id === RELIQUARY_WING)!
-  const naveMouths = [
-    mouth(NAVE, 'reliquaire.nef', NAVE_BOX, NAVE_ENTRY_WALL, middleOf(NAVE_BOX, NAVE_ENTRY_WALL)),
-    mouth(NAVE, 'reliquaire.retour', NAVE_BOX, NAVE_RETURN_WALL, middleOf(NAVE_BOX, NAVE_RETURN_WALL)),
-  ]
-  const naveLights = naveLighting(naveMouths)
-
-  const [intoNave, outOfNave] = makePassages(
+  const [intoChest, outOfChest] = makePassages(
     chestWing.mouths[1]!,
     chestWing.lighting,
-    naveMouths[0]!,
-    naveLights,
-  )
-  const [naveToWing, wingToNave] = makePassages(
-    naveMouths[1]!,
-    naveLights,
     chestWing.mouths[2]!,
     chestWing.lighting,
   )
-  wingPassages.get(RELIQUARY_WING)!.push(intoNave, wingToNave)
-  const navePassages: Passage[] = [outOfNave, naveToWing]
+  wingPassages.get(RELIQUARY_WING)!.push(intoChest, outOfChest)
 
   // --- La géométrie ---------------------------------------------------------
   const hubHoles: RoomHoles = {}
@@ -820,27 +766,6 @@ export function buildWorld(): World {
       lighting: entry.lighting,
       ...(twisted ? { twist: VRILLE } : {}),
       ...(entry.chest ? { blocks: [{ ...entry.chest, door: entry.mouths[1]! }] } : {}),
-    })
-  }
-
-  // --- La nef, qui ne tient pas dans le coffre qui la contient ----------------
-  {
-    const extra: number[] = []
-    for (const m of naveMouths) pushReveal(extra, m, tinted(NAVE_TINT, 0.55))
-
-    cells.push({
-      id: NAVE,
-      min: NAVE_BOX.min,
-      max: NAVE_BOX.max,
-      verts: concat(
-        buildRoom(NAVE_BOX.min, NAVE_BOX.max, paletteFor(NAVE_TINT), {
-          [NAVE_ENTRY_WALL]: [holeOf(naveMouths[0]!)],
-          [NAVE_RETURN_WALL]: [holeOf(naveMouths[1]!)],
-        }),
-        extra,
-      ),
-      passages: navePassages,
-      lighting: naveLights,
     })
   }
 
