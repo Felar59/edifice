@@ -13,9 +13,9 @@ qu'on n'arrive pas à prendre en défaut, un éclairage qui franchit les ouvertu
 saut et la chute. Puis quatre tricheries géométriques : le **tunnel-vrille**, dont la
 section pivote d'un quart de tour, gravité comprise ; le **volume impossible**, un coffre
 de deux mètres cinquante qui contient la salle de douze où il est posé ; la **gravité par
-face**, un cube dont les six parois sont des sols ; et l'**escalier de Penrose**, qu'on
-monte indéfiniment mais qu'on ne descend pas indéfiniment. Trois ailes attendent encore leur
-mécanique.
+face**, un cube dont les six parois sont des sols ; et l'**escalier de Penrose**, deux étages
+qu'on monte indéfiniment sans jamais passer de l'un à l'autre — il faut descendre pour cela.
+Trois ailes attendent encore leur mécanique.
 
 ## Démarrer
 
@@ -408,9 +408,41 @@ On entre de plain-pied sur un palier d'angle, on monte, on passe derrière le pi
 l'on retrouve sa propre porte d'entrée, à la hauteur exacte où on l'a quittée. On peut
 recommencer autant qu'on veut.
 
+**Et si l'on descend, on tombe sur une autre porte**, qui donne sur une salle qu'on ne
+soupçonnait pas. On y entre, on ressort — et là, si l'on monte, l'escalier boucle de nouveau,
+mais sur *cette* porte-là : la première a disparu. Pour la retrouver, il faut redescendre.
+
+Il y a donc deux escaliers, tous deux sans fin, et l'on ne passe de l'un à l'autre qu'en
+descendant. **Monter est une boucle, descendre est le seul chemin.**
+
 Le tour de passe-passe tient en une phrase : **la hauteur ne dépend que de l'angle autour
 du pilier**. Un tour complet fait donc gagner exactement douze mètres, et une couture posée
 au raccord translate de cette hauteur.
+
+La volée dessinée fait deux tours et quart, et porte **deux étages identiques** : l'étage
+haut, avec la porte de la rotonde en son milieu ; l'étage bas, avec celle de la salle basse.
+Trois coutures les relient, et **aucune des trois n'a de jumelle** — on les franchit dans un
+sens et pas dans l'autre. Deux referment une boucle en montant, une par étage : c'est ce qui
+fait qu'en montant on ne rencontre jamais que la porte de son propre étage. La troisième se
+franchit en descendant, tout en bas, et repose trois quarts de tour au-dessus : c'est elle
+qui fait que descendre change d'étage au lieu de s'arrêter.
+
+**Les deux étages sont décalés d'un quart de tour**, et ce n'était pas prévu. Posés bout à
+bout, l'un finissant exactement où l'autre commence, la boucle haute reposait le grimpeur sur
+le plan même de la boucle basse, et dans le sens où celle-ci se franchit : arrivé là, on la
+traversait dans la foulée et l'on se retrouvait un étage plus bas au bout d'un seul tour.
+**Deux coutures ne peuvent pas partager un plan si l'une y dépose dans la direction que
+l'autre attend.** Le quart de tour règle du même coup ce qui se voit : entre le pied de
+l'étage haut et la porte de la salle basse il y a désormais deux angles de pilier, et le
+regard n'en franchit qu'un.
+
+Ce décalage a lui-même une contrainte : la couture du bas retombe **trois quarts de tour**
+au-dessus, et non au sommet. Deux tours pleins séparent ainsi ses deux bouches, donc le même
+angle du pilier des deux côtés, donc une **pure translation**. Au sommet, il aurait fallu
+tourner de quatre-vingt-dix degrés — l'escalier est bien invariant par quart de tour et
+l'illusion aurait tenu, mais une rotation à trois cents mètres de l'origine ne se calcule
+plus exactement en flottant 32 bits. On retombe donc juste au-dessus de la porte de la
+rotonde, ce qui est d'ailleurs le bon endroit : en descendant, c'est elle qu'on cherche.
 
 **Cette couture est posée sur un palier**, et c'est ce qui la rend imperceptible. Tant
 qu'elle tombait en pleine volée, il fallait faire coïncider deux nez de marche au
@@ -426,7 +458,7 @@ dessin de Penrose, lui, est un carré vide, et il ne tient que d'un seul point d
 un plafond plat, on le sent se rapprocher à mesure qu'on monte, puis s'écarter d'un tour
 d'un seul coup au raccord : la couture ne se voit pas dans la géométrie, mais elle
 **s'entend dans le volume**, et c'est aussi net qu'un décrochement. En faisant du plafond
-un second ruban à trois mètres vingt au-dessus du premier, le couloir a partout la même
+un second ruban à trois mètres au-dessus du premier, le couloir a partout la même
 section — et la bouche du raccord la couvre alors **entièrement**. Il n'y a plus rien à
 cacher.
 
@@ -449,27 +481,49 @@ dans l'ouverture, et le mur le repousse — on se cogne à une porte grande ouve
 est né deux fois, à deux endroits différents, avant de devenir un invariant qui mesure le
 dénivelé du sol sur la largeur de chaque ouverture et le veut rigoureusement nul.
 
-**Descendre ne boucle pas**, et c'est là que l'escalier devient impossible. La couture du
-raccord **n'a pas de jumelle** : elle se franchit en montant, pas en descendant. Le
-recollement est *orienté*, ce qu'aucun espace ordinaire ne permet. Qui descend passe donc
-sous la boucle, dans un quart de tour de marches que celle-ci ne parcourt jamais, et y
-trouve la porte de la salle basse. **Celui qui monte ne la voit pas** — la couture le repose
-toujours au-dessus.
+**Monter et descendre ne mènent pas au même endroit**, et c'est là que l'escalier devient
+impossible. Aucune des trois coutures n'a de jumelle : le recollement est *orienté*, ce
+qu'aucun espace ordinaire ne permet. En montant, la boucle de l'étage vous repose toujours
+sous vous-même ; en descendant, elle n'existe pas, et l'on traverse jusqu'à l'étage suivant.
+
+**Celui qui monte ne voit jamais la porte de l'autre étage.** Ce n'est pas une affaire de
+cadrage mais de structure : la boucle ne quitte pas son étage, donc la porte d'en face n'est
+tout simplement pas dans l'espace parcouru. Tant que les deux étages ont été bout à bout, il
+restait quelques images, au bas de la montée, où l'on apercevait en contrebas la salle basse
+s'ouvrir — et cela suffisait à tout dire. C'est ce qu'a réglé le quart de tour de décalage.
 
 **La porte de la salle basse s'ouvre dans une paroi**, comme celle de l'entrée. Elle a
-d'abord été percée dans le mur qui ferme le bas de la volée, en travers du couloir : on
+d'abord été percée dans le mur qui fermait le bas de la volée, en travers du couloir : on
 tombait dessus sans transition, avec du vide autour d'elle et rien pour l'annoncer. Dans une
-paroi latérale, elle a ses deux jambages, son linteau et son embrasure, et l'on ne la
-rencontre qu'une fois descendu.
+paroi latérale, elle a ses deux jambages, son linteau et son embrasure.
 
-Cinq détails de fabrication méritent d'être notés.
+Ce mur du bas a disparu avec elle, et c'est un bon débarras : la volée n'a plus de bout à
+fermer, ses deux extrémités étant des coutures. Il était posé en **diagonale**, radialement,
+alors que sa boîte de collision était alignée sur les axes — elle le débordait donc largement,
+et posait un mur invisible en travers du palier voisin. Une géométrie oblique et une collision
+alignée ne font pas bon ménage ; le plus sûr est de n'avoir pas de mur du tout.
 
-**Les lampes sont périodiques d'un tour exactement**, une par quart de tour. À travers le
-raccord on voit la volée d'en dessous éclairée par les lampes d'en dessous, alors qu'on est
-éclairé par les siennes : si les deux séries ne se correspondent pas, la couture se signale
-par un changement de lumière, et aucune correction de géométrie ne le rattrape. Une couture
-invisible ne l'est qu'à condition que tout soit périodique — la forme, le volume **et**
-l'éclairage.
+Six détails de fabrication méritent d'être notés.
+
+**Une porte et son trou sont décrits séparément**, et rien ne les tenait ensemble. La bouche
+vient de la couture, le trou du découpage de la paroi. Le jour où la porte de l'escalier a
+déménagé sur un palier d'angle, la bouche a suivi et pas le trou : l'aile déclarait toujours
+le milieu de sa paroi nord. Le résultat n'a rien qui ressemble à une erreur — on entre
+normalement, puisque la collision connaît la bouche et laisse passer, mais **une fois dedans
+il n'y a plus de porte**, rien qu'un mur plein là où l'on vient d'entrer. Un invariant vérifie
+désormais qu'au centre de chaque porte, dans le plan de sa paroi, il n'y a aucune surface.
+
+**Les lampes sont périodiques d'un tour exactement**, une par quart de tour. À travers une
+couture on voit la volée d'en face éclairée par les lampes d'en face, alors qu'on est éclairé
+par les siennes : si les deux séries ne se correspondent pas, la couture se signale par un
+changement de lumière, et aucune correction de géométrie ne le rattrape. Une couture invisible
+ne l'est qu'à condition que tout soit périodique — la forme, le volume **et** l'éclairage.
+
+Deux tours et quart en demandent onze, là où le nuanceur en acceptait six. Le plafond est
+passé à douze, et le dépassement était **silencieux** : les lampes en trop étaient coupées
+sans rien dire, ce qui donne une salle mal éclairée sans cause visible. Il a lui aussi son
+invariant. Ce plafond-là coûte de la place dans le bloc uniforme et non du calcul par pixel,
+la boucle du nuanceur s'arrêtant au nombre de lampes réellement déclarées.
 
 La collision ne suit pas les marches mais une **rampe** qui passe en leur milieu. Un sol en
 escalier ferait monter le corps par bonds à chaque nez franchi ; la rampe le fait monter
@@ -548,10 +602,23 @@ grésillement qu'on attribue toujours au rendu, jamais à la construction — et
 que le musée ait connu était le seuil d'une embrasure posée en plein milieu d'une salle,
 là où le sol passait déjà.
 
+S'y ajoute **toute porte perce sa paroi** : au centre d'une porte, dans le plan de sa paroi,
+il ne doit y avoir aucune surface. Une bouche et son trou sont décrits séparément, et rien ne
+les tenait ensemble ; quand la bouche déménage sans le trou, on entre normalement mais il n'y
+a plus de porte derrière soi. Et **aucune cellule ne dépasse le budget de lampes du
+nuanceur**, dont le dépassement était silencieux.
+
 Ceux de l'escalier de Penrose portent sur ce qui rend la boucle invisible : **un tour rend
-exactement la montée** — égalité éprouvée en trente-deux points du profil, parce qu'un
-palier mal placé la casserait au milieu sans toucher aux bouts —, le plafond suit les
-marches, monter est sans fin, descendre ne boucle pas, et la descente mène ailleurs.
+exactement la montée** — égalité éprouvée en trente-deux points du profil, parce qu'un palier
+mal placé la casserait au milieu sans toucher aux bouts —, le plafond suit les marches, et
+monter est sans fin.
+
+Puis quatre qui décrivent la machine à deux états : **monter depuis la rotonde ne descend
+jamais à la salle basse**, **monter depuis la salle basse n'atteint jamais la rotonde**, et
+les deux descentes qui mènent chacune à l'autre porte. Les deux premiers se mesurent en
+hauteurs, contre la porte d'en face : ce qu'on veut interdire n'est pas de frôler l'autre
+étage mais d'arriver à hauteur de son ouverture — donc de la voir. C'est le seul contrôle
+numérique qu'on ait trouvé pour un défaut purement visuel.
 
 S'y ajoute **chaque porte est sur un palier** : le sol ne doit pas varier d'un milliardième
 de mètre sur la largeur d'une ouverture. C'est le contrôle qui aurait fait gagner le plus de

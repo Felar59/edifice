@@ -37,8 +37,19 @@ import type { Mouth } from './types'
 
 export type Colour = readonly [number, number, number]
 
-/** Le nombre de lampes et d'ouvertures que le nuanceur sait traiter par cellule. */
-export const MAX_LIGHTS = 6
+/**
+ * Le nombre de lampes que le nuanceur sait traiter par cellule.
+ *
+ * Douze, et non six : l'escalier de Penrose fait deux tours et veut une lampe par quart de
+ * tour. Ce plafond-ci coûte de la place dans le bloc uniforme, pas du calcul par pixel — la
+ * boucle du nuanceur s'arrête au nombre de lampes réellement déclarées, et une salle qui
+ * n'en a qu'une n'en paye qu'une. C'est l'inverse du plafond des ouvertures ci-dessous.
+ *
+ * Le dépassement est vérifié par un invariant : au-delà, les lampes seraient **coupées en
+ * silence**, ce qui se lit dans l'image comme une salle mal éclairée sans que rien ne dise
+ * pourquoi.
+ */
+export const MAX_LIGHTS = 12
 /**
  * Huit, parce que la rotonde en compte sept. Chaque ouverture est évaluée par
  * fragment, donc ce plafond est un vrai budget : le monter davantage se paierait sur

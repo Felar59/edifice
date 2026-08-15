@@ -74,7 +74,7 @@ node tools/lab.mjs walk --cell penrose --follow -1 --steps 1800 --every 300   # 
 | option | effet |
 | --- | --- |
 | `--cell` | la cellule de départ |
-| `--at x,y,z` | la position ; à défaut, deux mètres devant sa première bouche |
+| `--at x,y,z` | la position ; à défaut, deux mètres devant sa première bouche, **au niveau de son seuil** |
 | `--face x,y,z` | la direction du regard au départ |
 | `--toward x,y,z` | réoriente le regard vers ce point à chaque image |
 | `--follow ±1` | suit la volée d'un escalier tournant, en montant (+1) ou en descendant (−1) |
@@ -88,6 +88,12 @@ hauteur, et dans quelle cellule on finit.
 C'est cette commande qui a trouvé, en un appel, que les pieds passaient trois centimètres
 sous le seuil de la porte du bas de l'escalier — un défaut que trois sondes jetables
 successives avaient manqué.
+
+Une mise en garde, apprise de la même façon : **la position de départ par défaut est celle
+d'une porte, pas celle d'un plancher.** Elle a longtemps été prise au ras du sol de la boîte,
+ce qui, dans un escalier dont les portes s'ouvrent à mi-hauteur, faisait tomber la sonde dans
+une volée qui n'était pas la sienne — et l'on croyait à un défaut du monde. Quand une trace
+commence par une position surprenante, c'est la sonde qu'il faut regarder d'abord.
 
 ### `cells` — le plan du monde
 

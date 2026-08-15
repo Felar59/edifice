@@ -18,9 +18,11 @@ import { Player } from '../player/player'
 import { Projectiles } from '../player/projectiles'
 import { cameraToWorld } from '../render/camera'
 import { FLOATS_PER_VERTEX } from '../world/geometry'
+import { MAX_LIGHTS } from '../world/light'
 import { advance, resolveAgainstCell } from '../world/motion'
 import { heightAtTurn, rampHeight, stepHeight } from '../world/spiral'
 import { angleAt, frameAt, toLocal } from '../world/twist'
+import type { Mouth } from '../world/types'
 import { getLandmarks, HUB } from '../world/world'
 import type { World } from '../world/types'
 
@@ -887,9 +889,11 @@ export function runSelfTest(world: World): Check[] {
         `${spiral.headroom.toFixed(2)} m de hauteur libre, partout la même`,
       )
 
-      /** Suit la volée pendant `seconds`, dans le sens donné. */
-      const follow = (dir: 1 | -1, seconds: number) => {
-        const door = stair.passages[0]!.from
+      /**
+       * Suit la volée pendant `seconds`, dans le sens donné, en partant d'une porte — et
+       * s'arrête plus tôt si `stop` le demande.
+       */
+      const follow = (dir: 1 | -1, seconds: number, door: Mouth, stop?: (w: Player) => boolean) => {
         const walker = new Player()
         walker.goTo(
           {
@@ -908,6 +912,7 @@ export function runSelfTest(world: World): Check[] {
         let lowest = Infinity
         let highest = -Infinity
         for (let i = 0; i < seconds * 60 && walker.cell === stair.id; i++) {
+          if (stop && i > 60 && stop(walker)) break
           const rx = walker.pos.x - spiral.centre.x
           const rz = walker.pos.z - spiral.centre.z
           walker.face({ x: -rz * dir, y: 0, z: rx * dir })
@@ -929,10 +934,17 @@ export function runSelfTest(world: World): Check[] {
       // Attention : un palier n'est pas plat sur toute sa longueur. La rampe est centrée
       // sur les marches, donc elle monte déjà sur la dernière du palier. C'est exactement
       // là que la porte était tombée.
+      /** Une porte de paroi, par opposition à un raccord : sa bouche est hors de la boîte. */
+      const isDoor = (m: Mouth): boolean =>
+        m.center.x < stair.min.x ||
+        m.center.x > stair.max.x ||
+        m.center.z < stair.min.z ||
+        m.center.z > stair.max.z
+
       let worstSlope = 0
       for (const passage of stair.passages) {
         const m = passage.from
-        if (Math.abs(m.up.y) < 0.9) continue // le raccord n'est pas une porte
+        if (!isDoor(m)) continue
         const level = (side: number): number => {
           const at = add(m.center, scale(m.right, side * (m.halfWidth + PROBE_BODY.radius)))
           return rampHeight(spiral, add(at, scale(m.normal, PROBE_BODY.radius * 2)))
@@ -945,38 +957,102 @@ export function runSelfTest(world: World): Check[] {
         `dénivelé maximal ${fmt(worstSlope)} m sur la largeur d’une ouverture`,
       )
 
-      const up = follow(1, 60)
+      const doorway = stair.passages.map((p) => p.from).filter(isDoor)
+      const hubDoor = stair.passages.find((p) => p.to.cell === HUB)!.from
+      const exit = stair.passages.find((p) => p.to.cell !== stair.id && p.to.cell !== HUB)
+      const lowDoor = exit?.from
+
+      // Les deux étages, repérés par leur sol : l'étage haut occupe [0, 1] et l'étage bas
+      // [−1, 0]. Un visiteur est dans l'un ou dans l'autre, jamais entre les deux.
+      const middle = heightAtTurn(spiral, 0)
+
+      add_(
+        'penrose · deux portes, deux étages',
+        doorway.length === 2 &&
+          lowDoor !== undefined &&
+          hubDoor.center.y > middle &&
+          lowDoor.center.y < middle,
+        `${doorway.length} porte(s) ; rotonde à ${hubDoor.center.y.toFixed(1)} m,` +
+          ` salle basse à ${lowDoor ? lowDoor.center.y.toFixed(1) : '—'} m,` +
+          ` séparation à ${middle.toFixed(1)} m`,
+      )
+
+      const up = follow(1, 60, hubDoor)
       add_(
         'penrose · monter est sans fin',
         up.walker.crossings >= 3 && up.highest - up.lowest > spiral.rise * 0.8,
         `${up.walker.crossings} raccord(s) en une minute, entre ${up.lowest.toFixed(1)} et ${up.highest.toFixed(1)} m`,
       )
 
-      const down = follow(-1, 30)
+      // **Monter ne change jamais d'étage**, et c'est là tout le double escalier : la boucle
+      // de chaque étage se referme sur elle-même, donc on ne rencontre en montant que la
+      // porte de son propre étage. Le contrôle est exact — une hauteur, pas une distance —
+      // parce que le défaut qu'il attrape est visuel et n'a pas d'autre trace numérique :
+      // on apercevait, en montant, la salle basse s'ouvrir en contrebas.
+      //
+      // La mesure se fait contre la **porte d'en face**, et non contre la simple séparation
+      // des deux étages : ce qu'on veut interdire, ce n'est pas de frôler l'autre étage,
+      // c'est d'arriver à hauteur de son ouverture — donc de la voir.
       add_(
-        'penrose · descendre ne boucle pas',
-        down.walker.crossings === 0 && down.walker.cell === stair.id,
-        `${down.walker.crossings} couture(s) franchie(s), arrêté à ${down.lowest.toFixed(1)} m dans ${down.walker.cell}`,
+        'penrose · monter depuis la rotonde ne descend jamais à la salle basse',
+        lowDoor === undefined || up.lowest > lowDoor.center.y + lowDoor.halfHeight,
+        `descendu au plus bas à ${up.lowest.toFixed(2)} m,` +
+          ` pour une porte de salle basse dont le linteau est à` +
+          ` ${lowDoor ? (lowDoor.center.y + lowDoor.halfHeight).toFixed(2) : '—'} m`,
       )
 
-      // Et du pied des marches, la porte du pilier mène ailleurs.
-      const exit = stair.passages.find((p) => p.to.cell !== stair.id && p.to.cell !== HUB)
-      if (!exit) {
+      if (lowDoor) {
+        const below = follow(1, 60, lowDoor)
+        add_(
+          'penrose · monter depuis la salle basse n’atteint jamais la rotonde',
+          below.walker.crossings >= 3 && below.highest < hubDoor.center.y - hubDoor.halfHeight,
+          `${below.walker.crossings} raccord(s), monté au plus haut à ${below.highest.toFixed(2)} m` +
+            ` pour un seuil de rotonde à ${(hubDoor.center.y - hubDoor.halfHeight).toFixed(2)} m`,
+        )
+      }
+
+      /**
+       * Descend depuis une porte jusqu'au niveau de l'ouverture visée, puis marche dessus.
+       *
+       * On s'arrête à une **hauteur**, et non au bout d'un temps donné : dans cet escalier
+       * la hauteur ne dépend que de l'angle, donc être au bon niveau, c'est être au bon
+       * endroit du tour. Descendre trop longtemps ferait repasser par l'autre étage.
+       */
+      const descendTo = (from: Mouth, target: Mouth): Player => {
+        const level = target.center.y - target.halfHeight + PROBE_BODY.eyeHeight
+        // Une bande étroite, et non un simple « en dessous de » : en descendant depuis la
+        // salle basse on commence **sous** le niveau visé, on plonge encore, et c'est le
+        // raccord du bas qui reporte au-dessus de la porte de la rotonde.
+        const { walker } = follow(-1, 60, from, (w) => w.pos.y <= level + 0.01 && w.pos.y > level - 0.4)
+        for (let i = 0; i < 900 && walker.cell === stair.id; i++) {
+          walker.face({
+            x: target.center.x - walker.pos.x,
+            y: 0,
+            z: target.center.z - walker.pos.z,
+          })
+          walker.update(1 / 60, world, new Set(['KeyW']))
+        }
+        return walker
+      }
+
+      if (!exit || !lowDoor) {
         add_('penrose · la descente mène ailleurs', false, 'aucune porte vers une autre salle')
       } else {
-        const leaver = down.walker
-        for (let i = 0; i < 600 && leaver.cell === stair.id; i++) {
-          leaver.face({
-            x: exit.from.center.x - leaver.pos.x,
-            y: 0,
-            z: exit.from.center.z - leaver.pos.z,
-          })
-          leaver.update(1 / 60, world, new Set(['KeyW']))
-        }
+        // **Descendre est le seul chemin.** Depuis la rotonde on trouve la salle basse ; et
+        // depuis la salle basse, en descendant encore, on retrouve la rotonde. C'est la
+        // seule façon de sortir de l'escalier, dans un sens comme dans l'autre.
+        const down = descendTo(hubDoor, lowDoor)
         add_(
-          'penrose · la descente mène ailleurs',
-          leaver.cell === exit.to.cell,
-          `arrivé dans ${leaver.cell}, attendu ${exit.to.cell}`,
+          'penrose · descendre depuis la rotonde mène à la salle basse',
+          down.cell === exit.to.cell,
+          `arrivé dans ${down.cell}, attendu ${exit.to.cell}`,
+        )
+
+        const back = descendTo(lowDoor, hubDoor)
+        add_(
+          'penrose · descendre depuis la salle basse ramène à la rotonde',
+          back.cell === HUB,
+          `arrivé dans ${back.cell}, attendu ${HUB}`,
         )
       }
     }
@@ -1085,7 +1161,99 @@ export function runSelfTest(world: World): Check[] {
     )
   }
 
-  // 15. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
+  // 15. Toute porte perce la paroi où elle est posée.
+  //
+  //    Une bouche et son trou sont décrits **séparément** : la bouche par la couture, le
+  //    trou par la paroi qu'on découpe autour. Rien ne les tient ensemble, et le jour où la
+  //    porte de l'escalier a déménagé sur un palier d'angle, la bouche a suivi mais pas le
+  //    trou : l'aile déclarait toujours le milieu de sa paroi nord.
+  //
+  //    Ce qui en résulte est déroutant, et n'a rien qui ressemble à une erreur. On entre
+  //    dans l'escalier normalement — la collision, elle, connaît la bouche et laisse
+  //    passer —, mais une fois dedans **il n'y a plus de porte** : rien qu'un mur plein là
+  //    où l'on vient d'entrer. Aucune sonde numérique ne le voit, aucune image ne l'explique.
+  //
+  //    Le contrôle est direct : au centre d'une porte, dans le plan de sa paroi, il ne doit
+  //    y avoir aucune surface.
+  {
+    const walled: string[] = []
+    for (const cell of world.cells.values()) {
+      const v = cell.verts
+      for (const passage of cell.passages) {
+        const m = passage.from
+        const k = Math.abs(m.normal.x) > 0.99 ? 0 : Math.abs(m.normal.z) > 0.99 ? 2 : -1
+        if (k < 0) continue // un raccord posé en biais n'est pas une porte de paroi
+        const along = k === 0 ? m.center.x : m.center.z
+        const lo = k === 0 ? cell.min.x : cell.min.z
+        const hi = k === 0 ? cell.max.x : cell.max.z
+        // Une porte de paroi est au fond de son embrasure, donc **hors** de la boîte de la
+        // cellule. Ce qui est dedans est un raccord, ou la porte d'un coffre.
+        if (along > lo && along < hi) continue
+        const plane = along < lo ? lo : hi
+        const lateral = k === 0 ? m.center.z : m.center.x
+
+        for (let q = 0; q + 6 * FLOATS_PER_VERTEX <= v.length; q += 6 * FLOATS_PER_VERTEX) {
+          let uLo = Infinity
+          let uHi = -Infinity
+          let yLo = Infinity
+          let yHi = -Infinity
+          let inPlane = true
+          for (const i of [0, 1, 2, 5]) {
+            const at = q + i * FLOATS_PER_VERTEX
+            if (Math.abs(v[at + k]! - plane) > 1e-4) {
+              inPlane = false
+              break
+            }
+            const u = v[at + (k === 0 ? 2 : 0)]!
+            uLo = Math.min(uLo, u)
+            uHi = Math.max(uHi, u)
+            yLo = Math.min(yLo, v[at + 1]!)
+            yHi = Math.max(yHi, v[at + 1]!)
+          }
+          if (!inPlane) continue
+          if (
+            lateral > uLo + 1e-4 &&
+            lateral < uHi - 1e-4 &&
+            m.center.y > yLo + 1e-4 &&
+            m.center.y < yHi - 1e-4
+          ) {
+            walled.push(m.id)
+            break
+          }
+        }
+      }
+    }
+    add_(
+      'géométrie · toute porte perce sa paroi',
+      walled.length === 0,
+      walled.length === 0
+        ? 'aucune ouverture murée'
+        : `${walled.length} porte(s) murée(s) : ${walled.join(', ')}`,
+    )
+  }
+
+  // 16. Aucune cellule ne dépasse le budget de lampes du nuanceur.
+  //
+  //    Le dépassement est **silencieux** : le rendu prend les premières et laisse tomber le
+  //    reste. Une salle mal éclairée n'a alors aucune cause visible, et l'on cherche du côté
+  //    des couleurs ou des rayons pendant que la lampe manquante n'a jamais été envoyée.
+  {
+    let worst = 0
+    let where = ''
+    for (const cell of world.cells.values()) {
+      if (cell.lighting.lights.length > worst) {
+        worst = cell.lighting.lights.length
+        where = cell.id
+      }
+    }
+    add_(
+      'éclairage · aucune cellule ne dépasse le budget de lampes',
+      worst <= MAX_LIGHTS,
+      `${worst} lampes au plus, dans ${where}, pour un budget de ${MAX_LIGHTS}`,
+    )
+  }
+
+  // 17. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
   const stray = v3(0, 1.65, 0)
   for (const cell of world.cells.values()) {
     const p = resolveAgainstCell(cell, stray, PROBE_BODY).pos

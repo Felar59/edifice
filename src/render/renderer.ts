@@ -41,6 +41,18 @@ import { cameraToWorld, type Camera } from './camera'
 export type { Camera }
 import { FLOATS_PER_VERTEX } from '../world/geometry'
 import { MAX_LIGHTS, MAX_MOUTH_LIGHTS } from '../world/light'
+
+/**
+ * La disposition du bloc uniforme de scène, en flottants, déduite des deux plafonds.
+ *
+ * Elle l'était en chiffres écrits à la main, ce qui tenait tant que les plafonds ne
+ * bougeaient pas. Le jour où l'escalier a demandé douze lampes, les ouvertures se seraient
+ * retrouvées lues six lampes trop tôt — et le nuanceur aurait éclairé la salle avec des
+ * morceaux de position de lampe.
+ */
+const HEADER_FLOATS = 48
+const MOUTH_BLOCK = HEADER_FLOATS + MAX_LIGHTS * 8
+const SCENE_FLOATS = MOUTH_BLOCK + MAX_MOUTH_LIGHTS * 16
 import type { Cell, Mouth, Passage, World } from '../world/types'
 import sceneShader from '../shaders/scene.wgsl?raw'
 import portalShader from '../shaders/portal.wgsl?raw'
@@ -48,12 +60,12 @@ import portalShader from '../shaders/portal.wgsl?raw'
 const OFFSCREEN_FORMAT: GPUTextureFormat = 'rgba8unorm'
 const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus'
 /**
- * Un bloc d'uniformes de scène porte l'éclairage de la cellule : six lampes et huit
- * ouvertures, soit 896 octets, alignés sur 1024. Les portails, eux, se contentent
- * toujours de 256.
+ * Un bloc d'uniformes de scène porte l'éclairage de la cellule : ses lampes et ses
+ * ouvertures. Sa taille se déduit des deux plafonds et s'aligne sur 256, comme le veut le
+ * décalage dynamique. Les portails, eux, se contentent toujours de 256.
  */
-const SCENE_STRIDE = 1024
-const SCENE_BYTES = 896
+const SCENE_BYTES = SCENE_FLOATS * 4
+const SCENE_STRIDE = Math.ceil(SCENE_BYTES / 256) * 256
 const PORTAL_STRIDE = 256
 
 /** Fond, et couleur du brouillard : c'est aussi ce qui masque la coupure de récursion. */
@@ -172,7 +184,7 @@ export class Renderer {
   // Matrices réutilisées d'une image sur l'autre : rien ici ne doit allouer par
   // image, sinon le ramasse-miettes se réveille au pire moment.
   private readonly proj = create()
-  private readonly scratch = new Float32Array(240)
+  private readonly scratch = new Float32Array(Math.max(SCENE_FLOATS, 240))
 
   constructor(device: GPUDevice, context: GPUCanvasContext, canvasFormat: GPUTextureFormat) {
     this.device = device
@@ -590,7 +602,7 @@ export class Renderer {
     s[44] = lightCount; s[45] = mouthCount; s[46] = 0; s[47] = 0
 
     for (let i = 0; i < MAX_LIGHTS; i++) {
-      const o = 48 + i * 8
+      const o = HEADER_FLOATS + i * 8
       const light = i < lightCount ? lights[i]! : null
       if (!light) {
         s.fill(0, o, o + 8)
@@ -610,7 +622,7 @@ export class Renderer {
     // lumière de la pièce d'en face. Les demi-dimensions voyagent dans la longueur
     // des vecteurs, ce qui évite deux flottants de plus.
     for (let i = 0; i < MAX_MOUTH_LIGHTS; i++) {
-      const o = 96 + i * 16
+      const o = MOUTH_BLOCK + i * 16
       const passage = i < mouthCount ? cell.passages[i]! : null
       if (!passage) {
         s.fill(0, o, o + 16)
@@ -632,7 +644,7 @@ export class Renderer {
       s[o + 15] = 0
     }
 
-    return this.sceneUniforms.write(s, 224)
+    return this.sceneUniforms.write(s, SCENE_FLOATS)
   }
 
   private writePortalUniforms(viewProj: Mat4, polygon: Vec3[], hasImage: boolean): number {

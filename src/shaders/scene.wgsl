@@ -19,7 +19,7 @@ struct Uniforms {
   fog      : vec4<f32>,   // rgb = couleur du fond, a = densité
   ambient  : vec4<f32>,   // plancher de luminosité de la cellule
   params   : vec4<f32>,   // x : nombre de lampes ; y : nombre d'ouvertures
-  lights   : array<Light, 6>,
+  lights   : array<Light, 12>,
   mouths   : array<MouthLight, 8>,
 };
 

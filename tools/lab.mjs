@@ -236,11 +236,14 @@ commands.walk = (opts) => {
   const at = opts.at
     ? vec(opts.at)
     : (() => {
-        // À défaut de position, deux mètres devant la première bouche de la cellule.
+        // À défaut de position, deux mètres devant la première bouche de la cellule, et
+        // **au niveau de son seuil** — pas au ras du sol de la boîte. Une porte d'escalier
+        // s'ouvre à mi-hauteur : partir du plancher de la cellule faisait tomber la sonde
+        // dans une volée qui n'était pas la sienne, et l'on croyait à un défaut du monde.
         const m = cell.passages[0].from
         return {
           x: m.center.x + m.normal.x * 2,
-          y: cell.min.y + 1.65,
+          y: m.center.y - m.halfHeight + 1.65,
           z: m.center.z + m.normal.z * 2,
         }
       })()
