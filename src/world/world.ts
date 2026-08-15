@@ -2201,21 +2201,28 @@ export function buildWorld(): World {
   // cousu relie des bouches, pas des pièces — et ne transmet donc aucune lumière.
   const bridgeDoor = mouth(BRIDGE, 'pont.porte', BRIDGE_BOX, 'north', BRIDGE_X, BRIDGE_DECK)
   const bridgeLighting: CellLighting = {
-    // **Dehors, la lumière vient de partout.** Un ambiant fort et froid plutôt que des
-    // lampes : il n'y a pas de plafonnier au-dessus d'un vide, et une source ponctuelle à
-    // deux cents mètres ne modèle rien. Les quatre foyers ci-dessous ne servent qu'à
-    // détacher le proche du lointain, au niveau du pont.
-    // Sombre de près, blanc de loin. C'est l'inverse d'un intérieur, et c'est ce qui donne
-    // les silhouettes : le béton proche reste mat, et la brume l'efface en l'éclaircissant.
-    ambient: [0.13, 0.14, 0.16],
-    lights: [-24, 24].flatMap((dz) =>
-      [-26, 26].map((dx) => ({
-        position: { x: BRIDGE_X + dx, y: BRIDGE_DECK + 26, z: BRIDGE_BOX.min.z + 30 + dz },
-        colour: BRIDGE_TINT,
-        intensity: 60,
-        radius: 70,
-      })),
-    ),
+    // **Dehors, aucune lampe. Rien que du ciel.**
+    //
+    // Il y en avait quatre, puissantes, vingt-six mètres au-dessus du pont, pour détacher le
+    // proche du lointain. Elles avaient deux torts, et le second est rédhibitoire.
+    //
+    // L'une éclairait une masse de trop près : on voyait la tache, et une tache de lumière
+    // sans luminaire est ce qui trahit le plus sûrement un décor.
+    //
+    // Surtout, **une lampe ne se répète pas avec la boucle**. Le plancher de la cellule est
+    // recollé à son plafond ; tout ce qui n'est pas invariant par cette translation se
+    // signale au passage. En tombant, on sortait de leur portée d'un seul coup et l'ombre
+    // gagnait tous les bâtiments à la fois, puis le raccord nous ramenait dans la zone
+    // éclairée. Une lumière qui suit le visiteur dans un vide immobile : c'est exactement
+    // ce qui dit qu'il ne tombe pas vraiment.
+    //
+    // Un ciel uniforme, lui, est invariant par n'importe quelle translation. Le relief ne
+    // vient donc plus de l'éclairage mais de la **peinture** — refends sombres, tabliers
+    // clairs, dessous noirs — et de la brume, qui éclaircit avec la distance. C'est un parti
+    // graphique plutôt que photographique, et c'est le bon dehors : un ciel couvert n'a pas
+    // de direction non plus.
+    ambient: [0.32, 0.34, 0.38],
+    lights: [],
   }
   const loop = bridgeLoop()
   const [hubToBridge, bridgeToHub] = makePassages(
