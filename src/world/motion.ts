@@ -71,6 +71,16 @@ const JAMB = 1e-3
 const APPROACH = 1.5
 
 /**
+ * Le cheveu dont les pieds passent sous leur appui pendant un pas.
+ *
+ * La gravité s'applique avant la collision : à soixante images par seconde, le corps descend
+ * de trois millimètres avant d'être remonté. Deux centimètres couvrent cela largement, et
+ * restent vingt-cinq fois plus petits qu'un saut — de sorte qu'aucune tolérance ne laisse
+ * entrer dans une porte en pleine détente.
+ */
+const SAG = 0.02
+
+/**
  * Cette bouche couvre-t-elle sa paroi tout entière ?
  *
  * Alors il n'y a pas de paroi, et rien à rater : le corps ne peut pas se cogner à ce qui
@@ -170,10 +180,9 @@ function spans(offset: number, half: number, along: number, body: Body): boolean
     // juger sur cette position-là refuse le passage à qui marche normalement. C'est le même
     // piège que dans `resolveAgainstCell`, et il se tend une seconde fois ici. Deux
     // centimètres suffisent — un saut, lui, monte d'un demi-mètre.
-    const sag = 0.02
     const head = offset + along * body.headroom
     const feet = offset - along * body.eyeHeight
-    return Math.min(head, feet) >= -half - sag && Math.max(head, feet) <= half + sag
+    return Math.min(head, feet) >= -half - SAG && Math.max(head, feet) <= half + SAG
   }
   return Math.abs(offset) <= half - body.radius + JAMB
 }
@@ -397,13 +406,29 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, body: Body): Resolved {
   const feet = y - body.eyeHeight
   const head = y + body.headroom
 
-  /** Le corps tient-il dans cette ouverture, en largeur comme en hauteur ? */
+  /**
+   * Le corps tient-il dans cette ouverture, en largeur comme en hauteur ?
+   *
+   * **Deux centimètres de mou sous les pieds**, exactement comme au franchissement, et pour
+   * la même raison : pendant un pas, la gravité fait descendre les pieds d'un cheveu sous
+   * leur appui avant que la collision ne les remonte. Le seuil était jugé au dixième de
+   * millimètre, si bien que la porte se fermait une image sur deux.
+   *
+   * Le défaut ne se voyait nulle part tant que tous les sols étaient des planchers de
+   * cellule : le plancher est remonté **avant** ce test, donc les pieds y sont exactement.
+   * Il est apparu le jour où un sol a été un **bloc** — le belvédère du pont — car les blocs
+   * se résolvent après. On restait planté devant une sortie qui ne s'ouvrait jamais.
+   *
+   * Le crâne, lui, garde sa tolérance au dixième de millimètre : c'est elle qui empêche
+   * d'entrer dans une porte en pleine détente, et un demi-mètre de saut n'a rien à voir avec
+   * un cheveu de gravité.
+   */
   const fits = (m: Mouth, lateral: number): boolean => {
     if (fillsTheWall(cell, m)) return true
     if (Math.abs(lateral - lateralCentre(m)) > m.halfWidth - radius + JAMB) return false
     const bottom = m.center.y - m.halfHeight
     const top = m.center.y + m.halfHeight
-    return feet >= bottom - 1e-4 && head <= top + 1e-4
+    return feet >= bottom - SAG && head <= top + 1e-4
   }
 
   let clampMinX = true

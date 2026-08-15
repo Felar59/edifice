@@ -458,8 +458,14 @@ export function pushBlock(
   out: number[],
   min: Vec3,
   max: Vec3,
-  /** Sans `top`, le dessus n'est pas dessiné : c'est le cas d'un bloc qui touche le plafond. */
-  colours: { side: Color; top?: Color },
+  /**
+   * Sans `top`, le dessus n'est pas dessiné : c'est le cas d'un bloc qui touche le plafond.
+   *
+   * Sans `bottom` non plus, et pour la même raison — un bloc posé au sol n'a pas de dessous
+   * visible. Mais un tablier de passerelle en a un : on passe dessous en tombant, et sans
+   * cette face on **voit à travers le pont**. Le tri des faces arrière ne pardonne pas.
+   */
+  colours: { side: Color; top?: Color; bottom?: Color },
   pierced?: { face: Face; hole: Hole },
 ): void {
   const dx = max.x - min.x
@@ -468,7 +474,13 @@ export function pushBlock(
 
   // Chaque face est donnée dans l'ordre qui met sa normale **dehors** : se tromper la
   // rend simplement invisible, le tri des faces arrière s'en chargeant.
-  const faces: { face: Face | 'top'; origin: Vec3; right: Vec3; up: Vec3; color: Color }[] = [
+  const faces: {
+    face: Face | 'top' | 'bottom'
+    origin: Vec3
+    right: Vec3
+    up: Vec3
+    color: Color
+  }[] = [
     {
       face: 'north', // z = min.z, normale -Z
       origin: { x: max.x, y: min.y, z: min.z },
@@ -505,6 +517,17 @@ export function pushBlock(
             right: { x: dx, y: 0, z: 0 },
             up: { x: 0, y: 0, z: -dz },
             color: colours.top,
+          },
+        ]
+      : []),
+    ...(colours.bottom
+      ? [
+          {
+            face: 'bottom' as const, // y = min.y, normale -Y
+            origin: { x: min.x, y: min.y, z: min.z },
+            right: { x: dx, y: 0, z: 0 },
+            up: { x: 0, y: 0, z: dz },
+            color: colours.bottom,
           },
         ]
       : []),

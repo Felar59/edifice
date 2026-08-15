@@ -583,6 +583,47 @@ export function runSelfTest(world: World, physics: Physics): Check[] {
         `${(exit.u - entry.u).toFixed(4)} m de déport sur ${(exit.s - entry.s).toFixed(1)} m`,
       )
 
+      // **Et la même chose par la boucle de jeu, pas par `walk`.**
+      //
+      // Les mesures ci-dessus appellent `walk`, qui déplace le corps et rien d'autre. Elles
+      // ne voient donc ni la gravité, ni le saut, ni les règles de verticale qui vivent dans
+      // `update`. C'est exactement par là qu'une régression est passée : une clause écrite
+      // pour les salles ordinaires — « au premier contact, on se remet d'aplomb » — s'est
+      // appliquée au tube, et redressait le corps aussi vite que la vrille le penchait. Toute
+      // la batterie ci-dessus restait verte, et la vrille ne vrillait plus.
+      //
+      // Une mesure qui n'emprunte pas le chemin du joueur ne mesure pas le jeu.
+      const runner = new Player()
+      runner.goTo(
+        {
+          name: 'vrille',
+          cell: marks.hub,
+          pos: add(marks.seamCenter, scale(marks.seamNormal, 0.5)),
+          forward: { x: -marks.seamNormal.x, y: 0, z: -marks.seamNormal.z },
+        },
+        world,
+      )
+      let live = 0
+      // La verticale est relevée **dans** le tube, au plus loin qu'on soit allé : la couture
+      // de sortie absorbe la vrille accumulée, et mesurer après coup mesurerait la rotonde.
+      let far = { ...runner.up }
+      for (let i = 0; i < 1200 && (runner.cell === marks.hub || runner.cell === 'vrille'); i++) {
+        runner.update(1 / 60, world, new Set(['KeyW', 'ShiftLeft']))
+        if (runner.cell !== 'vrille') continue
+        const s = toLocal(twist, runner.pos).s
+        if (s > live) {
+          live = s
+          far = { ...runner.up }
+        }
+      }
+      const spun = Math.acos(Math.max(-1, Math.min(1, dot(v3(0, 1, 0), far))))
+      add_(
+        'vrille · elle vrille aussi quand on la parcourt pour de vrai',
+        live > twist.length - 1 && Math.abs(spun - twist.turn) < 0.05,
+        `${(live).toFixed(1)} m parcourus, verticale à ${((spun * 180) / Math.PI).toFixed(1)}°` +
+          ` pour ${((twist.turn * 180) / Math.PI).toFixed(0)}° attendus`,
+      )
+
       guard = 0
       while (walker.cell === 'vrille' && guard++ < 40) walker.walk(world, 0.2)
       const uprightness = dot(walker.up, v3(0, 1, 0))
@@ -1557,6 +1598,41 @@ export function runSelfTest(world: World, physics: Physics): Check[] {
     if (!outside) {
       add_('pont · la cellule existe', false, `cellule inconnue : ${marks.bridgeCell}`)
     } else {
+      // **On sort, et l'on rentre.** Ce contrôle-là est né d'un défaut : le belvédère est un
+      // **bloc**, et les blocs se résolvent après le test des portes. Les pieds, descendus
+      // d'un cheveu par la gravité, étaient donc jugés sous le seuil, la porte refusait, le
+      // mur repoussait — et le dehors n'avait plus d'entrée. Tous les autres sols du musée
+      // étant des planchers de cellule, remontés avant ce test, rien ne l'avait révélé.
+      {
+        const goer = new Player()
+        goer.goTo(
+          { name: 'hall', cell: HUB, pos: { x: 0, y: 1.65, z: -3 }, forward: v3(0, 0, -1) },
+          world,
+        )
+        let out = false
+        for (let i = 0; i < 400; i++) {
+          goer.update(1 / 60, world, new Set(['KeyW']))
+          if (goer.cell === outside.id && goer.pos.z > outside.min.z + 12) {
+            out = true
+            break
+          }
+        }
+        goer.face(v3(0, 0, -1))
+        let home = false
+        for (let i = 0; i < 600 && out; i++) {
+          goer.update(1 / 60, world, new Set(['KeyW']))
+          if (goer.cell === HUB) {
+            home = true
+            break
+          }
+        }
+        add_(
+          'pont · on sort, et l’on rentre',
+          out && home,
+          out ? (home ? 'aller-retour par la porte' : 'sorti, mais bloqué dehors') : 'jamais sorti',
+        )
+      }
+
       // Le long de la passerelle, droit devant.
       const walker = new Player()
       walker.goTo({ name: 'pont', cell: outside.id, pos: { ...marks.bridgePos }, forward: v3(0, 0, 1) }, world)

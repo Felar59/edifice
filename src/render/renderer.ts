@@ -931,10 +931,17 @@ export class Renderer {
     const d = Math.hypot(at.x - camPos.x, at.y - camPos.y, at.z - camPos.z)
     const haze = 1 - Math.exp(-d * (cell.fog ?? FOG_DENSITY))
     const lit = 4
+    // **La brume de la salle où l'on se tient, et non celle par défaut.** Chaque cellule a
+    // depuis longtemps son propre lointain — c'est ce qui donne à chaque aile sa température
+    // — mais cette formule-ci était restée sur la couleur globale, qui est presque noire.
+    // Une ouverture lointaine dans une salle à brume claire devenait donc un trou sombre, et
+    // le défaut ne s'est vu que le jour où une salle a eu une brume franchement blanche : au
+    // pont, en regardant le vide, on voyait la nuit.
+    const far = cell.fogColour ?? FOG_COLOR
     return [
-      ambient[0] * lit * (1 - haze) + FOG_COLOR[0] * haze,
-      ambient[1] * lit * (1 - haze) + FOG_COLOR[1] * haze,
-      ambient[2] * lit * (1 - haze) + FOG_COLOR[2] * haze,
+      ambient[0] * lit * (1 - haze) + far[0] * haze,
+      ambient[1] * lit * (1 - haze) + far[1] * haze,
+      ambient[2] * lit * (1 - haze) + far[2] * haze,
     ]
   }
 

@@ -349,7 +349,7 @@ export class Player {
           this.vertical = 0
         }
       }
-    } else if (!cell?.carries && this.stance.y < 0.999 && this.grounded) {
+    } else if (!cell?.carries && !cell?.twist && this.stance.y < 0.999 && this.grounded) {
       // **Dans une pièce ordinaire, une verticale de travers est un état de vol.**
       //
       // On l'emporte en tombant par la porte du sol : elle traverse la rotonde, entre dans
@@ -363,6 +363,13 @@ export class Player {
       // à cette condition qu'une trémie percée au plafond contre le mur du fond a un sens —
       // elle est à hauteur de marche pour qui se tient sur ce mur, et inatteignable pour qui
       // se tient debout. On ne va pas dans l'autre salle par hasard.
+      //
+      // **Et sauf dans un tube vrillé, où la règle ne s'applique pas du tout.** Là, la
+      // verticale n'est ni subie ni apportée : elle est *transportée*, d'un dixième de degré
+      // par sous-pas, par la section qui tourne. La redresser à chaque pas — ce que faisait
+      // cette clause sans le vouloir — remettait le corps d'aplomb aussi vite que le tube le
+      // penchait, et la vrille cessait de vriller. C'est le prix d'une condition écrite en
+      // creux : « toutes les salles sauf celles-ci » finit toujours par en oublier une.
       this.stance = v3(0, 1, 0)
       this.vertical = 0
     }

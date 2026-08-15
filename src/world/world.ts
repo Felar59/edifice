@@ -220,11 +220,20 @@ function buildTheBridge(door: Mouth): { verts: number[]; blocks: Block[] } {
   )
 
   // Le belvédère : le seul endroit large du dehors, et la cible qu'on vise en tombant.
+  //
+  // **Il passe sous l'embrasure**, et c'est indispensable. Le plan d'une couture est au fond
+  // de l'ébrasement, vingt-cinq centimètres derrière le nu du mur ; dans une salle ordinaire
+  // on ne s'en aperçoit pas, parce que le sol d'une cellule est son plancher et qu'il s'étend
+  // partout, embrasure comprise. Ici le sol de la cellule est à quatre-vingts mètres sous les
+  // pieds : le seul appui est ce bloc, et arrêté au nu du mur il laissait vingt-cinq
+  // centimètres de vide juste devant la porte. On y tombait d'un demi-centimètre, la porte
+  // jugeait les pieds sous le seuil et refusait le passage, le mur repoussait — et l'on
+  // restait planté devant une sortie qui ne s'ouvrait jamais.
   const terrace = {
-    min: { x: BRIDGE_X - 4, y: BRIDGE_DECK - 1.4, z: BRIDGE_BOX.min.z },
+    min: { x: BRIDGE_X - 4, y: BRIDGE_DECK - 1.4, z: BRIDGE_BOX.min.z - REVEAL - 0.1 },
     max: { x: BRIDGE_X + 4, y: BRIDGE_DECK, z: BRIDGE_BOX.min.z + 7 },
   }
-  pushBlock(out, terrace.min, terrace.max, { side: under, top: worn })
+  pushBlock(out, terrace.min, terrace.max, { side: under, top: worn, bottom: under })
   blocks.push(terrace)
 
   // La passerelle. Un mètre cinquante, sans garde-corps, et elle **s'arrête en l'air** :
@@ -233,12 +242,8 @@ function buildTheBridge(door: Mouth): { verts: number[]; blocks: Block[] } {
     min: { x: BRIDGE_X - 0.75, y: BRIDGE_DECK - 0.9, z: terrace.max.z },
     max: { x: BRIDGE_X + 0.75, y: BRIDGE_DECK, z: 1046 },
   }
-  pushBlock(out, deck.min, deck.max, { side: under, top: worn })
+  pushBlock(out, deck.min, deck.max, { side: under, top: worn, bottom: under })
   blocks.push(deck)
-  // Les consoles sous le tablier : on les voit en se penchant, et elles donnent le pas.
-  for (let z = terrace.max.z + 3; z < deck.max.z - 1; z += 6) {
-    pushBlock(out, { x: BRIDGE_X - 1.3, y: BRIDGE_DECK - 1.9, z }, { x: BRIDGE_X + 1.3, y: BRIDGE_DECK - 0.9 + BITE, z: z + 1.2 }, { side: dark, top: dark })
-  }
 
   // Les masses. Elles n'ont ni sommet ni pied visibles ; leur seule fonction est de donner
   // au vide trois dimensions, et à la chute quelque chose à faire défiler.
@@ -258,22 +263,11 @@ function buildTheBridge(door: Mouth): { verts: number[]; blocks: Block[] } {
     pushBlock(out, { x: rib - 1.2, y: low, z: z0 - 0.9 }, { x: rib + 1.2, y: high, z: z0 + BITE }, { side: dark })
   }
 
-  // Trois plateformes en encorbellement, tendues vers le pont sans jamais l'atteindre.
-  //
-  // Elles ne servent qu'à une chose : donner un **haut** et un **bas** au vide. Des masses
-  // verticales seules ne disent rien de la hauteur — c'est en voyant passer un plancher qu'on
-  // sait qu'on tombe. Elles restent près du niveau du pont, à soixante-dix mètres du plan de
-  // la boucle, donc noyées de brume bien avant qu'on puisse les reconnaître d'en haut et
-  // s'apercevoir que le vide se répète.
-  const ledges: [number, number, number, number, number][] = [
-    [1030, 1038, 1026, 1040, 9.5],
-    [1046, 1056, 1016, 1030, -7.5],
-    [1028, 1036, 1046, 1058, -18],
-  ]
-  for (const [x0, x1, z0, z1, y] of ledges) {
-    pushBlock(out, { x: x0, y, z: z0 }, { x: x1, y: y + 1.4, z: z1 }, { side: dark, top: worn })
-    blocks.push({ min: { x: x0, y, z: z0 }, max: { x: x1, y: y + 1.4, z: z1 } })
-  }
+  // **Aucune plateforme flottante.** Il y en avait trois, en encorbellement, pour donner un
+  // haut et un bas au vide. Elles faisaient l'inverse : un vide meublé n'est plus un vide, et
+  // trois planches suspendues à mi-hauteur transforment un abîme en niveau de plateforme. Le
+  // vertige tient à ce qu'il n'y a rien — c'est la passerelle seule qui doit être la seule
+  // chose horizontale du dehors.
 
   return { verts: out, blocks }
 }
