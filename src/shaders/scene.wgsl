@@ -596,10 +596,19 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
   // l'air y est toujours plus épais qu'au plafond. Une demi-densité de plus en bas, une
   // demi-densité de moins en haut, et la profondeur se lit dans l'image sans qu'on ait rien
   // ajouté à la géométrie.
+  // **Une bande vide veut dire une brume égale partout**, et il faut que ce soit possible.
+  // Une salle recollée à elle-même dans le sens de la hauteur n'a ni bas ni haut : son
+  // plancher est son plafond. Y faire varier la densité avec l'altitude place une frontière
+  // horizontale en travers du vide, franche de moitié, qui se lit comme une ombre — et qui
+  // suit le visiteur, puisqu'elle se retrouve à la même distance de lui à chaque tour de
+  // chute. Rien ne dit mieux qu'on ne tombe pas.
   let ground = u.fogBand.x;
-  let ceiling = max(u.fogBand.y, ground + 0.001);
-  let height = clamp((in.world.y - ground) / (ceiling - ground), 0.0, 1.0);
-  let thickness = u.fog.w * mix(1.25, 0.85, height);
+  let ceiling = u.fogBand.y;
+  var thickness = u.fog.w;
+  if (ceiling > ground) {
+    let height = clamp((in.world.y - ground) / (ceiling - ground), 0.0, 1.0);
+    thickness = u.fog.w * mix(1.25, 0.85, height);
+  }
   let reach = dist * thickness;
   let fogAmount = clamp(1.0 - exp(-reach * reach), 0.0, 1.0);
   rgb = mix(rgb, u.fog.rgb, fogAmount);

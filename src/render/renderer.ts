@@ -834,7 +834,10 @@ export class Renderer {
     const mouthCount = Math.min(cell.passages.length, MAX_MOUTH_LIGHTS)
     s[44] = lightCount; s[45] = mouthCount; s[46] = this.flat ? 1 : 0; s[47] = 0
     s[48] = shift.x; s[49] = shift.y; s[50] = shift.z; s[51] = 0
-    s[52] = cell.min.y; s[53] = cell.max.y; s[54] = 0; s[55] = 0
+    // Une bande dégénérée dit au nuanceur de s'en passer : voir `evenFog`.
+    s[52] = cell.evenFog ? 0 : cell.min.y
+    s[53] = cell.evenFog ? 0 : cell.max.y
+    s[54] = 0; s[55] = 0
 
     for (let i = 0; i < MAX_LIGHTS; i++) {
       const o = HEADER_FLOATS + i * 8

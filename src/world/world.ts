@@ -2517,6 +2517,11 @@ export function buildWorld(): World {
       // masses et le plan de la boucle ; plus près, les masses cessent d'être des masses et
       // le dehors n'est plus qu'un brouillard avec une planche dedans.
       fog: 0.018,
+      // Et **sans brume basse** : le plancher de cette cellule est son plafond, elle n'a donc
+      // pas de bas où l'air serait plus épais. Le dégradé y traçait une frontière franche en
+      // travers du vide, à quatre-vingts mètres sous les pieds, qu'on prenait pour une ombre.
+      evenFog: true,
+
       min: BRIDGE_BOX.min,
       max: BRIDGE_BOX.max,
       verts: new Float32Array(bridge.verts),

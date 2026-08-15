@@ -23,7 +23,7 @@ import { MAX_LIGHTS } from '../world/light'
 import { advance, resolveAgainstCell } from '../world/motion'
 import { heightAtTurn, onSquare, rampHeight, stepHeight } from '../world/spiral'
 import { angleAt, frameAt, toLocal } from '../world/twist'
-import type { Mouth } from '../world/types'
+import type { Cell, Mouth } from '../world/types'
 import { getLandmarks, HUB } from '../world/world'
 import type { World } from '../world/types'
 
@@ -1676,6 +1676,50 @@ export function runSelfTest(world: World, physics: Physics): Check[] {
         faller.grounded
           ? `reposé après ${(steps / 60).toFixed(1)} s à ${fmt(faller.pos.y)} m`
           : 'toujours en chute au bout de cinquante secondes',
+      )
+    }
+  }
+
+  // 18 ter. Une salle recollée à elle-même en hauteur n'a rien qui dépende de l'altitude.
+  //
+  //    C'est la règle qu'on a apprise deux fois de suite au pont, et elle vaut pour toute
+  //    boucle verticale à venir. Le plancher d'une telle cellule **est** son plafond : tout ce
+  //    qui varie avec y s'y retrouve donc coupé net au plan de la couture, et le visiteur qui
+  //    tombe voit la coupure passer — ce qui lui apprend précisément ce qu'on voulait lui
+  //    cacher, à savoir qu'il ne tombe pas.
+  //
+  //    Deux fautes commises, deux fois le même symptôme. Quatre lampes ponctuelles d'abord :
+  //    on sortait de leur portée d'un coup et l'ombre gagnait tous les bâtiments. La brume
+  //    basse ensuite, qui épaissit de moitié vers le sol : elle traçait une frontière franche
+  //    en travers du vide, et comme elle restait à la même distance du visiteur à chaque tour,
+  //    elle avait l'air de le suivre.
+  //
+  //    Les bouches, elles, restent permises : leur lumière est locale, et une porte éclairée
+  //    est justement un repère qu'on veut voir défiler.
+  {
+    // **Le plancher recollé au plafond, et rien de moins.** Un raccord d'escalier tournant
+    // est lui aussi une translation verticale d'une cellule vers elle-même, mais il ne
+    // remonte que d'une volée : on n'en voit jamais deux à la fois, et ce qui varie avec
+    // l'altitude s'y perd dans les marches. La règle ne concerne que les boucles qui
+    // rendent la cellule entière périodique, celles qu'on traverse en tombant.
+    const wraps = (m: Mat4, cell: Cell): boolean =>
+      Math.abs(m[0]! - 1) + Math.abs(m[5]! - 1) + Math.abs(m[10]! - 1) < 1e-6 &&
+      Math.abs(m[1]!) + Math.abs(m[2]!) + Math.abs(m[4]!) + Math.abs(m[6]!) < 1e-6 &&
+      Math.abs(m[12]!) + Math.abs(m[14]!) < 1e-6 &&
+      Math.abs(m[13]!) >= cell.max.y - cell.min.y - 1e-6
+
+    for (const cell of world.cells.values()) {
+      const loops = cell.passages.some((p) => p.to.cell === cell.id && wraps(p.transform, cell))
+      if (!loops) continue
+      add_(
+        `${cell.id} · une boucle verticale a une brume égale`,
+        cell.evenFog === true,
+        cell.evenFog === true ? 'sans brume basse' : 'la brume s’épaissit vers le bas',
+      )
+      add_(
+        `${cell.id} · une boucle verticale n’a pas de lampe`,
+        cell.lighting.lights.length === 0,
+        `${cell.lighting.lights.length} lampe(s) ponctuelle(s)`,
       )
     }
   }

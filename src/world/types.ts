@@ -203,6 +203,17 @@ export interface Cell {
    * cette limite ne se lit pas comme un mur.
    */
   fog?: number
+  /**
+   * Une brume **égale partout**, sans épaississement vers le bas.
+   *
+   * Ailleurs, une demi-densité de plus au ras du sol et une demi-densité de moins au plafond
+   * donnent de la profondeur sans rien ajouter à la géométrie : une salle a un sol, et l'air
+   * y est plus épais. Mais une salle dont le plancher est recollé à son plafond n'a ni bas ni
+   * haut. Le dégradé y pose une frontière horizontale franche de moitié en travers du vide,
+   * qu'on prend pour une ombre, et qui reste à la même distance du visiteur à chaque tour de
+   * chute — de sorte qu'elle a l'air de le suivre.
+   */
+  evenFog?: boolean
 
   /**
    * Couleur du brouillard propre à la cellule, si elle en demande une.
