@@ -157,6 +157,14 @@ export function presets(): Preset[] {
       pos: marks.facesPos,
       forward: marks.facesForward,
     },
+    // L'escalier de Penrose, vu du palier bas. Ce point de vue teste que la volée se lise
+    // comme un escalier, et que le raccord ne se signale nulle part dans l'image.
+    {
+      name: 'L’escalier sans fin',
+      cell: marks.stairCell,
+      pos: marks.stairPos,
+      forward: marks.stairForward,
+    },
   ]
   return cached
 }

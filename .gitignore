@@ -7,5 +7,5 @@ dist/
 # Sorties des sondes de diagnostic, régénérables à la demande.
 shots/probe-*.png
 
-# Atelier de mise au point, local et régénérable — voir la note dans le README.
-tools/
+# L'atelier est versionné — voir tools/README.md — mais pas sa compilation.
+tools/.build/

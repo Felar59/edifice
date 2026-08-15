@@ -9,6 +9,8 @@
 
 import type { F32 } from '../f32'
 import { frameAt, toWorld, type Twist } from './twist'
+import type { Spiral } from './types'
+import { onSquare, stepAngle, stepHeight } from './spiral'
 import { add, cross, len, normalize, scale, sub, type Vec3 } from '../math/vec3'
 
 /** position (3) · normale (3) · uv (2) · couleur (3) */
@@ -290,6 +292,120 @@ export function buildRoom(
 }
 
 
+/**
+ * Un quadrilatère quelconque, donné dans l'ordre a → b → c → d.
+ *
+ * `pushWall` ne sait poser que des parallélogrammes, ce qui a suffi tant que le musée
+ * n'était fait que de boîtes. Les marches d'un escalier tournant sont des trapèzes.
+ */
+export function pushQuad(
+  out: number[],
+  a: Vec3,
+  b: Vec3,
+  c: Vec3,
+  d: Vec3,
+  colour: Color,
+  uvs: [number, number][],
+): void {
+  const n = normalize(cross(sub(b, a), sub(d, a)))
+  const [r, g, bl] = colour
+  const push = (p: Vec3, uv: [number, number]): void => {
+    out.push(p.x, p.y, p.z, n.x, n.y, n.z, uv[0], uv[1], r, g, bl)
+  }
+
+  push(a, uvs[0]!); push(b, uvs[1]!); push(c, uvs[2]!)
+  push(a, uvs[0]!); push(c, uvs[2]!); push(d, uvs[3]!)
+}
+
+/**
+ * Le ruban de marches d'un escalier tournant, et le dessous du ruban.
+ *
+ * Le dessous n'est pas une politesse : sans lui, le tri des faces arrière laisse voir au
+ * travers de la volée dès qu'on lève les yeux, et l'on aperçoit le vide qu'elle est censée
+ * fermer.
+ *
+ * Une marche par quartier, une contremarche à chaque limite. Le nombre de marches étant un
+ * multiple de huit, aucune ne chevauche un angle du pilier : chaque quartier reste un
+ * trapèze plan.
+ */
+export function pushSpiral(
+  out: number[],
+  spiral: Spiral,
+  colours: { tread: Color; riser: Color; under: Color; ceiling: Color },
+): void {
+  const { centre, inner, outer, steps } = spiral
+  const mid = (inner + outer) / 2
+  const first = Math.round(spiral.from * steps)
+  const last = Math.round((spiral.from + spiral.turns) * steps)
+
+  for (let i = first; i < last; i++) {
+    const a0 = stepAngle(spiral, i)
+    const a1 = stepAngle(spiral, i + 1)
+    const y = stepHeight(spiral, i + 1)
+    const below = stepHeight(spiral, i)
+
+    const in0 = onSquare(centre, inner, a0, y)
+    const out0 = onSquare(centre, outer, a0, y)
+    const in1 = onSquare(centre, inner, a1, y)
+    const out1 = onSquare(centre, outer, a1, y)
+
+    // Les coordonnées de texture suivent l'escalier — longueur développée au rayon moyen
+    // en abscisse, distance au pilier en ordonnée — pour que le quadrillage tourne avec
+    // lui au lieu de glisser dessus.
+    const u0 = mid * a0
+    const u1 = mid * a1
+    const uv = (u: number, v: number): [number, number] => [u, v]
+
+    // Le dessus, normale vers le haut : a → b → c → d avec (b−a) × (d−a) = +Y.
+    pushQuad(out, in0, in1, out1, out0, colours.tread, [
+      uv(u0, inner), uv(u1, inner), uv(u1, outer), uv(u0, outer),
+    ])
+    // Le dessous, même quadrilatère pris à l'envers.
+    pushQuad(out, in0, out0, out1, in1, colours.under, [
+      uv(u0, inner), uv(u0, outer), uv(u1, outer), uv(u1, inner),
+    ])
+
+    // La contremarche, à la limite basse du quartier : elle regarde vers la montée. Pas
+    // au tout premier quartier : la cloison du bas occupe déjà ce plan, et deux surfaces
+    // dans le même plan se disputeraient les pixels.
+    if (i > first) {
+      pushQuad(out, { ...in0, y: below }, in0, out0, { ...out0, y: below }, colours.riser, [
+        uv(inner, below), uv(inner, y), uv(outer, y), uv(outer, below),
+      ])
+    }
+
+    // **Le plafond est le même ruban, à hauteur d'homme au-dessus et retourné.** C'est ce
+    // qui donne au couloir une section constante, donc ce qui empêche le raccord de se
+    // trahir par un plafond qui s'éloigne d'un tour.
+    const h = spiral.headroom
+    const cin0 = { ...in0, y: y + h }
+    const cout0 = { ...out0, y: y + h }
+    const cin1 = { ...in1, y: y + h }
+    const cout1 = { ...out1, y: y + h }
+    pushQuad(out, cin0, cout0, cout1, cin1, colours.ceiling, [
+      uv(u0, inner), uv(u0, outer), uv(u1, outer), uv(u1, inner),
+    ])
+    // Et la contremarche du plafond, **dessinée des deux côtés**.
+    //
+    // Ce n'est pas une négligence de tri de faces mais une nécessité. Celle du sol n'est
+    // jamais vue que d'en dessous : par-dessus, le nez de la marche la masque. Celle du
+    // plafond, elle, est exposée dans les deux sens — on la voit de face en montant, et de
+    // dos en se retournant. Sans son revers, on regardait **entre** les marches du plafond
+    // et l'on apercevait le mur au travers : le plafond en gradins semblait fait de dalles
+    // flottantes.
+    if (i > first) {
+      const lowIn = { ...cin0, y: below + h }
+      const lowOut = { ...cout0, y: below + h }
+      pushQuad(out, lowIn, cin0, cout0, lowOut, colours.ceiling, [
+        uv(inner, below), uv(inner, y), uv(outer, y), uv(outer, below),
+      ])
+      pushQuad(out, lowIn, lowOut, cout0, cin0, colours.ceiling, [
+        uv(inner, below), uv(outer, below), uv(outer, y), uv(inner, y),
+      ])
+    }
+  }
+}
+
 /** Les faces d'un bloc, nommées par leur position et non par leur normale. */
 export type Face = 'north' | 'south' | 'west' | 'east'
 
@@ -309,7 +425,8 @@ export function pushBlock(
   out: number[],
   min: Vec3,
   max: Vec3,
-  colours: { side: Color; top: Color },
+  /** Sans `top`, le dessus n'est pas dessiné : c'est le cas d'un bloc qui touche le plafond. */
+  colours: { side: Color; top?: Color },
   pierced?: { face: Face; hole: Hole },
 ): void {
   const dx = max.x - min.x
@@ -347,13 +464,17 @@ export function pushBlock(
       up: { x: 0, y: dy, z: 0 },
       color: colours.side,
     },
-    {
-      face: 'top', // y = max.y, normale +Y
-      origin: { x: min.x, y: max.y, z: max.z },
-      right: { x: dx, y: 0, z: 0 },
-      up: { x: 0, y: 0, z: -dz },
-      color: colours.top,
-    },
+    ...(colours.top
+      ? [
+          {
+            face: 'top' as const, // y = max.y, normale +Y
+            origin: { x: min.x, y: max.y, z: max.z },
+            right: { x: dx, y: 0, z: 0 },
+            up: { x: 0, y: 0, z: -dz },
+            color: colours.top,
+          },
+        ]
+      : []),
   ]
 
   for (const f of faces) {

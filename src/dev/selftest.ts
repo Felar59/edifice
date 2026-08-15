@@ -19,6 +19,7 @@ import { Projectiles } from '../player/projectiles'
 import { cameraToWorld } from '../render/camera'
 import { FLOATS_PER_VERTEX } from '../world/geometry'
 import { advance, resolveAgainstCell } from '../world/motion'
+import { heightAtTurn, stepHeight } from '../world/spiral'
 import { angleAt, frameAt, toLocal } from '../world/twist'
 import { getLandmarks, HUB } from '../world/world'
 import type { World } from '../world/types'
@@ -102,7 +103,12 @@ export function runSelfTest(world: World): Check[] {
       const back = world.cells
         .get(passage.to.cell)
         ?.passages.find((p) => p.to.cell === passage.from.cell && p.from === passage.to)
-      if (!back) {
+      if (passage.oneWay) {
+        // **Un aller sans retour doit être déclaré, jamais découvert.** L'escalier de
+        // Penrose en a un, et c'est ce qui le rend impossible : on le monte indéfiniment,
+        // on ne le descend pas indéfiniment. Ailleurs, une jumelle manquante est un oubli.
+        add_(`${label} · aller sans retour, et déclaré tel`, back === undefined, back ? 'une jumelle existe pourtant' : 'sans jumelle, comme annoncé')
+      } else if (!back) {
         add_(`${label} · couture jumelle`, false, 'introuvable')
       } else {
         const round = multiply(create(), back.transform, t)
@@ -819,7 +825,132 @@ export function runSelfTest(world: World): Check[] {
     }
   }
 
-  // 13. Aucune surface ne doit en recouvrir une autre.
+  // 13. L'escalier de Penrose.
+  //
+  //    **Un tour rend exactement la montée.** C'est l'égalité dont tout dépend : la
+  //    couture translate de `rise`, et si le profil ne montait pas exactement de cela sur
+  //    un tour, la marche d'après le raccord tomberait à côté de celle d'avant. On le
+  //    vérifie sur le profil, paliers compris — c'est précisément ce qu'un palier pourrait
+  //    casser sans qu'on s'en aperçoive.
+  //
+  //    **Le raccord ne se voit pas.** La rampe juste avant, moins un tour, doit valoir la
+  //    rampe juste après. Sinon le corps monte ou descend d'un coup en le franchissant.
+  //
+  //    **Monter est sans fin.** On tient la touche d'avance en suivant la volée, et l'on
+  //    doit repasser le raccord encore et encore, en revenant chaque fois au pied.
+  //
+  //    **Descendre ne boucle pas.** Le même trajet en sens inverse ne doit franchir aucune
+  //    couture : on arrive au pied des marches, contre la cloison. C'est l'asymétrie qui
+  //    fait l'escalier impossible, et elle tient à une couture sans jumelle — donc à
+  //    quelque chose de solide qui s'oppose à la descente. Sans la cloison, on traversait
+  //    comme un fantôme et l'on ressortait en haut.
+  //
+  //    **La descente mène ailleurs.** Depuis le pied, la porte du pilier donne sur la
+  //    salle basse.
+  {
+    const stair = [...world.cells.values()].find((c) => c.spiral)
+    if (!stair?.spiral) {
+      add_('penrose · l’escalier existe', false, 'aucune cellule à escalier tournant')
+    } else {
+      const spiral = stair.spiral
+      const gained = stepHeight(spiral, spiral.steps) - stepHeight(spiral, 0)
+      add_(
+        'penrose · un tour rend exactement la montée',
+        Math.abs(gained - spiral.rise) < 1e-9,
+        `${gained.toFixed(6)} m pour ${spiral.rise} annoncés,` +
+          ` sur ${spiral.steps} marches dont ${spiral.landings.reduce((n, l) => n + l.count, 0)} de palier`,
+      )
+
+      // **Le profil est périodique d'un tour.** C'est ce qui rend le raccord invisible :
+      // la couture translate de `rise`, et la volée d'après retombe exactement sur celle
+      // d'avant. On l'éprouve en une trentaine de points plutôt qu'aux seules extrémités,
+      // parce qu'un palier mal placé casserait l'égalité au milieu sans toucher aux bouts.
+      let worstPeriod = 0
+      for (let i = 0; i <= 32; i++) {
+        const t = i / 32
+        worstPeriod = Math.max(
+          worstPeriod,
+          Math.abs(heightAtTurn(spiral, t + 1) - heightAtTurn(spiral, t) - spiral.rise),
+        )
+      }
+      add_(
+        'penrose · le profil se répète exactement d’un tour',
+        worstPeriod < 1e-9,
+        `écart maximal ${fmt(worstPeriod)} m sur trente-deux points du tour`,
+      )
+
+      // Et le plafond suit, à distance constante : sans quoi on le sent s'éloigner d'un
+      // tour au passage du raccord, ce qui trahit la boucle aussi sûrement qu'un décrochement.
+      add_(
+        'penrose · le plafond suit les marches',
+        spiral.headroom > 2 && spiral.headroom < spiral.rise,
+        `${spiral.headroom.toFixed(2)} m de hauteur libre, partout la même`,
+      )
+
+      /** Suit la volée pendant `seconds`, dans le sens donné. */
+      const follow = (dir: 1 | -1, seconds: number) => {
+        const door = stair.passages[0]!.from
+        const walker = new Player()
+        walker.goTo(
+          {
+            name: 'penrose',
+            cell: stair.id,
+            pos: { ...door.center, y: door.center.y - 1.1 + PROBE_BODY.eyeHeight, z: door.center.z + 2.2 },
+            forward: { x: 1, y: 0, z: 0 },
+          },
+          world,
+        )
+        let lowest = Infinity
+        let highest = -Infinity
+        for (let i = 0; i < seconds * 60 && walker.cell === stair.id; i++) {
+          const rx = walker.pos.x - spiral.centre.x
+          const rz = walker.pos.z - spiral.centre.z
+          walker.face({ x: -rz * dir, y: 0, z: rx * dir })
+          walker.update(1 / 60, world, new Set(['KeyW']))
+          lowest = Math.min(lowest, walker.pos.y)
+          highest = Math.max(highest, walker.pos.y)
+        }
+        return { walker, lowest, highest }
+      }
+
+      const up = follow(1, 60)
+      add_(
+        'penrose · monter est sans fin',
+        up.walker.crossings >= 3 && up.highest - up.lowest > spiral.rise * 0.8,
+        `${up.walker.crossings} raccord(s) en une minute, entre ${up.lowest.toFixed(1)} et ${up.highest.toFixed(1)} m`,
+      )
+
+      const down = follow(-1, 30)
+      add_(
+        'penrose · descendre ne boucle pas',
+        down.walker.crossings === 0 && down.walker.cell === stair.id,
+        `${down.walker.crossings} couture(s) franchie(s), arrêté à ${down.lowest.toFixed(1)} m dans ${down.walker.cell}`,
+      )
+
+      // Et du pied des marches, la porte du pilier mène ailleurs.
+      const exit = stair.passages.find((p) => p.to.cell !== stair.id && p.to.cell !== HUB)
+      if (!exit) {
+        add_('penrose · la descente mène ailleurs', false, 'aucune porte vers une autre salle')
+      } else {
+        const leaver = down.walker
+        for (let i = 0; i < 600 && leaver.cell === stair.id; i++) {
+          leaver.face({
+            x: exit.from.center.x - leaver.pos.x,
+            y: 0,
+            z: exit.from.center.z - leaver.pos.z,
+          })
+          leaver.update(1 / 60, world, new Set(['KeyW']))
+        }
+        add_(
+          'penrose · la descente mène ailleurs',
+          leaver.cell === exit.to.cell,
+          `arrivé dans ${leaver.cell}, attendu ${exit.to.cell}`,
+        )
+      }
+    }
+  }
+
+  // 14. Aucune surface ne doit en recouvrir une autre.
   //
   //    Deux quads dans le même plan, qui partagent des pixels, se départagent au dernier
   //    bit de la profondeur interpolée — différemment d'un pixel à l'autre et d'une image
@@ -842,9 +973,37 @@ export function runSelfTest(world: World): Check[] {
     let pairs = 0
     let worst = ''
 
+    /** Deux polygones convexes du plan se recouvrent-ils ? Par axes séparateurs. */
+    const overlap = (p: number[][], q: number[][]): boolean => {
+      for (const poly of [p, q]) {
+        for (let i = 0; i < poly.length; i++) {
+          const a = poly[i]!
+          const b = poly[(i + 1) % poly.length]!
+          const nx = -(b[1]! - a[1]!)
+          const ny = b[0]! - a[0]!
+          const span = (r: number[][]): [number, number] => {
+            let lo = Infinity
+            let hi = -Infinity
+            for (const s of r) {
+              const d = s[0]! * nx + s[1]! * ny
+              lo = Math.min(lo, d)
+              hi = Math.max(hi, d)
+            }
+            return [lo, hi]
+          }
+          const [alo, ahi] = span(p)
+          const [blo, bhi] = span(q)
+          // Une marge, pour que deux quads qui se touchent par une arête ne comptent pas.
+          const margin = 1e-3 * Math.hypot(nx, ny)
+          if (ahi < blo + margin || bhi < alo + margin) return false
+        }
+      }
+      return true
+    }
+
     for (const cell of world.cells.values()) {
       // La géométrie est émise par quads de six sommets.
-      const quads: { axis: number; plane: number; min: number[]; max: number[] }[] = []
+      const quads: { axis: number; sign: number; plane: number; poly: number[][] }[] = []
       const v = cell.verts
       for (let q = 0; q + 6 * FLOATS_PER_VERTEX <= v.length; q += 6 * FLOATS_PER_VERTEX) {
         const n = [v[q + 3]!, v[q + 4]!, v[q + 5]!]
@@ -855,16 +1014,20 @@ export function runSelfTest(world: World): Check[] {
         // fausse, et c'est déjà vérifié ailleurs.
         if (Math.abs(n[axis]!) < 0.999) continue
 
-        const min = [Infinity, Infinity, Infinity]
-        const max = [-Infinity, -Infinity, -Infinity]
-        for (let i = 0; i < 6; i++) {
-          for (let k = 0; k < 3; k++) {
-            const c = v[q + i * FLOATS_PER_VERTEX + k]!
-            if (c < min[k]!) min[k] = c
-            if (c > max[k]!) max[k] = c
-          }
+        // Les deux axes du plan, et les quatre coins distincts des six sommets.
+        const flat = [0, 1, 2].filter((k) => k !== axis)
+        const seen = new Set<string>()
+        const poly: number[][] = []
+        for (const i of [0, 1, 2, 5]) {
+          const at = q + i * FLOATS_PER_VERTEX
+          const p = [v[at + flat[0]!]!, v[at + flat[1]!]!]
+          const key = `${p[0]!.toFixed(4)},${p[1]!.toFixed(4)}`
+          if (seen.has(key)) continue
+          seen.add(key)
+          poly.push(p)
         }
-        quads.push({ axis, plane: min[axis]!, min, max })
+        if (poly.length < 3) continue
+        quads.push({ axis, sign: Math.sign(n[axis]!), plane: v[q + axis]!, poly })
       }
 
       for (let i = 0; i < quads.length; i++) {
@@ -872,11 +1035,11 @@ export function runSelfTest(world: World): Check[] {
           const a = quads[i]!
           const b = quads[j]!
           if (a.axis !== b.axis || Math.abs(a.plane - b.plane) > 1e-4) continue
-          // Se toucher par une arête ne coûte rien ; c'est partager une surface qui coûte.
-          const shared = [0, 1, 2]
-            .filter((k) => k !== a.axis)
-            .every((k) => Math.min(a.max[k]!, b.max[k]!) - Math.max(a.min[k]!, b.min[k]!) > 1e-3)
-          if (!shared) continue
+          // **Deux faces opposées dans le même plan ne se disputent rien** : à un pixel
+          // donné, le tri des faces arrière n'en garde qu'une. C'est le cas ordinaire du
+          // dessus et du dessous d'une marche, et le compter serait crier au loup.
+          if (a.sign !== b.sign) continue
+          if (!overlap(a.poly, b.poly)) continue
           pairs++
           if (!worst) worst = `${cell.id}, plan ${'xyz'[a.axis]}=${a.plane.toFixed(3)}`
         }
@@ -890,7 +1053,7 @@ export function runSelfTest(world: World): Check[] {
     )
   }
 
-  // 14. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
+  // 15. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
   const stray = v3(0, 1.65, 0)
   for (const cell of world.cells.values()) {
     const p = resolveAgainstCell(cell, stray, PROBE_BODY).pos

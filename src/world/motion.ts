@@ -15,6 +15,7 @@
 import { transformDir, transformPoint } from '../math/mat4'
 import { add, dot, len, scale, sub, type Vec3 } from '../math/vec3'
 import { frameAt, toLocal, toWorld, transport, transportAngle } from './twist'
+import { ceilingHeight, rampHeight } from './spiral'
 import type { Block, Cell, Mouth, Passage, World } from './types'
 
 /** Longueur maximale d'un sous-pas, en mètres. */
@@ -244,16 +245,27 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, body: Body): Resolved {
   const { radius } = body
 
   /**
-   * Une bouche percée dans un bloc n'est pas une porte de la pièce.
+   * Cette bouche perce-t-elle une **paroi de la pièce** ?
    *
    * La suite raisonne sur les quatre parois de la cellule et lève leur butée devant
-   * chaque ouverture. Une bouche posée sur un coffre au milieu de la salle a bien une
-   * normale horizontale, mais elle ne perce aucune paroi : la prendre pour une porte
-   * lèverait la butée du mur qui lui fait face, et l'on sortirait de la pièce par un mur
-   * plein en s'alignant sur un coffre situé quatre mètres avant.
+   * chaque ouverture. Or toutes les bouches ne sont pas des portes : celle d'un coffre
+   * posé au milieu de la salle, celle qui referme un escalier sur lui-même, ont bien une
+   * normale horizontale mais ne percent aucun mur. Les prendre pour des portes lèverait
+   * la butée de la paroi qui leur fait face, et l'on sortirait de la pièce par un mur
+   * plein en s'alignant sur un objet situé quatre mètres avant. C'est arrivé.
+   *
+   * Le critère est géométrique et ne se laisse pas oublier : une porte est **au bord**,
+   * au fond de l'embrasure qu'elle perce, donc hors de la boîte. Tout ce qui est au
+   * milieu n'en est pas une.
    */
-  const inABlock = (m: Mouth): boolean =>
-    cell.blocks !== undefined && cell.blocks.some((b) => b.door === m)
+  const onTheHull = (m: Mouth): boolean => {
+    const eps = 1e-3
+    if (m.normal.x > 0.5) return m.center.x <= cell.min.x + eps
+    if (m.normal.x < -0.5) return m.center.x >= cell.max.x - eps
+    if (m.normal.z > 0.5) return m.center.z <= cell.min.z + eps
+    if (m.normal.z < -0.5) return m.center.z >= cell.max.z - eps
+    return false
+  }
 
   // Le sol et le plafond **d'abord**, et c'est un ordre qui compte.
   //
@@ -266,8 +278,10 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, body: Body): Resolved {
   let floor = false
   let ceiling = false
 
-  const lowest = cell.min.y + body.eyeHeight
-  const highest = cell.max.y - body.headroom
+  const lowest = groundAt(cell, p) + body.eyeHeight
+  // Le plafond d'un escalier tournant suit ses marches : la hauteur libre est partout la
+  // même, sans quoi on sentirait le plafond s'éloigner d'un tour au passage du raccord.
+  const highest = (cell.spiral ? ceilingHeight(cell.spiral, p) : cell.max.y) - body.headroom
   if (y <= lowest) {
     y = lowest
     floor = true
@@ -295,7 +309,7 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, body: Body): Resolved {
 
   for (const passage of cell.passages) {
     const m = passage.from
-    if (inABlock(m)) continue
+    if (!onTheHull(m)) continue
     if (Math.abs(m.normal.x) > 0.5) {
       if (fits(m, p.z)) {
         if (m.normal.x > 0) clampMinX = false
@@ -341,7 +355,7 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, body: Body): Resolved {
     let smallestGap = Infinity
     for (const passage of cell.passages) {
       const m = passage.from
-      if (inABlock(m) || !onThisFace(m)) continue
+      if (!onTheHull(m) || !onThisFace(m)) continue
       const gap = Math.abs(current - lateralOf(m))
       if (gap < smallestGap) {
         smallestGap = gap
@@ -442,6 +456,18 @@ function fitsThroughBlockDoor(
   const bottom = door.center.y - door.halfHeight
   const top = door.center.y + door.halfHeight
   return feet >= bottom - 1e-4 && head <= top + 1e-4
+}
+
+/**
+ * La hauteur du sol sous un point — le fond de la boîte d'ordinaire, la rampe de
+ * l'escalier tournant quand la cellule en porte un.
+ *
+ * La rampe passe **au milieu** des marches dessinées : le corps flotte d'une demi-marche
+ * au plus, ce qui ne se voit pas puisqu'on ne voit pas ses pieds, et il marche continûment
+ * au lieu de monter par bonds à chaque nez de marche.
+ */
+export function groundAt(cell: Cell, p: Vec3): number {
+  return cell.spiral ? rampHeight(cell.spiral, p) : cell.min.y
 }
 
 /** L'axe du monde le plus proche d'une direction, et de quel côté. */

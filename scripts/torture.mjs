@@ -47,6 +47,8 @@ const VIEWS = [
   // La salle aux six sols : six teintes et la bordure d'accroche, qui est le mode d'emploi
   // du lieu. Si l'image ne les distingue pas, le visiteur ne les distinguera pas non plus.
   { file: '16-six-sols', label: 'La salle aux six sols', preset: 14 },
+  // L'escalier de Penrose. Le raccord est dans le champ : s'il se voyait, c'est ici.
+  { file: '17-escalier', label: 'L’escalier sans fin', preset: 15 },
 ]
 
 /**

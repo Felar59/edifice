@@ -10,10 +10,11 @@ portfolio. Ce dépôt-ci contient le moteur.
 
 **État : le premier moment signature tourne.** Une rotonde à huit portes, des portails
 qu'on n'arrive pas à prendre en défaut, un éclairage qui franchit les ouvertures, le
-saut et la chute. Puis trois tricheries géométriques : le **tunnel-vrille**, dont la
+saut et la chute. Puis quatre tricheries géométriques : le **tunnel-vrille**, dont la
 section pivote d'un quart de tour, gravité comprise ; le **volume impossible**, un coffre
-de deux mètres cinquante qui contient la salle de douze où il est posé ; et la **gravité
-par face**, un cube dont les six parois sont des sols. Quatre ailes attendent encore leur
+de deux mètres cinquante qui contient la salle de douze où il est posé ; la **gravité par
+face**, un cube dont les six parois sont des sols ; et l'**escalier de Penrose**, qu'on
+monte indéfiniment mais qu'on ne descend pas indéfiniment. Trois ailes attendent encore leur
 mécanique.
 
 ## Démarrer
@@ -40,10 +41,11 @@ Le monde n'est pas un espace unique mais un **graphe de cellules** reliées par 
 rigide : franchir cette ouverture, c'est changer de repère.
 
 Le plan du musée est une **rotonde** de 14 × 5 × 14, percée de huit portes, et sept
-**ailes** — une par tricherie géométrique : le tunnel-vrille, le reliquaire et la gravité
-par face, qui tournent ; l'escalier de Penrose, l'espace pavé, les murs mobiles et la
-perspective forcée, qui attendent. Les quatre dernières sont vides, et c'est voulu : on
-les remplira une par une, chacune avec son propre problème.
+**ailes** — une par tricherie géométrique : le tunnel-vrille, le reliquaire, la gravité par
+face et l'escalier de Penrose, qui tournent ; l'espace pavé, les murs mobiles et la
+perspective forcée, qui attendent. Les trois dernières sont vides, et c'est voulu : on les
+remplira une par une, chacune avec son propre problème. S'y ajoute la **salle basse**, où
+l'escalier descend, et qui n'a pas de porte sur la rotonde.
 
 Les ailes sont éloignées de **centaines de mètres** les unes des autres et de la
 rotonde. Aucune ne se touche. Ce n'est pas de l'économie de place mais une précaution
@@ -399,6 +401,64 @@ Les objets suivent la même règle sans code de plus : **un cube lancé tombe ve
 dont il est le plus près**. N'ayant pas de tête, il n'a pas de face choisie — et les objets
 s'accumulent donc sur les six faces.
 
+### L'escalier de Penrose
+
+Un ruban de marches qui tourne autour d'un pilier plein, et qu'on **monte indéfiniment**.
+On entre de plain-pied sur un palier d'angle, on monte, on passe derrière le pilier — et
+l'on retrouve sa propre porte d'entrée, à la hauteur exacte où on l'a quittée. On peut
+recommencer autant qu'on veut.
+
+Le tour de passe-passe tient en une phrase : **la hauteur ne dépend que de l'angle autour
+du pilier**. Un tour complet fait donc gagner exactement douze mètres, et une couture posée
+au raccord translate de cette hauteur. On la franchit sans rien sentir, parce qu'à l'endroit
+précis où elle se trouve, la marche suivante tombe là où l'œil l'attend — une marche plus
+haut que celle qu'on quitte, ni plus ni moins.
+
+Le pilier n'est pas un ornement : c'est lui qui empêche d'embrasser la volée du regard. Le
+dessin de Penrose, lui, est un carré vide, et il ne tient que d'un seul point de vue.
+
+**Le plafond suit les marches**, et c'est le point qui a coûté le plus à comprendre. Avec
+un plafond plat, on le sent se rapprocher à mesure qu'on monte, puis s'écarter d'un tour
+d'un seul coup au raccord : la couture ne se voit pas dans la géométrie, mais elle
+**s'entend dans le volume**, et c'est aussi net qu'un décrochement. En faisant du plafond
+un second ruban à trois mètres vingt au-dessus du premier, le couloir a partout la même
+section — et la bouche du raccord la couvre alors **entièrement**. Il n'y a plus rien à
+cacher.
+
+**Un palier à chaque angle du pilier.** On tourne sur du plat, comme dans un escalier réel,
+mais surtout : le sol d'un escalier tournant n'est de niveau que le long d'un rayon, or une
+porte est percée dans une paroi, donc en travers. Sans palier, le sol monterait de près d'un
+mètre sur la largeur de l'ouverture et l'on entrerait par le biais. Toutes les portes de
+l'escalier sont donc à un coin.
+
+**Descendre ne boucle pas**, et c'est là que l'escalier devient impossible. La couture du
+raccord **n'a pas de jumelle** : elle se franchit en montant, pas en descendant. Le
+recollement est *orienté*, ce qu'aucun espace ordinaire ne permet. Qui descend passe donc
+sous la boucle, dans un quart de tour de marches que celle-ci ne parcourt jamais, et y
+trouve la porte de la salle basse. **Celui qui monte ne la voit pas** — la couture le repose
+toujours au-dessus.
+
+Trois détails de fabrication méritent d'être notés.
+
+La collision ne suit pas les marches mais une **rampe** qui passe en leur milieu. Un sol en
+escalier ferait monter le corps par bonds à chaque nez franchi ; la rampe le fait monter
+continûment, au prix d'un flottement d'une demi-marche que personne ne peut voir, faute de
+voir ses pieds. En revanche la **bouche** du raccord, elle, est calée sur la marche dessinée
+et non sur la rampe : les deux diffèrent d'une demi-marche, et l'erreur laissait treize
+centimètres d'ouverture non couverte — une bande sombre en travers de la volée, exactement à
+l'endroit qui ne doit rien montrer.
+
+Les contremarches du plafond sont dessinées **des deux côtés**. Celle du sol n'est jamais vue
+que d'en dessous, le nez de la marche la masquant par-dessus ; celle du plafond est exposée
+dans les deux sens — de face en montant, de dos en se retournant. Sans son revers, on
+regardait entre les marches du plafond et l'on apercevait le mur au travers : le plafond
+semblait fait de dalles flottantes.
+
+Enfin, deux volées peuvent occuper le même secteur angulaire à des hauteurs différentes,
+puisque la géométrie déborde d'un quart de tour sous la boucle. La collision doit donc
+savoir **sur laquelle on se tient** : elles sont séparées de douze mètres pour un corps qui
+en fait deux, et le choix n'est jamais douteux.
+
 ### La verticalité
 
 On saute et on tombe. Gravité à dix-huit mètres par seconde carrée — près du double du
@@ -451,6 +511,11 @@ recherche de deux faces qui partagent un plan *et* des pixels. C'est la cause d'
 grésillement qu'on attribue toujours au rendu, jamais à la construction — et le seul cas
 que le musée ait connu était le seuil d'une embrasure posée en plein milieu d'une salle,
 là où le sol passait déjà.
+
+Ceux de l'escalier de Penrose portent sur ce qui rend la boucle invisible : **un tour rend
+exactement la montée** — égalité éprouvée en trente-deux points du profil, parce qu'un
+palier mal placé la casserait au milieu sans toucher aux bouts —, le plafond suit les
+marches, monter est sans fin, descendre ne boucle pas, et la descente mène ailleurs.
 
 Ceux de la salle aux six sols mesurent une chose et une seule à la fois, et le plus utile
 est le plus bête : **la salle a une sortie**. Il est né d'un défaut — la bande d'accroche
@@ -556,9 +621,15 @@ Par ordre d'arrivée prévue :
 
 ## L'atelier
 
-Le dossier `tools/` est un atelier de mise au point, **non versionné** et
-régénérable : des sondes qui servent à comprendre ce qui se passe quand quelque
-chose résiste, pas au projet livré. Il contient son propre `README.md`.
+Le dossier `tools/` est l'atelier de mise au point, et il est **versionné** : un seul point
+d'entrée, `node tools/lab.mjs <commande>`, et son mode d'emploi dans `tools/README.md`.
+
+La règle qui l'organise vaut d'être dite ici, parce qu'elle décide du temps qu'on passe :
+**Node d'abord, navigateur en dernier**. Le monde, le déplacement et la collision sont du
+TypeScript pur, donc un défaut de calcul — une couture mal appariée, une rampe qui saute, un
+corps qui dérive — se diagnostique en faisant marcher un visiteur dans Node et en lisant les
+nombres. Deux dixièmes de seconde. Seuls les défauts de l'**image** demandent le vrai rendu,
+donc un navigateur, donc trente secondes.
 
 En résumé de ce qui s'y trouve :
 

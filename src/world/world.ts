@@ -32,6 +32,7 @@ import {
   buildRoom,
   buildTwistedTube,
   pushBlock,
+  pushSpiral,
   pushTubeCap,
   pushWall,
   type Color,
@@ -40,8 +41,9 @@ import {
   type RoomPalette,
 } from './geometry'
 import { mouthRadiance, type CellLighting, type Colour } from './light'
+import { heightAtTurn, onSquare, stepHeight } from './spiral'
 import { frameAt, makeTwist, toWorld } from './twist'
-import type { Cell, Mouth, Passage, World } from './types'
+import type { Cell, Mouth, Passage, Spiral, World } from './types'
 
 const DOOR_HALF_W = 0.9
 const DOOR_HALF_H = 1.1
@@ -80,8 +82,16 @@ interface Box {
  * normale pointant vers l'intérieur de la pièce. Se tromper ici retourne l'image sans
  * que rien ne le signale, d'où la vérification à la fin de `buildWorld`.
  */
-function mouth(cell: string, id: string, box: Box, wall: Wall, lateral: number): Mouth {
-  const y = box.min.y + DOOR_HALF_H
+function mouth(
+  cell: string,
+  id: string,
+  box: Box,
+  wall: Wall,
+  lateral: number,
+  /** Hauteur du seuil, quand le sol n'est pas celui de la boîte — un palier d'escalier. */
+  sill?: number,
+): Mouth {
+  const y = (sill ?? box.min.y) + DOOR_HALF_H
   const common = {
     id,
     cell,
@@ -270,6 +280,136 @@ function tubeLighting(tint: Colour): CellLighting {
 }
 
 /**
+ * Les trois bouches de l'escalier, dont deux ne sont pas des portes.
+ *
+ * Le **raccord** est un plan invisible en travers de la volée, large comme elle et haut
+ * jusqu'au plafond : on le franchit en montant sans avoir rien vu. Sa jumelle est le même
+ * rectangle seize mètres plus bas, exactement d'un tour — ce qui fait tomber la marche
+ * suivante là où l'œil l'attend.
+ *
+ * La **descente** est une vraie porte, percée dans la cloison du raccord, au pied des
+ * marches. On ne la rencontre qu'en descendant, et elle donne sur la salle basse.
+ */
+function stairMouths(): { entry: Mouth; loopTop: Mouth; loopBottom: Mouth; down: Mouth } {
+  const { centre, inner, outer, headroom } = STAIR
+  const mid = (inner + outer) / 2
+
+  // Le raccord, plein ouest : un plan en travers de la volée, large comme elle et haut
+  // comme le couloir. Il en couvre donc toute la section — en montant, on ne voit rien
+  // d'autre que la suite de l'escalier.
+  //
+  // Sa hauteur est prise sur la **marche dessinée**, et non sur la rampe. Les deux
+  // diffèrent d'une demi-marche — la rampe passe au milieu des marches —, et caler la
+  // bouche sur la rampe laissait treize centimètres d'ouverture non couverte en bas et
+  // autant en haut : une bande sombre en travers de la volée, exactement à l'endroit qui
+  // ne doit rien montrer.
+  const loop = (turn: number, toward: 1 | -1): Mouth => ({
+    id: toward > 0 ? 'penrose.raccord' : 'penrose.reprise',
+    cell: PENROSE_WING,
+    center: {
+      x: centre.x - mid,
+      y: stepHeight(STAIR, turn * STAIR.steps) + headroom / 2,
+      z: centre.z,
+    },
+    right: { x: toward, y: 0, z: 0 },
+    up: { x: 0, y: 1, z: 0 },
+    normal: { x: 0, y: 0, z: toward },
+    halfWidth: (outer - inner) / 2,
+    halfHeight: headroom / 2,
+  })
+
+  return {
+    // L'entrée est à un **coin**, sur son palier : la seule façon d'avoir un seuil de
+    // niveau, puisque le sol ne l'est que le long d'un rayon.
+    entry: mouth(
+      PENROSE_WING,
+      'penrose.porte',
+      PENROSE_BOX,
+      'north',
+      centre.x + 5.4,
+      stepHeight(STAIR, STAIR.landings[1]!.at + 1),
+    ),
+    loopTop: loop(1, 1),
+    loopBottom: loop(0, -1),
+    // La descente ferme la section basse, un quart de tour sous la boucle. Son plan est
+    // **radial**, donc le sol y est de niveau et le seuil d'aplomb.
+    down: {
+      id: 'penrose.descente',
+      cell: PENROSE_WING,
+      center: {
+        x: centre.x + REVEAL,
+        y: heightAtTurn(STAIR, STAIR.from) + DOOR_HALF_H,
+        z: centre.z + mid,
+      },
+      right: { x: 0, y: 0, z: 1 },
+      up: { x: 0, y: 1, z: 0 },
+      normal: { x: -1, y: 0, z: 0 },
+      halfWidth: DOOR_HALF_W,
+      halfHeight: DOOR_HALF_H,
+    },
+  }
+}
+
+/** La cloison qui ferme le bas de la section basse, et où s'ouvre la descente. */
+function bottomWall(): Box {
+  return {
+    min: { x: STAIR.centre.x, y: PENROSE_BOX.min.y, z: STAIR.centre.z + STAIR.inner },
+    max: { x: STAIR.centre.x + REVEAL, y: heightAtTurn(STAIR, STAIR.from) + STAIR.headroom, z: STAIR.centre.z + STAIR.outer },
+  }
+}
+
+/** Le pilier : le cœur plein autour duquel l'escalier tourne. */
+function pillarBox(): Box {
+  return {
+    min: { x: STAIR.centre.x - STAIR.inner, y: PENROSE_BOX.min.y, z: STAIR.centre.z - STAIR.inner },
+    max: { x: STAIR.centre.x + STAIR.inner, y: PENROSE_BOX.max.y, z: STAIR.centre.z + STAIR.inner },
+  }
+}
+
+/**
+ * La cloison du bas : ce qui ferme la section basse, et où s'ouvre la descente.
+ *
+ * Son plan est radial, donc le sol y est de niveau : c'est la condition pour qu'une porte
+ * ne soit pas traversée en biais par les marches.
+ */
+function pushBottomWall(out: number[], tint: Colour, door: Hole): void {
+  const wall = bottomWall()
+  const floor = heightAtTurn(STAIR, STAIR.from)
+  pushWall(out, {
+    origin: { x: wall.min.x, y: floor, z: wall.max.z },
+    right: { x: 0, y: 0, z: wall.min.z - wall.max.z },
+    up: { x: 0, y: STAIR.headroom, z: 0 },
+    color: tinted(tint, 0.5),
+    holes: [door],
+  })
+}
+
+/**
+ * L'éclairage de l'escalier : six lampes réparties le long de la volée, contre le pilier.
+ *
+ * Contre le pilier et non au plafond, parce qu'il n'y a pas un sol mais un ruban qui monte
+ * sur seize mètres : une source haute laisserait le pied des marches dans le noir et
+ * écraserait le sommet. Réparties, elles donnent à chaque tronçon la même lumière — ce qui
+ * est aussi ce qu'il faut pour que le raccord ne se signale pas par un changement
+ * d'éclairage.
+ */
+function stairLighting(tint: Colour): CellLighting {
+  const lights = []
+  for (let i = 0; i < 6; i++) {
+    const turn = STAIR.from + (STAIR.turns * (i + 0.5)) / 6
+    const angle = STAIR.cut + 2 * Math.PI * turn
+    const at = onSquare(STAIR.centre, STAIR.inner + 0.6, angle, 0)
+    lights.push({
+      position: { ...at, y: heightAtTurn(STAIR, turn) + STAIR.headroom - 0.5 },
+      colour: tint,
+      intensity: 4,
+      radius: 7,
+    })
+  }
+  return { ambient: [tint[0] * 0.07, tint[1] * 0.07, tint[2] * 0.07], lights }
+}
+
+/**
  * L'éclairage d'une salle aux six sols : une seule lampe, au **centre géométrique**.
  *
  * C'est la seule position qui ne désigne aucune face comme le bas. Une lampe au plafond,
@@ -368,6 +508,79 @@ const VRILLE = makeTwist({
  * coffre, le mesurer du regard, et rien ne change.
  */
 /**
+ * **L'escalier de Penrose** — des marches sans fin autour d'un pilier.
+ *
+ * On y entre de plain-pied, sur un palier. On monte. Un quart de tour plus haut on passe
+ * derrière le pilier, puis on revient — et l'on retrouve **sa propre porte d'entrée**, à
+ * la hauteur exacte où on l'a quittée. On peut recommencer indéfiniment.
+ *
+ * Le tour de passe-passe tient en une ligne : la hauteur ne dépend que de l'angle autour
+ * du pilier, un tour complet fait donc gagner exactement `rise`, et une couture posée au
+ * raccord translate de cette hauteur. On la franchit sans rien sentir, parce qu'à
+ * l'endroit précis où elle se trouve, la marche suivante tombe exactement là où l'œil
+ * l'attend — une marche plus haut que celle qu'on quitte, ni plus ni moins.
+ *
+ * **Le pilier est indispensable.** Il n'est pas un ornement mais ce qui empêche de voir
+ * l'escalier d'un bout à l'autre : sans lui, on embrasserait la volée entière du regard
+ * et le raccord se verrait. Le dessin de Penrose, lui, est un carré vide, et il ne tient
+ * que parce qu'on le regarde d'un seul point de vue.
+ *
+ * **Le raccord est placé derrière le pilier**, à l'opposé de l'entrée. On ne le voit donc
+ * jamais en arrivant, et on ne l'aborde que par le haut, en montant.
+ *
+ * **Descendre ne boucle pas.** La couture n'a pas de jumelle : elle se franchit en
+ * montant, pas en descendant. Qui descend arrive au pied des marches, devant la cloison
+ * du raccord — et dans cette cloison il y a une porte, qui donne sur la salle basse. Monter
+ * est sans fin ; descendre mène quelque part.
+ */
+const PENROSE_WING = 'penrose'
+const PENROSE_BOX: Box = { min: { x: 300, y: 0, z: 300 }, max: { x: 314, y: 22, z: 314 } }
+
+/**
+ * Seize mètres par tour sur soixante-quatre marches, soit vingt-cinq centimètres de
+ * hauteur pour soixante-dix de giron au rayon moyen : une volée monumentale, à l'échelle
+ * du reste du musée.
+ *
+ * Le raccord est en `π`, c'est-à-dire plein ouest — dos au pilier depuis la porte, qui
+ * est au nord. Le palier de six marches est placé devant elle.
+ */
+const STAIR: Spiral = {
+  centre: { x: 307, y: 6, z: 307 },
+  inner: 3,
+  outer: 7,
+  rise: 12,
+  steps: 64,
+  cut: Math.PI,
+  // Trois mètres vingt de hauteur libre, partout la même : le plafond est un ruban qui
+  // suit les marches, et c'est ce qui empêche le raccord de se trahir.
+  headroom: 3.2,
+  // **Un palier par angle du pilier.** On tourne sur du plat, comme dans un escalier
+  // réel — et surtout, c'est là que les portes peuvent être percées : le sol n'est de
+  // niveau que le long d'un rayon, donc jamais en travers d'une paroi.
+  landings: [
+    { at: 6, count: 4 },
+    { at: 22, count: 4 },
+    { at: 38, count: 4 },
+    { at: 54, count: 4 },
+    // Le cinquième n'est pas à un angle : il est devant la porte du bas, au pied de la
+    // section basse. Les paliers étant périodiques, il apparaît aussi en pleine volée sur
+    // chaque tour — ce qui ne dérange personne, un escalier a le droit de souffler.
+    { at: 48, count: 4 },
+  ],
+  // **La boucle occupe [0, 1] ; le quart de tour en dessous n'est parcouru qu'une fois.**
+  // C'est là qu'est la porte de la salle basse : celui qui monte ne la voit jamais,
+  // puisque la couture le repose toujours au-dessus.
+  from: -0.25,
+  turns: 1.25,
+}
+
+
+/** La salle basse, où l'on aboutit en descendant. */
+const LOWER = 'salle-basse'
+const LOWER_BOX: Box = { min: { x: 900, y: 0, z: 900 }, max: { x: 924, y: 10, z: 924 } }
+const LOWER_TINT: Colour = [1, 0.72, 0.5]
+
+/**
  * **La salle aux six sols** — la gravité par face.
  *
  * Un cube de dix mètres dont chaque paroi est un sol. On y entre debout, on marche vers
@@ -459,8 +672,15 @@ function middleOf(box: Box, wall: Wall): number {
  * au lieu de la traverser. Les repères restent choisis pour que `right × up = normal`,
  * vérifié à la fin de `buildWorld`.
  */
-function blockMouth(cell: string, id: string, box: Box, wall: Wall, lateral: number): Mouth {
-  const y = box.min.y + DOOR_HALF_H
+function blockMouth(
+  cell: string,
+  id: string,
+  box: Box,
+  wall: Wall,
+  lateral: number,
+  sill?: number,
+): Mouth {
+  const y = (sill ?? box.min.y) + DOOR_HALF_H
   const common = {
     id,
     cell,
@@ -563,14 +783,14 @@ const WINGS: Wing[] = [
     purpose: 'la gravité par face : un cube dont les six faces seront habitables',
   },
   {
-    id: 'penrose',
-    box: { min: { x: 300, y: 0, z: 300 }, max: { x: 308, y: 14, z: 308 } },
-    wall: 'south',
-    lateral: 304,
+    id: PENROSE_WING,
+    box: PENROSE_BOX,
+    wall: 'north',
+    lateral: 307,
     tint: [1, 0.78, 0.42],
     hubWall: 'east',
     hubLateral: -3.5,
-    purpose: 'l’escalier de Penrose : quatre volées qui ramènent au départ, plus haut',
+    purpose: 'l’escalier de Penrose : des marches sans fin autour d’un pilier',
   },
   {
     id: 'pave',
@@ -648,6 +868,10 @@ export interface Landmarks {
   facesCell: string
   facesPos: Vec3
   facesForward: Vec3
+  /** Une pose sur l'escalier de Penrose, la volée montant devant soi. */
+  stairCell: string
+  stairPos: Vec3
+  stairForward: Vec3
   /** La liste des ailes et de ce qu'elles accueilleront, pour l'affichage. */
   wings: { id: string; purpose: string }[]
 }
@@ -675,6 +899,8 @@ export function buildWorld(): World {
   // La première de chaque aile est toujours celle qui donne sur la rotonde ; les
   // suivantes sont propres à l'aile. Le tunnel en a une seconde à son autre bout, et la
   // salle du reliquaire en a deux : celle du coffre et celle par où la nef ressort.
+  const stair = stairMouths()
+
   for (const wing of WINGS) {
     const twisted = wing.id === 'vrille'
     const reliquary = wing.id === RELIQUARY_WING
@@ -682,7 +908,9 @@ export function buildWorld(): World {
 
     const mouths = twisted
       ? [tubeMouth('vrille.porte', true), tubeMouth('vrille.retour', false)]
-      : [mouth(wing.id, `${wing.id}.porte`, wing.box, wing.wall, wing.lateral)]
+      : wing.id === PENROSE_WING
+        ? [stair.entry, stair.loopTop, stair.down]
+        : [mouth(wing.id, `${wing.id}.porte`, wing.box, wing.wall, wing.lateral)]
     if (chest) {
       mouths.push(
         blockMouth(wing.id, 'reliquaire.coffre', chest, RELIQUARY_FACE, middleOf(chest, RELIQUARY_FACE)),
@@ -702,7 +930,9 @@ export function buildWorld(): World {
         ? tubeLighting(wing.tint)
         : wing.id === GRAVITY_WING
           ? cubeLighting(wing.box, wing.tint, mouths)
-          : lightingFor(wing.box, wing.tint, mouths),
+          : wing.id === PENROSE_WING
+            ? stairLighting(wing.tint)
+            : lightingFor(wing.box, wing.tint, mouths),
       ...(chest ? { chest } : {}),
     })
     hubMouths.push({
@@ -765,6 +995,40 @@ export function buildWorld(): World {
   // Ce que cela donne : on entre dans une boîte de deux mètres cinquante et l'on ressort
   // par le mur du fond de la pièce où elle est posée. Et par la petite porte, on voit
   // cette même pièce, vue du fond : son sol, ses murs, et le coffre lui-même, de dos.
+  // --- L'escalier de Penrose et la salle basse -------------------------------
+  //
+  // Deux coutures, et la première est le cœur de l'affaire.
+  //
+  // **Le raccord n'a pas de jumelle.** On le franchit en montant — il rend alors seize
+  // mètres, soit un tour exact, et la marche suivante tombe là où l'œil l'attend. En
+  // descendant, il n'existe pas : on arrive au pied des marches, devant la cloison, et
+  // c'est la porte de la salle basse qu'on trouve. Monter est sans fin, descendre mène
+  // quelque part, et c'est cette asymétrie qui fait l'escalier impossible.
+  //
+  // **Une couture qui relie une cellule à elle-même ne transmet aucune lumière**, et le
+  // raccord en est une. La radiance d'une bouche sert à faire entrer l'éclairage de la
+  // pièce d'en face ; quand la pièce d'en face est la même, cet éclairage est déjà compté
+  // par ses propres lampes, et l'ajouter poserait une bande claire en travers de la volée.
+  const penroseWing = wingData.find((entry) => entry.wing.id === PENROSE_WING)!
+  const lowerMouth = mouth(LOWER, 'salle-basse.porte', LOWER_BOX, 'north', (LOWER_BOX.min.x + LOWER_BOX.max.x) / 2)
+  const lowerLighting = lightingFor(LOWER_BOX, LOWER_TINT, [lowerMouth])
+
+  const stairLoop: Passage = {
+    from: stair.loopTop,
+    to: stair.loopBottom,
+    transform: passageTransform(stair.loopTop, stair.loopBottom),
+    radiance: [0, 0, 0],
+    oneWay: true,
+  }
+  const [intoLower, outOfLower] = makePassages(
+    stair.down,
+    penroseWing.lighting,
+    lowerMouth,
+    lowerLighting,
+  )
+  wingPassages.get(PENROSE_WING)!.push(stairLoop, intoLower)
+  const lowerPassages: Passage[] = [outOfLower]
+
   const chestWing = wingData.find((entry) => entry.wing.id === RELIQUARY_WING)!
   const [intoChest, outOfChest] = makePassages(
     chestWing.mouths[1]!,
@@ -797,6 +1061,7 @@ export function buildWorld(): World {
 
   for (const entry of wingData) {
     const sixSided = entry.wing.id === GRAVITY_WING
+    const stairs = entry.wing.id === PENROSE_WING
     const extra: number[] = []
     for (const m of entry.mouths) {
       // **Une embrasure posée dans une pièce n'a pas de seuil à dessiner.**
@@ -812,7 +1077,22 @@ export function buildWorld(): World {
       // On ne dessine donc pas la nôtre. Le sol de la salle est déjà là, au même endroit,
       // et il traverse l'embrasure sans rupture.
       const inTheOpen = entry.chest !== undefined && m === entry.mouths[1]
+      // Le raccord de l'escalier n'est pas une porte mais un plan en travers de la volée :
+      // il n'a ni jambage ni linteau, sans quoi on verrait un cadre flotter au milieu des
+      // marches — et c'est précisément ce qu'il ne faut pas voir.
+      if (stairs && m === entry.mouths[1]) continue
       pushReveal(extra, m, tinted(entry.wing.tint, 0.55), !inTheOpen)
+    }
+
+    // L'escalier : le ruban de marches, le pilier, et la cloison du raccord.
+    if (stairs) {
+      pushSpiral(extra, STAIR, {
+        tread: tinted(entry.wing.tint, 0.62),
+        riser: tinted(entry.wing.tint, 0.44),
+        under: tinted(entry.wing.tint, 0.3),
+        ceiling: tinted(entry.wing.tint, 0.38),
+      })
+      pushBottomWall(extra, entry.wing.tint, holeOf(entry.mouths[2]!))
     }
 
     const twisted = entry.wing.id === 'vrille'
@@ -833,6 +1113,12 @@ export function buildWorld(): World {
         { side: [0.46, 0.42, 0.36], top: [0.54, 0.5, 0.43] },
         { face: RELIQUARY_FACE, hole: holeOf(entry.mouths[1]!) },
       )
+    }
+
+    // Le pilier de l'escalier, du sol au plafond. Sans chapeau : il touche le plafond, et
+    // deux surfaces dans le même plan se disputeraient les pixels.
+    if (stairs) {
+      pushBlock(extra, pillarBox().min, pillarBox().max, { side: tinted(entry.wing.tint, 0.34) })
     }
 
     cells.push({
@@ -870,6 +1156,37 @@ export function buildWorld(): World {
       ...(twisted ? { twist: VRILLE } : {}),
       ...(entry.chest ? { blocks: [{ ...entry.chest, door: entry.mouths[1]! }] } : {}),
       ...(sixSided ? { gravity: { grip: GRIP } } : {}),
+      ...(stairs
+        ? {
+            spiral: STAIR,
+            blocks: [
+              // Le pilier.
+              pillarBox(),
+              // La cloison du bas, qui ferme la section basse. Sa porte descend vers la
+              // salle basse — la seule façon de continuer, et c'est bien l'idée.
+              { ...bottomWall(), door: entry.mouths[2]! },
+            ],
+          }
+        : {}),
+    })
+  }
+
+  // --- La salle basse, au bout de la descente --------------------------------
+  {
+    const extra: number[] = []
+    pushReveal(extra, lowerMouth, tinted(LOWER_TINT, 0.55))
+    cells.push({
+      id: LOWER,
+      min: LOWER_BOX.min,
+      max: LOWER_BOX.max,
+      verts: concat(
+        buildRoom(LOWER_BOX.min, LOWER_BOX.max, paletteFor(LOWER_TINT), {
+          north: [holeOf(lowerMouth)],
+        }),
+        extra,
+      ),
+      passages: lowerPassages,
+      lighting: lowerLighting,
     })
   }
 
@@ -906,6 +1223,19 @@ export function buildWorld(): World {
     return { cell: wing.id, pos, forward: normalize(sub(target, pos)) }
   })()
 
+  const stairView = (() => {
+    // Contre la paroi extérieure plutôt qu'au milieu de la volée : de là, l'escalier fuit
+    // en tournant autour du pilier et l'on en voit une dizaine de marches. Au milieu, le
+    // pilier occupe la moitié du champ et il ne reste rien à voir.
+    const on = (turn: number, radius: number, above: number): Vec3 => {
+      const angle = STAIR.cut + 2 * Math.PI * turn
+      const at = onSquare(STAIR.centre, radius, angle, 0)
+      return { ...at, y: stepHeight(STAIR, Math.round(turn * STAIR.steps) + 1) + above }
+    }
+    const pos = on(0.02, STAIR.outer - 0.8, 1.65)
+    return { pos, forward: normalize(sub(on(0.2, STAIR.outer - 1.6, 1.2), pos)) }
+  })()
+
   const reference = hubPassages[0]!
   landmarks = {
     hub: HUB,
@@ -929,6 +1259,11 @@ export function buildWorld(): World {
     facesCell: facesView.cell,
     facesPos: facesView.pos,
     facesForward: facesView.forward,
+    // Sur le palier bas, la volée qui monte devant soi et le pilier à main droite : c'est
+    // la vue qui dit à la fois « un escalier » et « autour de quelque chose ».
+    stairCell: PENROSE_WING,
+    stairPos: stairView.pos,
+    stairForward: stairView.forward,
     wings: WINGS.map((w) => ({ id: w.id, purpose: w.purpose })),
   }
 

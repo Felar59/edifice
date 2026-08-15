@@ -34,6 +34,20 @@ export interface Mouth {
 export interface Passage {
   from: Mouth
   to: Mouth
+  /**
+   * Cette couture n'a **pas de jumelle**, et c'est voulu.
+   *
+   * Presque toutes se franchissent dans les deux sens : c'est la propriété qui fait qu'un
+   * pas en avant suivi d'un pas en arrière ramène au point de départ, et une jumelle
+   * manquante est d'ordinaire un oubli. L'escalier de Penrose est l'exception qui donne
+   * son sens à la règle : on le monte indéfiniment, on ne le descend pas indéfiniment. Le
+   * recollement y est **orienté**, ce qui est précisément ce qu'un escalier impossible a
+   * de plus impossible.
+   *
+   * Le drapeau existe pour que l'auto-test puisse continuer d'exiger une jumelle partout
+   * ailleurs : un aller sans retour doit être déclaré, jamais découvert.
+   */
+  oneWay?: true
   /** Transformation rigide de l'espace de `from.cell` vers celui de `to.cell`. */
   transform: Mat4
   /**
@@ -83,6 +97,70 @@ export interface FaceGravity {
   grip: number
 }
 
+/**
+ * **L'escalier de Penrose** : un ruban de marches qui tourne autour d'un pilier plein, et
+ * dont la hauteur ne dépend que de l'angle.
+ *
+ * La montée se referme sur elle-même par une couture posée au **raccord**, qui translate
+ * verticalement d'un tour exact. On la franchit sans rien sentir : de l'autre côté, les
+ * marches reprennent à la hauteur où l'œil les attendait. On monte donc indéfiniment.
+ *
+ * La hauteur étant fonction du seul angle, les marches sont des **quartiers rayonnants**,
+ * comme dans un escalier tournant réel : la volée est plus raide contre le pilier que
+ * contre le mur.
+ *
+ * La collision, elle, suit une **rampe** et non les marches. Personne ne voit ses pieds,
+ * et un sol en escalier ferait monter le corps par bonds de la hauteur d'une marche à
+ * chaque franchissement de nez. La rampe passe au milieu des marches : on flotte d'une
+ * demi-marche au plus, ce qui ne se voit pas, et l'on marche continûment.
+ */
+export interface Spiral {
+  /** Le centre du pilier, et la hauteur du bas des marches. */
+  centre: Vec3
+  /** Demi-largeur du pilier, puis de l'anneau : la volée court entre les deux. */
+  inner: number
+  outer: number
+  /** Hauteur gagnée en un tour complet. */
+  rise: number
+  /**
+   * Nombre de marches par tour. Multiple de huit, obligatoirement : c'est ce qui fait
+   * tomber une limite de marche sur chacun des quatre angles du pilier, faute de quoi une
+   * marche chevaucherait un coin et son quartier cesserait d'être plan.
+   */
+  steps: number
+  /** L'angle du raccord, où la couture referme la boucle. */
+  cut: number
+  /**
+   * Les paliers : des suites de marches de plain-pied.
+   *
+   * Il en faut un devant chaque porte. Le sol d'un escalier tournant n'est de niveau que
+   * le long d'un rayon, or une porte est percée dans une paroi, donc en travers : sans
+   * palier, le sol monterait de près d'un mètre sur la largeur de l'ouverture et l'on
+   * entrerait par le biais.
+   *
+   * Ils ne coûtent rien à la couture du raccord : ce qui doit valoir exactement `rise`,
+   * c'est le gain sur un tour entier, et il le vaut toujours — la montée se répartit
+   * simplement sur moins de marches.
+   */
+  landings: { at: number; count: number }[]
+  /**
+   * Hauteur libre sous le plafond, qui est lui-même un ruban suivant les marches.
+   *
+   * Un plafond plat trahit la boucle : on le sent se rapprocher en montant, puis s'écarter
+   * d'un tour d'un seul coup au raccord. En le faisant suivre les marches, le couloir a
+   * partout la même section et la couture le recolle exactement comme elle recolle le sol.
+   */
+  headroom: number
+  /**
+   * Le tronçon effectivement construit, en tours : de `from` à `from + turns`.
+   *
+   * La boucle occupe [0, 1] ; ce qui déborde en dessous n'est parcouru qu'une fois, en
+   * descendant. C'est là qu'on met la porte que celui qui monte ne doit jamais voir.
+   */
+  from: number
+  turns: number
+}
+
 export interface Cell {
   id: string
   /** Boîte englobante intérieure, utilisée pour la collision de l'étape 1. */
@@ -92,6 +170,8 @@ export interface Cell {
   blocks?: Block[]
   /** Si les six faces sont habitables, la façon d'en changer. */
   gravity?: FaceGravity
+  /** Si le sol est un escalier tournant, sa description. */
+  spiral?: Spiral
   /** Sommets entrelacés, voir `FLOATS_PER_VERTEX`. */
   verts: F32
   /** Les passages qui partent de cette cellule. */
