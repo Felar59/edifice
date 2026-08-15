@@ -210,16 +210,34 @@ fn turbulence(p : vec2<f32>) -> f32 {
 }
 
 /**
+ * **Le fondu d'un détail, selon sa taille et celle d'un pixel.**
+ *
+ * C'est la pièce qui manquait, et son absence se voyait partout : un motif dont le motif est
+ * plus fin qu'un pixel ne s'y moyenne pas, il y **saute**. Une image fixe le cache ; dès que
+ * la caméra bouge, la surface fourmille. C'est le grésillement qu'on attribue au rendu et
+ * qui vient en réalité de ce qu'on demande à une texture procédurale ce qu'un mip-map ferait
+ * pour une image : rendre gris ce qui est trop petit pour être vu.
+ *
+ * On le fait donc à la main. `size` est la période du détail en mètres, `blur` la taille du
+ * pixel au même endroit ; entre les deux, le détail s'efface. Le reste de la matière — les
+ * joints, les blocs, les grandes veines — n'en a pas besoin : il est plus grand qu'un pixel
+ * jusqu'à des distances où le brouillard s'en charge.
+ */
+fn fade(blur : f32, size : f32) -> f32 {
+  return 1.0 - smoothstep(size * 0.8, size * 3.0, blur);
+}
+
+/**
  * Le grain fin, qui s'efface avec la distance.
  *
  * Sans lui les surfaces planes ont l'air d'une image de synthèse de 1995 ; sans son
- * effacement, elles grésillent dès qu'un pixel couvre plus d'un centimètre, faute de
- * mip-map. On le fait donc disparaître exactement là où il commencerait à bouger.
+ * effacement, elles grésillent. Ses cases font un centimètre et demi — à trois millimètres,
+ * comme au premier essai, il fourmillait dès qu'on faisait deux pas en arrière.
  */
 fn grain(p : vec2<f32>, amount : f32, blur : f32) -> f32 {
-  let fade = 1.0 - smoothstep(0.004, 0.02, blur);
-  if (fade <= 0.0) { return 0.0; }
-  return (hash2(floor(p.x * 320.0), floor(p.y * 320.0)) - 0.5) * amount * fade;
+  let k = fade(blur, 0.015);
+  if (k <= 0.0) { return 0.0; }
+  return (hash2(floor(p.x * 64.0), floor(p.y * 64.0)) - 0.5) * amount * k;
 }
 
 /** Une rainure creuse, adoucie à la largeur d'un pixel. */
@@ -280,7 +298,8 @@ fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> 
     let seedX = b.x * 4.0 + plank;
     let seedY = b.y * 4.0 + select(1.0, 0.0, horiz);
     let tone = 0.80 + 0.40 * hash2(seedX, seedY * 31.0 + 7.0);
-    let fil = 0.86 + 0.28 * fbm(vec2<f32>(along * 9.0 + seedX * 3.7, across * 2.0 + seedY * 1.3));
+    let fil = 1.0 + (0.28 * fbm(vec2<f32>(along * 9.0 + seedX * 3.7, across * 2.0 + seedY * 1.3)) - 0.14)
+      * fade(max(blur.x, blur.y), 0.03);
 
     let joint = max(1.0 - smoothstep(0.0, 0.09, across), 1.0 - smoothstep(0.0, 0.09, 1.0 - across));
     let corner = min(min(inside.x, BLOCK - inside.x), min(inside.y, BLOCK - inside.y));
@@ -297,9 +316,9 @@ fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> 
   // 3 — Moquette dense : des fibres orientées, des taches lentes, aucun joint. C'est
   // l'absence de ligne qui la fait reconnaître sans qu'on y pense.
   if (m == 3) {
-    let fibers = fbm(vec2<f32>(uv.x * 60.0, uv.y * 22.0));
+    let fibers = (fbm(vec2<f32>(uv.x * 60.0, uv.y * 22.0)) - 0.5) * fade(max(blur.x, blur.y), 0.017);
     let blotch = fbm(uv * 4.0);
-    return base * (0.80 + 0.30 * fibers + 0.10 * blotch) + grain(uv, 0.05, max(blur.x, blur.y));
+    return base * (0.95 + 0.30 * fibers + 0.10 * blotch) + grain(uv, 0.05, max(blur.x, blur.y));
   }
 
   // 4 — Mur de galerie : plinthe, lambris à panneaux, chapeau, plâtre, cimaise.
@@ -327,7 +346,8 @@ fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> 
       let innerX = smoothstep(0.10, 0.145, cell) * (1.0 - smoothstep(0.855, 0.90, cell));
       let innerY = smoothstep(0.20, 0.26, h) * (1.0 - smoothstep(0.88, 0.94, h));
       let recess = innerX * innerY;
-      let vein = 0.88 + 0.24 * fbm(vec2<f32>(uv.x * 3.0 + 11.0, h * 26.0));
+      let vein = 1.0 + (0.24 * fbm(vec2<f32>(uv.x * 3.0 + 11.0, h * 26.0)) - 0.12)
+        * fade(max(blur.x, blur.y), 0.04);
       let bevel = 0.20 * (1.0 - smoothstep(0.20, 0.30, h)) - 0.18 * smoothstep(0.84, 0.94, h);
       return wood * vein * (mix(1.0, 0.80, recess) + bevel * recess) + fine;
     }
@@ -365,8 +385,8 @@ fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> 
     let fx = rx - col;
 
     let tone = 0.90 + 0.16 * hash2(col, row);
-    let n = fbm(vec2<f32>(uv.x * 8.0 + col * 3.0, uv.y * 16.0));
-    var k = tone * (0.92 + 0.16 * n);
+    let n = (fbm(vec2<f32>(uv.x * 8.0 + col * 3.0, uv.y * 16.0)) - 0.5) * fade(max(blur.x, blur.y), 0.06);
+    var k = tone * (1.0 + 0.16 * n);
 
     let jx = (0.5 - abs(fx - 0.5)) * 2.0;
     let jy = (0.5 - abs(fy - 0.5)) * 2.0;
@@ -397,7 +417,8 @@ fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> 
   if (m == 7) {
     let board = floor(uv.y / 0.25);
     let tone = 0.94 + 0.08 * hash2(board, 3.0);
-    let mottle = 0.92 + 0.14 * fbm(uv * 1.6) + 0.05 * fbm(uv * 9.0);
+    let mottle = 0.94 + 0.14 * fbm(uv * 1.6)
+      + (0.05 * fbm(uv * 9.0) - 0.025) * fade(max(blur.x, blur.y), 0.11);
     let seam = groove(uv.y, 0.25, 0.005, blur.y);
     let lip = 1.0 + 0.06 * (1.0 - smoothstep(0.0, 0.04, fract(uv.y / 0.25) * 0.25));
     let hole = fract(uv / 1.5) - vec2<f32>(0.5);
@@ -411,7 +432,8 @@ fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> 
     let CELL = vec2<f32>(2.0, 1.0);
     let panel = floor(uv / CELL);
     let tone = 0.84 + 0.24 * hash2(panel.x, panel.y);
-    let brushed = 0.94 + 0.14 * fbm(vec2<f32>(uv.x * 70.0, uv.y * 2.0));
+    let brushed = 1.0 + (0.14 * fbm(vec2<f32>(uv.x * 70.0, uv.y * 2.0)) - 0.07)
+      * fade(max(blur.x, blur.y), 0.014);
     let inner = abs(fract(uv / CELL) - vec2<f32>(0.5)) * 2.0;
     let seam = smoothstep(0.9, 0.985, max(inner.x, inner.y));
     let stud = fract(uv / vec2<f32>(0.25, 1.0)) - vec2<f32>(0.5);
@@ -438,6 +460,14 @@ fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> 
     let glow = 0.94 + 0.10 * (1.0 - abs(pane.x - 0.5) * 2.0) * (1.0 - abs(pane.y - 0.5) * 2.0);
     let frost = 0.96 + 0.07 * fbm(uv * 10.0);
     return mix(base * frost * glow, vec3<f32>(0.52, 0.51, 0.50), bar);
+  }
+
+  // 11 — Uni : aucun motif, aucun quadrillage. Ce n'est pas un aveu de paresse mais la
+  // matière qu'il faut aux petits objets — un chiffre de sept centimètres, une plaque, une
+  // toile. Leur donner un motif fait grésiller ce qu'on ne peut de toute façon pas voir : le
+  // détail y est plus petit qu'un pixel dès qu'on recule d'un pas.
+  if (m == 11) {
+    return base;
   }
 
   // 0 — Neutre : le quadrillage d'un mètre, qui est un outil de mise au point avant d'être un

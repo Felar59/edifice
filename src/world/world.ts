@@ -727,6 +727,8 @@ const MATTER = {
   tole: 8,
   platre: 9,
   verriere: 10,
+  /** Sans motif : ce qu'il faut aux petits objets, qu'aucune texture ne peut servir. */
+  uni: 11,
 } as const
 
 /**
@@ -829,7 +831,7 @@ const VIGNETTES: Vignette[] = [
     floor: made(PAINT.chene, MATTER.parquet),
     wall: made(PAINT.creme, MATTER.lambris),
     build: (out, c) => {
-      hang(out, c, 1.4, 1.5, 1.1, made([0.36, 0.42, 0.46], MATTER.platre))
+      hang(out, c, 1.4, 1.5, 1.1, made([0.36, 0.42, 0.46], MATTER.uni))
       pushCordon(out, { x: c.x + 0.6, y: c.y, z: c.z + 2.2 }, { x: c.x + 3.6, y: c.y, z: c.z + 2.2 }, 3, FURNITURE.laiton, IRON, FURNITURE.cordage)
     },
   },
@@ -838,9 +840,9 @@ const VIGNETTES: Vignette[] = [
     floor: made(PAINT.chene, MATTER.parquet),
     wall: made(PAINT.vert, MATTER.lambris),
     build: (out, c) => {
-      hang(out, c, 0.7, 1.2, 0.9, made([0.5, 0.44, 0.3], MATTER.platre))
-      hang(out, c, 2.4, 1.2, 0.9, made([0.34, 0.3, 0.36], MATTER.platre))
-      pushSconce(out, { x: c.x + 2.05, y: c.y + 2.35, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, IRON, made([1, 0.94, 0.8], MATTER.platre))
+      hang(out, c, 0.7, 1.2, 0.9, made([0.5, 0.44, 0.3], MATTER.uni))
+      hang(out, c, 2.4, 1.2, 0.9, made([0.34, 0.3, 0.36], MATTER.uni))
+      pushSconce(out, { x: c.x + 2.05, y: c.y + 2.35, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, IRON, made([1, 0.94, 0.8], MATTER.uni))
     },
   },
   {
@@ -866,8 +868,8 @@ const VIGNETTES: Vignette[] = [
     floor: made(PAINT.marbreClair, MATTER.marbre),
     wall: made(PAINT.bleu, MATTER.lambris),
     build: (out, c) => {
-      pushColumn(out, { x: c.x + 3.3, y: c.y, z: c.z + 1.1 }, 0.34, VIGNETTE_HEIGHT, made(PAINT.marbreClair, MATTER.marbre), made([0.56, 0.54, 0.5], MATTER.platre))
-      hang(out, c, 0.8, 1.4, 1.0, made([0.42, 0.3, 0.22], MATTER.platre))
+      pushColumn(out, { x: c.x + 3.3, y: c.y, z: c.z + 1.1 }, 0.34, VIGNETTE_HEIGHT, made(PAINT.marbreClair, MATTER.marbre), made([0.56, 0.54, 0.5], MATTER.uni))
+      hang(out, c, 0.8, 1.4, 1.0, made([0.42, 0.3, 0.22], MATTER.uni))
     },
   },
   {
@@ -875,7 +877,7 @@ const VIGNETTES: Vignette[] = [
     floor: made(PAINT.marbreSombre, MATTER.marbre),
     wall: made([0.66, 0.63, 0.58], MATTER.platre),
     build: (out, c) => {
-      hang(out, c, 1.5, 1.6, 1.2, made([0.5, 0.46, 0.4], MATTER.platre))
+      hang(out, c, 1.5, 1.6, 1.2, made([0.5, 0.46, 0.4], MATTER.uni))
       pushCordon(out, { x: c.x + 0.6, y: c.y, z: c.z + 2.0 }, { x: c.x + 3.6, y: c.y, z: c.z + 2.0 }, 3, FURNITURE.laiton, IRON, FURNITURE.cordage)
     },
   },
@@ -884,9 +886,9 @@ const VIGNETTES: Vignette[] = [
     floor: made(PAINT.tapisRouge, MATTER.moquette),
     wall: made(PAINT.rouge, MATTER.lambris),
     build: (out, c) => {
-      hang(out, c, 1.6, 1.3, 1.6, made([0.46, 0.42, 0.34], MATTER.platre))
-      pushSconce(out, { x: c.x + 0.7, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.platre))
-      pushSconce(out, { x: c.x + 3.5, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.platre))
+      hang(out, c, 1.6, 1.3, 1.6, made([0.46, 0.42, 0.34], MATTER.uni))
+      pushSconce(out, { x: c.x + 0.7, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.uni))
+      pushSconce(out, { x: c.x + 3.5, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.uni))
     },
   },
   {
@@ -894,7 +896,7 @@ const VIGNETTES: Vignette[] = [
     floor: made(PAINT.dalle, MATTER.pierre),
     wall: made(PAINT.taupe, MATTER.lambris),
     build: (out, c) => {
-      pushPendant(out, { x: c.x + 2.1, y: c.y + VIGNETTE_HEIGHT, z: c.z + 2.1 }, 0.9, IRON, made([1, 0.95, 0.85], MATTER.platre))
+      pushPendant(out, { x: c.x + 2.1, y: c.y + VIGNETTE_HEIGHT, z: c.z + 2.1 }, 0.9, IRON, made([1, 0.95, 0.85], MATTER.uni))
       pushBench(out, { x: c.x + 2.1, y: c.y, z: c.z + 3.2 }, 2.2, { x: 1, y: 0, z: 0 }, OAK, IRON)
     },
   },
@@ -903,9 +905,9 @@ const VIGNETTES: Vignette[] = [
     floor: made(PAINT.chene, MATTER.parquet),
     wall: made(PAINT.taupe, MATTER.lambris),
     build: (out, c) => {
-      hang(out, c, 0.6, 0.9, 0.7, made([0.44, 0.4, 0.3], MATTER.platre))
-      hang(out, c, 1.75, 0.9, 0.7, made([0.3, 0.36, 0.4], MATTER.platre))
-      hang(out, c, 2.9, 0.9, 0.7, made([0.4, 0.32, 0.34], MATTER.platre))
+      hang(out, c, 0.6, 0.9, 0.7, made([0.44, 0.4, 0.3], MATTER.uni))
+      hang(out, c, 1.75, 0.9, 0.7, made([0.3, 0.36, 0.4], MATTER.uni))
+      hang(out, c, 2.9, 0.9, 0.7, made([0.4, 0.32, 0.34], MATTER.uni))
     },
   },
   {
@@ -915,7 +917,7 @@ const VIGNETTES: Vignette[] = [
     build: (out, c) => {
       pushCordon(out, { x: c.x + 0.6, y: c.y, z: c.z + 2.4 }, { x: c.x + 3.6, y: c.y, z: c.z + 2.4 }, 3, FURNITURE.laiton, IRON, FURNITURE.cordage)
       pushPlant(out, { x: c.x + 3.4, y: c.y, z: c.z + 1.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 13)
-      hang(out, c, 1.1, 1.4, 1.0, made([0.38, 0.34, 0.44], MATTER.platre))
+      hang(out, c, 1.1, 1.4, 1.0, made([0.38, 0.34, 0.44], MATTER.uni))
     },
   },
   {
@@ -924,7 +926,7 @@ const VIGNETTES: Vignette[] = [
     wall: made(PAINT.pierreClaire, MATTER.pierre),
     build: (out, c) => {
       pushBench(out, { x: c.x + 2.1, y: c.y, z: c.z + 2.6 }, 2.4, { x: 1, y: 0, z: 0 }, OAK, IRON)
-      pushSconce(out, { x: c.x + 2.1, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, IRON, made([1, 0.94, 0.8], MATTER.platre))
+      pushSconce(out, { x: c.x + 2.1, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, IRON, made([1, 0.94, 0.8], MATTER.uni))
     },
   },
   {
@@ -932,54 +934,19 @@ const VIGNETTES: Vignette[] = [
     floor: made(PAINT.marbreClair, MATTER.marbre),
     wall: made(PAINT.pierreClaire, MATTER.pierre),
     build: (out, c) => {
-      pushColumn(out, { x: c.x + 1.1, y: c.y, z: c.z + 1.1 }, 0.34, VIGNETTE_HEIGHT, made(PAINT.marbreClair, MATTER.marbre), made([0.56, 0.54, 0.5], MATTER.platre))
-      pushColumn(out, { x: c.x + 3.3, y: c.y, z: c.z + 1.1 }, 0.34, VIGNETTE_HEIGHT, made(PAINT.marbreClair, MATTER.marbre), made([0.56, 0.54, 0.5], MATTER.platre))
+      pushColumn(out, { x: c.x + 1.1, y: c.y, z: c.z + 1.1 }, 0.34, VIGNETTE_HEIGHT, made(PAINT.marbreClair, MATTER.marbre), made([0.56, 0.54, 0.5], MATTER.uni))
+      pushColumn(out, { x: c.x + 3.3, y: c.y, z: c.z + 1.1 }, 0.34, VIGNETTE_HEIGHT, made(PAINT.marbreClair, MATTER.marbre), made([0.56, 0.54, 0.5], MATTER.uni))
       pushPlant(out, { x: c.x + 2.2, y: c.y, z: c.z + 3.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 7)
     },
-  },
-  {
-    about: 'béton banché et dalle — le silo',
-    floor: made([0.42, 0.43, 0.45], MATTER.beton),
-    wall: made([0.46, 0.47, 0.5], MATTER.beton),
-    build: (out, c) => {
-      pushBlock(
-        out,
-        { x: c.x + 1.2, y: c.y, z: c.z + 1.2 },
-        { x: c.x + 2.4, y: c.y + 2.2, z: c.z + 2.0 },
-        { side: made([0.38, 0.39, 0.42], MATTER.beton), top: made([0.44, 0.45, 0.48], MATTER.beton) },
-      )
-    },
-  },
-  {
-    about: 'tôle et dalle — l’atelier',
-    floor: made(PAINT.dalle, MATTER.pierre),
-    wall: made([0.44, 0.48, 0.46], MATTER.tole),
-    build: (out, c) => {
-      for (const [dx, dz, h] of [[1.2, 1.2, 0.9], [2.3, 1.5, 0.6]]) {
-        pushBlock(
-          out,
-          { x: c.x + dx, y: c.y, z: c.z + dz },
-          { x: c.x + dx + h, y: c.y + h, z: c.z + dz + h },
-          { side: made([0.45, 0.4, 0.3], MATTER.tole), top: made([0.5, 0.45, 0.34], MATTER.tole) },
-        )
-      }
-      pushPendant(out, { x: c.x + 2.6, y: c.y + VIGNETTE_HEIGHT, z: c.z + 2.4 }, 0.7, IRON, made([1, 0.95, 0.85], MATTER.platre))
-    },
-  },
-  {
-    about: 'plâtre nu — pour voir ce que vaut le vide',
-    floor: made([0.6, 0.59, 0.57], MATTER.platre),
-    wall: made([0.72, 0.71, 0.69], MATTER.platre),
-    build: () => {},
   },
   {
     about: 'marbre sombre et lambris bleu, cadre et colonne — la salle du soir',
     floor: made(PAINT.marbreSombre, MATTER.marbre),
     wall: made(PAINT.bleu, MATTER.lambris),
     build: (out, c) => {
-      hang(out, c, 1.2, 1.7, 1.2, made([0.5, 0.42, 0.28], MATTER.platre))
-      pushColumn(out, { x: c.x + 3.4, y: c.y, z: c.z + 3.0 }, 0.3, VIGNETTE_HEIGHT, made([0.3, 0.29, 0.3], MATTER.marbre), made([0.4, 0.39, 0.38], MATTER.platre))
-      pushSconce(out, { x: c.x + 3.2, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.platre))
+      hang(out, c, 1.2, 1.7, 1.2, made([0.5, 0.42, 0.28], MATTER.uni))
+      pushColumn(out, { x: c.x + 3.4, y: c.y, z: c.z + 3.0 }, 0.3, VIGNETTE_HEIGHT, made([0.3, 0.29, 0.3], MATTER.marbre), made([0.4, 0.39, 0.38], MATTER.uni))
+      pushSconce(out, { x: c.x + 3.2, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.uni))
     },
   },
 ]
@@ -1027,7 +994,7 @@ function pushVignette(out: number[], vignette: Vignette, corner: Vec3, number: n
     out,
     plate,
     { x: plate.x + 0.85, y: plate.y + 0.62, z: plate.z + 0.14 },
-    { side: made([0.1, 0.1, 0.11], MATTER.tole), top: made([0.14, 0.14, 0.15], MATTER.tole) },
+    { side: made([0.1, 0.1, 0.11], MATTER.uni), top: made([0.14, 0.14, 0.15], MATTER.uni) },
   )
   const label = String(number)
   const cell = 0.075
@@ -1037,7 +1004,7 @@ function pushVignette(out: number[], vignette: Vignette, corner: Vec3, number: n
     { x: cell, y: 0, z: 0 },
     { x: 0, y: cell, z: 0 },
     label,
-    made([0.85, 0.72, 0.3], MATTER.tole),
+    made([0.85, 0.72, 0.3], MATTER.uni),
   )
 }
 

@@ -812,6 +812,19 @@ surface, et la première version en tirait le ton du lambris — ce qui donnait 
 dans une salle verte. Il garde donc une teinte de chêne fixe, seulement mise au diapason de la
 clarté de la pièce : un salon sombre a un lambris sombre, mais il reste brun.
 
+**Un motif plus fin qu'un pixel ne s'y moyenne pas : il y saute.** Une image fixe le cache ;
+dès que la caméra bouge, la surface fourmille. C'est le grésillement qu'on attribue au rendu
+et qui vient de ce qu'on demande à une texture procédurale ce qu'un mip-map ferait pour une
+image — rendre gris ce qui est trop petit pour être vu. On le fait donc à la main : chaque
+détail fin déclare sa **taille en mètres**, et s'efface quand le pixel l'atteint. Le reste —
+joints, blocs, grandes veines — n'en a pas besoin, étant plus grand qu'un pixel jusqu'aux
+distances où le brouillard s'en charge.
+
+Le corollaire est qu'il faut une matière **unie**, sans motif ni quadrillage. Ce n'est pas un
+aveu de paresse : c'est ce qu'il faut aux petits objets — un chiffre de sept centimètres, une
+plaque, une toile de tableau — dont le moindre détail est plus petit qu'un pixel dès qu'on
+recule d'un pas.
+
 **Un cylindre n'a qu'une peau.** Vu de dessus, un pot dont la bouche n'est pas bouchée laisse
 voir à travers lui : le tri des faces arrière supprime sa paroi opposée, et il ne reste qu'un
 trou. Ce qui doit être fermé l'est donc par un disque — et un disque en éventail a son propre
