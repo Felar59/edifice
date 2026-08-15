@@ -833,6 +833,11 @@ piège, celui qui a coûté le plus de temps : **le quatrième coin d'un quadril
 le même point, elle vaut zéro. La surface existe, sa lumière est absurde, et le tri des faces
 ne sait plus de quel côté elle regarde. Le couvercle du pot était bien là, et invisible.
 
+**Les lampes éclairent.** Une applique dessinée n'est qu'un objet peint sur un mur : chaque
+luminaire des scènes déclare donc son foyer, et la salle le porte parmi ses sources. Leur verre
+échappe en outre à l'éclairage — une lampe **émet**, et la multiplier par la lumière de la
+pièce ferait une ampoule sombre dans une pièce sombre.
+
 **Le musée, lui, reste nu.** Les matières ne sont pas encore distribuées : on essaie d'abord,
 on range ensuite, et une salle habillée trop tôt fige un choix qu'on n'a pas fait.
 
