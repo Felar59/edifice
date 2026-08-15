@@ -10,9 +10,8 @@ portfolio. Ce dépôt-ci contient le moteur.
 
 **État : le premier moment signature tourne.** Une rotonde à huit portes, des portails
 qu'on n'arrive pas à prendre en défaut, un éclairage qui franchit les ouvertures, le
-saut et la chute — et le **tunnel-vrille**, un couloir droit et banal vu du seuil, dont
-la section pivote d'un quart de tour, gravité comprise, à mesure qu'on le parcourt. Six
-ailes attendent encore leur mécanique.
+saut et la chute — et le **tunnel-vrille**, dont la section pivote d'un quart de tour
+sur dix-huit mètres, gravité comprise. Six ailes attendent encore leur mécanique.
 
 ## Démarrer
 
@@ -50,7 +49,7 @@ pourrait passer inaperçue, masquée par une coïncidence de position. Ici, la m
 erreur envoie le visiteur dans le vide.
 
 Les deux extrémités du tunnel donnent **toutes deux** sur la rotonde. On entre par la
-porte nord, on parcourt les vingt-deux mètres, on ressort par la porte sud — et on se
+porte nord, on parcourt les dix-huit mètres, on ressort par la porte sud — et on se
 retrouve face à la porte nord. Le couloir n'a donc pas de fin, ce qui préserve le cas
 de récursion le plus dur du rendu de portails ; il valait mieux le garder sous les yeux
 en permanence.
@@ -220,53 +219,17 @@ tombe pas, on ne sent aucune transition — et au bout, en se retournant, la por
 d'entrée est **couchée sur le côté**. Vingt-deux mètres, un quart de tour, une section
 de quatre mètres quarante.
 
-**On ne voit jamais le couloir tourner.** Un tube construit vrillé une fois pour toutes
-se trahit depuis le seuil : on voit le sol partir en biais et devenir un mur, et l'on
-sait à quoi s'attendre avant d'avoir fait un pas. L'effet ne tient pas à la vrille mais
-au moment où on la découvre.
+**Les six premiers mètres sont parfaitement droits.** Depuis le seuil, le couloir se
+présente comme un couloir : droit, banal, rien à signaler. La vrille ne commence qu'une
+fois qu'on s'y est engagé, et en fondu — trois t carré moins deux t cube, dont la pente
+est nulle aux deux bouts. Elle arrive donc de nulle part, sans début perceptible. Une
+vrille répartie sur toute la longueur se verrait dès l'entrée, et l'on saurait à quoi
+s'attendre.
 
-Le tube n'est donc pas une forme figée : c'est une forme qui dépend de l'endroit où se
-trouve le visiteur. Derrière lui, la vrille est celle qu'il a parcourue. Autour de lui,
-elle s'éteint en trois mètres — ses parois glissent sous ses pieds, à la vitesse où il
-avance. Au loin devant, plus rien ne tourne du tout : le couloir file droit jusqu'à son
-autre bout. Et quand personne n'est dedans, il est droit d'un bout à l'autre.
-
-Ce n'est pas un décor qu'on redresse dans le dos du visiteur, c'est la même fonction
-évaluée à un autre endroit : la géométrie, les deux bouches, les quatre coutures qui y
-touchent et la collision obéissent toutes ensemble à un état de trois nombres. Rien dans
-le moteur ne voit deux tubes différents.
-
-Le fondu se fait **vers l'avant**, et c'est le détail qui décide de tout. Éteindre la
-vrille derrière soi donne un tunnel rigoureusement inerte : tout ce qui est dans le champ
-porte exactement l'angle qu'on porte soi-même, on y marche sans jamais rien voir bouger,
-et il faut se retourner pour s'apercevoir qu'il s'est passé quelque chose. En l'éteignant
-devant, le couloir lointain reste droit — sans courbure ni fuite de côté — mais **roulé**
-d'une quinzaine de degrés par rapport au marcheur, et ce roulis évolue à chaque pas.
-C'est tout ce qu'on lui donne à voir, et c'est assez.
-
-Trois propriétés font tenir le raccord, et elles se tiennent l'une l'autre. Sous les
-pieds du visiteur, l'angle est **exact** — sans quoi sa verticale et son sol cesseraient
-d'être d'équerre et il se cognerait à des murs invisibles. Le fondu est **progressif**,
-sa dérivée devenant la courbure de la paroi, et une dérivée qui saute est un pli qu'on
-voit. Enfin, aux deux bouts, l'angle est **exactement celui de la couture** : d'où un
-palier droit de six mètres à l'entrée et de trois à la sortie, tous deux plus longs que
-le fondu. La porte du fond a donc pris son quart de tour trois mètres avant qu'on
-l'atteigne — à l'instant du franchissement, la transformation est exactement celle qui a
-été construite, et rien ne bouge sous les pieds au pire moment.
-
-Le profil lui-même monte **en fondu** entre ses deux paliers — trois t carré moins deux t
-cube, dont la pente est nulle aux deux bouts. Un profil linéaire tournerait encore à
-pleine vitesse au moment de buter sur son angle final : la dérivée sauterait, ce qui
-laisserait un pli dans la géométrie et un à-coup dans la caméra.
-
-Le tunnel ayant deux bouches, qui donnent toutes deux sur la rotonde, le fondu se fait
-dans les deux sens : ce qui est « devant » se compte depuis la bouche par laquelle on est
-entré. Essayer l'autre porte n'apprend donc rien de plus. Reste un cas, et il est assumé :
-ressortir par le bout opposé remet le tube au repos d'un seul coup. Cela se produit à
-l'instant du franchissement, en tournant le dos au couloir — et comme la vrille est d'un
-quart de tour et la section carrée, le tube au repos et le tube vrillé ont exactement la
-**même** forme : seules les couleurs des quatre faces permutent. Il faudrait sortir à
-reculons, sans quitter la porte des yeux, pour s'en apercevoir.
+Cette pente nulle aux extrémités n'est pas qu'une affaire de mise en scène. Un profil
+linéaire tourne encore à pleine vitesse au moment où l'on borne l'angle en sortant du
+tube : la dérivée saute, ce qui laisse un pli dans la géométrie et un à-coup dans la
+caméra. En fondu, le bornage ne se voit pas, parce qu'il n'y a plus rien à borner.
 
 **Pourquoi une cellule spéciale, et pas trente cellules pivotées.** L'espace cousu sait
 déjà faire tourner un repère : c'est exactement ce que fait une couture. Découper le
@@ -350,16 +313,6 @@ infini sans dérive de la direction du regard ni sortie de cellule. Tous les éc
 mesurés sont actuellement nuls au bit près, ce qui est attendu : les
 transformations sont composées de zéros, de uns et de translations exactes.
 
-S'y ajoute, pour le tunnel-vrille, la famille d'invariants qu'appelle une géométrie qui
-dépend du visiteur. Que le couloir soit **droit** vu de la rotonde, l'angle vu étant nul
-au bit près sur toute sa longueur. Que le franchissement du seuil **ne déplace aucune
-paroi** — on mesure le déport des quatre arêtes du tube de part et d'autre de l'entrée,
-par les deux portes, et il doit être nul. C'est l'invariant qui a le plus de valeur,
-parce que c'est celui qu'on ne verrait pas venir : un tube dont la forme suit le visiteur
-peut tressaillir à l'instant précis où il arrive, c'est-à-dire à l'instant où il regarde.
-Qu'au-delà du fondu **plus une section ne tourne**, faute de quoi la vrille se lirait dans
-la profondeur du couloir. Et qu'une fois sorti, le tunnel soit **de nouveau droit**.
-
 S'y ajoute l'orthonormalité du repère de la caméra, vérifiée à toutes les
 inclinaisons. C'est l'invariant qui manquait, et son absence a laissé passer le
 défaut le plus visible du prototype.
@@ -441,9 +394,8 @@ Par ordre d'arrivée prévue :
 - **Ombres** — une lampe éclaire à travers une cloison. C'est le manque le plus
   visible de l'éclairage actuel, et le prochain morceau sérieux.
 - **Audio** — la spatialisation doit elle aussi traverser les coutures.
-- **La gravité par face**, l'escalier de Penrose, l'espace pavé, les murs mobiles, la
-  salle récursive, la perspective forcée — les six ailes encore vides. Toute la
-  géométrie tricheuse, qui est la raison d'être du projet.
+- **Le tunnel-vrille**, la gravité par face, les murs mobiles, l'espace pavé.
+  Toute la géométrie tricheuse, qui est la raison d'être du projet.
 - **Rust** — le moteur est en TypeScript. L'étape 1 était un problème de matrices
   et de passes GPU, et le pilotage de WebGPU vit de toute façon côté page :
   traverser la frontière WASM à chaque image n'aurait fait que ralentir la boucle
