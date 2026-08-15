@@ -729,6 +729,10 @@ const MATTER = {
   verriere: 10,
   /** Sans motif : ce qu'il faut aux petits objets, qu'aucune texture ne peut servir. */
   uni: 11,
+  /** Émissive : elle échappe à l'éclairage de la salle, puisqu'elle en est une source. */
+  lumiere: 12,
+  /** Le fil du bois, sans lames : celui d'un meuble, pas celui d'un sol. */
+  bois: 13,
 } as const
 
 /**
@@ -740,13 +744,13 @@ const MATTER = {
  * pas.
  */
 const FURNITURE = {
-  laiton: made([0.72, 0.56, 0.24], MATTER.tole),
-  fonte: made([0.16, 0.16, 0.17], MATTER.tole),
-  cordage: made([0.42, 0.09, 0.11], MATTER.moquette),
-  chene: made([0.36, 0.24, 0.15], MATTER.parquet),
-  terre: made([0.34, 0.2, 0.14], MATTER.pierre),
-  humus: made([0.12, 0.09, 0.07], MATTER.moquette),
-  feuille: made([0.16, 0.3, 0.14], MATTER.moquette),
+  laiton: made([0.72, 0.56, 0.24], MATTER.uni),
+  fonte: made([0.16, 0.16, 0.17], MATTER.uni),
+  cordage: made([0.42, 0.09, 0.11], MATTER.uni),
+  chene: made([0.36, 0.24, 0.15], MATTER.bois),
+  terre: made([0.34, 0.2, 0.14], MATTER.uni),
+  humus: made([0.12, 0.09, 0.07], MATTER.uni),
+  feuille: made([0.16, 0.3, 0.14], MATTER.uni),
 } as const
 
 /** Une couleur et sa matière. */
@@ -799,8 +803,14 @@ interface Vignette {
   about: string
   floor: Color
   wall: Color
-  /** Le mobilier, posé dans le repère du coin — x vers la droite, z vers l'avant. */
-  build: (out: number[], corner: Vec3, side: number) => void
+  /**
+   * Le mobilier, posé dans le repère du coin — x vers la droite, z vers l'avant.
+   *
+   * `lamps` recueille les foyers : une applique dessinée ne fait pas de lumière, c'est la
+   * cellule qui porte les siennes. On y pousse donc la position de chaque flamme, et la
+   * salle s'en sert pour éclairer — sans quoi une lampe est un objet peint sur un mur.
+   */
+  build: (out: number[], corner: Vec3, lamps: Vec3[]) => void
 }
 
 const VIGNETTE_SIDE = 4.4
@@ -820,7 +830,7 @@ function hang(out: number[], c: Vec3, x: number, width: number, height: number, 
     { x: 0, y: 1, z: 0 },
     width,
     height,
-    made([0.34, 0.24, 0.12], MATTER.parquet),
+    made([0.34, 0.24, 0.12], MATTER.bois),
     canvas,
   )
 }
@@ -831,7 +841,7 @@ const VIGNETTES: Vignette[] = [
     floor: made(PAINT.chene, MATTER.parquet),
     wall: made(PAINT.creme, MATTER.lambris),
     build: (out, c) => {
-      hang(out, c, 1.4, 1.5, 1.1, made([0.36, 0.42, 0.46], MATTER.uni))
+      hang(out, c, 1.4, 1.5, 1.1, made([0.52, 0.56, 0.58], MATTER.uni))
       pushCordon(out, { x: c.x + 0.6, y: c.y, z: c.z + 2.2 }, { x: c.x + 3.6, y: c.y, z: c.z + 2.2 }, 3, FURNITURE.laiton, IRON, FURNITURE.cordage)
     },
   },
@@ -839,10 +849,11 @@ const VIGNETTES: Vignette[] = [
     about: 'chêne et lambris vert, deux cadres et une applique',
     floor: made(PAINT.chene, MATTER.parquet),
     wall: made(PAINT.vert, MATTER.lambris),
-    build: (out, c) => {
-      hang(out, c, 0.7, 1.2, 0.9, made([0.5, 0.44, 0.3], MATTER.uni))
-      hang(out, c, 2.4, 1.2, 0.9, made([0.34, 0.3, 0.36], MATTER.uni))
-      pushSconce(out, { x: c.x + 2.05, y: c.y + 2.35, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, IRON, made([1, 0.94, 0.8], MATTER.uni))
+    build: (out, c, lamps) => {
+      hang(out, c, 0.7, 1.2, 0.9, made([0.66, 0.58, 0.42], MATTER.uni))
+      hang(out, c, 2.4, 1.2, 0.9, made([0.5, 0.46, 0.52], MATTER.uni))
+      pushSconce(out, { x: c.x + 2.05, y: c.y + 2.35, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, IRON, made([1, 0.94, 0.8], MATTER.lumiere))
+      lamps.push({ x: c.x + 2.05, y: c.y + 2.35 + 0.16, z: c.z + 0.06 + 0.26 })
     },
   },
   {
@@ -869,7 +880,7 @@ const VIGNETTES: Vignette[] = [
     wall: made(PAINT.bleu, MATTER.lambris),
     build: (out, c) => {
       pushColumn(out, { x: c.x + 3.3, y: c.y, z: c.z + 1.1 }, 0.34, VIGNETTE_HEIGHT, made(PAINT.marbreClair, MATTER.marbre), made([0.56, 0.54, 0.5], MATTER.uni))
-      hang(out, c, 0.8, 1.4, 1.0, made([0.42, 0.3, 0.22], MATTER.uni))
+      hang(out, c, 0.8, 1.4, 1.0, made([0.58, 0.44, 0.32], MATTER.uni))
     },
   },
   {
@@ -877,7 +888,7 @@ const VIGNETTES: Vignette[] = [
     floor: made(PAINT.marbreSombre, MATTER.marbre),
     wall: made([0.66, 0.63, 0.58], MATTER.platre),
     build: (out, c) => {
-      hang(out, c, 1.5, 1.6, 1.2, made([0.5, 0.46, 0.4], MATTER.uni))
+      hang(out, c, 1.5, 1.6, 1.2, made([0.64, 0.6, 0.54], MATTER.uni))
       pushCordon(out, { x: c.x + 0.6, y: c.y, z: c.z + 2.0 }, { x: c.x + 3.6, y: c.y, z: c.z + 2.0 }, 3, FURNITURE.laiton, IRON, FURNITURE.cordage)
     },
   },
@@ -885,18 +896,21 @@ const VIGNETTES: Vignette[] = [
     about: 'tapis rouge et lambris rouge — la salle sourde',
     floor: made(PAINT.tapisRouge, MATTER.moquette),
     wall: made(PAINT.rouge, MATTER.lambris),
-    build: (out, c) => {
-      hang(out, c, 1.6, 1.3, 1.6, made([0.46, 0.42, 0.34], MATTER.uni))
-      pushSconce(out, { x: c.x + 0.7, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.uni))
-      pushSconce(out, { x: c.x + 3.5, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.uni))
+    build: (out, c, lamps) => {
+      hang(out, c, 1.6, 1.3, 1.6, made([0.6, 0.56, 0.46], MATTER.uni))
+      pushSconce(out, { x: c.x + 0.7, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.lumiere))
+      lamps.push({ x: c.x + 0.7, y: c.y + 2.3 + 0.16, z: c.z + 0.06 + 0.26 })
+      pushSconce(out, { x: c.x + 3.5, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.lumiere))
+      lamps.push({ x: c.x + 3.5, y: c.y + 2.3 + 0.16, z: c.z + 0.06 + 0.26 })
     },
   },
   {
     about: 'dalle et lambris taupe, une suspension',
     floor: made(PAINT.dalle, MATTER.pierre),
     wall: made(PAINT.taupe, MATTER.lambris),
-    build: (out, c) => {
-      pushPendant(out, { x: c.x + 2.1, y: c.y + VIGNETTE_HEIGHT, z: c.z + 2.1 }, 0.9, IRON, made([1, 0.95, 0.85], MATTER.uni))
+    build: (out, c, lamps) => {
+      pushPendant(out, { x: c.x + 2.1, y: c.y + VIGNETTE_HEIGHT, z: c.z + 2.1 }, 0.9, IRON, made([1, 0.95, 0.85], MATTER.lumiere))
+      lamps.push({ x: c.x + 2.1, y: c.y + VIGNETTE_HEIGHT - 0.9 - 0.3, z: c.z + 2.1 })
       pushBench(out, { x: c.x + 2.1, y: c.y, z: c.z + 3.2 }, 2.2, { x: 1, y: 0, z: 0 }, OAK, IRON)
     },
   },
@@ -905,9 +919,9 @@ const VIGNETTES: Vignette[] = [
     floor: made(PAINT.chene, MATTER.parquet),
     wall: made(PAINT.taupe, MATTER.lambris),
     build: (out, c) => {
-      hang(out, c, 0.6, 0.9, 0.7, made([0.44, 0.4, 0.3], MATTER.uni))
-      hang(out, c, 1.75, 0.9, 0.7, made([0.3, 0.36, 0.4], MATTER.uni))
-      hang(out, c, 2.9, 0.9, 0.7, made([0.4, 0.32, 0.34], MATTER.uni))
+      hang(out, c, 0.6, 0.9, 0.7, made([0.6, 0.55, 0.42], MATTER.uni))
+      hang(out, c, 1.75, 0.9, 0.7, made([0.46, 0.52, 0.56], MATTER.uni))
+      hang(out, c, 2.9, 0.9, 0.7, made([0.56, 0.46, 0.48], MATTER.uni))
     },
   },
   {
@@ -917,16 +931,17 @@ const VIGNETTES: Vignette[] = [
     build: (out, c) => {
       pushCordon(out, { x: c.x + 0.6, y: c.y, z: c.z + 2.4 }, { x: c.x + 3.6, y: c.y, z: c.z + 2.4 }, 3, FURNITURE.laiton, IRON, FURNITURE.cordage)
       pushPlant(out, { x: c.x + 3.4, y: c.y, z: c.z + 1.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 13)
-      hang(out, c, 1.1, 1.4, 1.0, made([0.38, 0.34, 0.44], MATTER.uni))
+      hang(out, c, 1.1, 1.4, 1.0, made([0.54, 0.5, 0.6], MATTER.uni))
     },
   },
   {
     about: 'tapis vert et pierre claire — la salle d’étude',
     floor: made(PAINT.tapisVert, MATTER.moquette),
     wall: made(PAINT.pierreClaire, MATTER.pierre),
-    build: (out, c) => {
+    build: (out, c, lamps) => {
       pushBench(out, { x: c.x + 2.1, y: c.y, z: c.z + 2.6 }, 2.4, { x: 1, y: 0, z: 0 }, OAK, IRON)
-      pushSconce(out, { x: c.x + 2.1, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, IRON, made([1, 0.94, 0.8], MATTER.uni))
+      pushSconce(out, { x: c.x + 2.1, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, IRON, made([1, 0.94, 0.8], MATTER.lumiere))
+      lamps.push({ x: c.x + 2.1, y: c.y + 2.3 + 0.16, z: c.z + 0.06 + 0.26 })
     },
   },
   {
@@ -943,10 +958,11 @@ const VIGNETTES: Vignette[] = [
     about: 'marbre sombre et lambris bleu, cadre et colonne — la salle du soir',
     floor: made(PAINT.marbreSombre, MATTER.marbre),
     wall: made(PAINT.bleu, MATTER.lambris),
-    build: (out, c) => {
-      hang(out, c, 1.2, 1.7, 1.2, made([0.5, 0.42, 0.28], MATTER.uni))
+    build: (out, c, lamps) => {
+      hang(out, c, 1.2, 1.7, 1.2, made([0.66, 0.56, 0.4], MATTER.uni))
       pushColumn(out, { x: c.x + 3.4, y: c.y, z: c.z + 3.0 }, 0.3, VIGNETTE_HEIGHT, made([0.3, 0.29, 0.3], MATTER.marbre), made([0.4, 0.39, 0.38], MATTER.uni))
-      pushSconce(out, { x: c.x + 3.2, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.uni))
+      pushSconce(out, { x: c.x + 3.2, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.lumiere))
+      lamps.push({ x: c.x + 3.2, y: c.y + 2.3 + 0.16, z: c.z + 0.06 + 0.26 })
     },
   },
 ]
@@ -959,7 +975,13 @@ const VIGNETTES: Vignette[] = [
  * pixels. Six centimètres, c'est aussi la hauteur d'une estrade — l'essai a l'air présenté
  * plutôt que posé.
  */
-function pushVignette(out: number[], vignette: Vignette, corner: Vec3, number: number): void {
+function pushVignette(
+  out: number[],
+  vignette: Vignette,
+  corner: Vec3,
+  number: number,
+  lamps: Vec3[],
+): void {
   const side = VIGNETTE_SIDE
   const base = corner.y + 0.06
 
@@ -967,7 +989,7 @@ function pushVignette(out: number[], vignette: Vignette, corner: Vec3, number: n
     out,
     corner,
     { x: corner.x + side, y: base, z: corner.z + side },
-    { side: made([0.3, 0.29, 0.28], MATTER.beton), top: vignette.floor },
+    { side: made([0.3, 0.29, 0.28], MATTER.uni), top: vignette.floor },
   )
 
   // Les deux parois du L : celle du fond, celle de gauche. L'ouverture regarde donc vers
@@ -977,16 +999,16 @@ function pushVignette(out: number[], vignette: Vignette, corner: Vec3, number: n
     out,
     { x: corner.x, y: base, z: corner.z },
     { x: corner.x + side, y: base + VIGNETTE_HEIGHT, z: corner.z + VIGNETTE_THICK },
-    { side: vignette.wall, top: made([0.34, 0.33, 0.32], MATTER.beton) },
+    { side: vignette.wall, top: made([0.34, 0.33, 0.32], MATTER.uni) },
   )
   pushBlock(
     out,
     { x: corner.x, y: base, z: corner.z + VIGNETTE_THICK },
     { x: corner.x + VIGNETTE_THICK, y: base + VIGNETTE_HEIGHT, z: corner.z + side },
-    { side: vignette.wall, top: made([0.34, 0.33, 0.32], MATTER.beton) },
+    { side: vignette.wall, top: made([0.34, 0.33, 0.32], MATTER.uni) },
   )
 
-  vignette.build(out, { x: corner.x + VIGNETTE_THICK, y: base, z: corner.z + VIGNETTE_THICK }, side)
+  vignette.build(out, { x: corner.x + VIGNETTE_THICK, y: base, z: corner.z + VIGNETTE_THICK }, lamps)
 
   // Le numéro, sur une plaque debout au coin avant de l'estrade. Il regarde l'allée.
   const plate = { x: corner.x + side - 0.9, y: corner.y, z: corner.z + side + 0.02 }
@@ -1015,8 +1037,9 @@ function pushVignette(out: number[], vignette: Vignette, corner: Vec3, number: n
  * compare doit différer par **une** chose à la fois, et une planche d'essais mal rangée
  * mesure surtout la fantaisie de qui l'a rangée.
  */
-function furnishTheCrypt(out: number[]): Block[] {
+function furnishTheCrypt(out: number[]): { blocks: Block[]; lamps: Vec3[] } {
   const blocks: Block[] = []
+  const lamps: Vec3[] = []
   const pitch = 6.0
   const columns = 4
   const rows = 4
@@ -1032,7 +1055,7 @@ function furnishTheCrypt(out: number[]): Block[] {
       y: LOWER_BOX.min.y,
       z: originZ + row * pitch,
     }
-    pushVignette(out, vignette, corner, i + 1)
+    pushVignette(out, vignette, corner, i + 1, lamps)
     blocks.push({
       min: { x: corner.x, y: corner.y, z: corner.z },
       max: { x: corner.x + VIGNETTE_SIDE, y: corner.y + 0.06 + VIGNETTE_HEIGHT, z: corner.z + VIGNETTE_THICK },
@@ -1042,7 +1065,7 @@ function furnishTheCrypt(out: number[]): Block[] {
       max: { x: corner.x + VIGNETTE_THICK, y: corner.y + 0.06 + VIGNETTE_HEIGHT, z: corner.z + VIGNETTE_SIDE },
     })
   })
-  return blocks
+  return { blocks, lamps }
 }
 
 const LOWER = 'salle-basse'
@@ -1639,6 +1662,12 @@ export function buildWorld(): World {
   // par ses propres lampes, et l'ajouter poserait une bande claire en travers de la volée.
   const penroseWing = wingData.find((entry) => entry.wing.id === PENROSE_WING)!
   const lowerMouth = mouth(LOWER, 'salle-basse.porte', LOWER_BOX, 'north', 907.5)
+  // La planche d'essais est bâtie ici, avant l'éclairage : ses appliques et ses suspensions
+  // doivent figurer parmi les foyers de la salle, faute de quoi une lampe n'est qu'un objet
+  // peint sur un mur.
+  const cryptExtra: number[] = []
+  const crypt = furnishTheCrypt(cryptExtra)
+
   // **L'atelier s'éclaire à plat.** On y compare des matières, donc il faut la même lumière
   // partout : une source unique au plafond en aurait éclairé trois et laissé sept dans
   // l'ombre, et l'on aurait jugé l'éclairage au lieu de la matière.
@@ -1661,7 +1690,16 @@ export function buildWorld(): World {
       colour: LOWER_TINT,
       intensity: 8,
       radius: 15,
-    })),
+    })).concat(
+      // Et chaque lampe des scènes, chaude et courte : elle doit se voir sur son mur, pas
+      // éclairer l'allée.
+      crypt.lamps.map((at) => ({
+        position: at,
+        colour: [1, 0.86, 0.68] as Colour,
+        intensity: 2.6,
+        radius: 4.5,
+      })),
+    ),
   }
 
   const stairSeams: Passage[] = stair.seams.map((from, i) => ({
@@ -1891,8 +1929,6 @@ export function buildWorld(): World {
     const extra: number[] = []
     pushReveal(extra, lowerMouth, made(tinted(LOWER_TINT, 0.55), MATTER.pierre))
 
-    const stands = furnishTheCrypt(extra)
-
     cells.push({
       id: LOWER,
       fogColour: haze(LOWER_TINT),
@@ -1904,11 +1940,11 @@ export function buildWorld(): World {
           ceiling: made([0.36, 0.35, 0.34], MATTER.beton),
           wall: made([0.5, 0.47, 0.44], MATTER.pierre),
         }, holes),
-        extra,
+        extra.concat(cryptExtra),
       ),
       passages: lowerPassages,
       lighting: lowerLighting,
-      blocks: stands,
+      blocks: crypt.blocks,
     })
   }
 

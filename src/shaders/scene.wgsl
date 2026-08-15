@@ -21,7 +21,7 @@ struct Uniforms {
   params   : vec4<f32>,   // x : nombre de lampes ; y : nombre d'ouvertures
   lattice  : vec4<f32>,   // xyz : décalage de la copie, pour que l'éclairage se répète
   fogBand  : vec4<f32>,   // x : sol de la cellule ; y : plafond, pour la brume basse
-  lights   : array<Light, 12>,
+  lights   : array<Light, 16>,
   mouths   : array<MouthLight, 8>,
 };
 
@@ -240,10 +240,24 @@ fn grain(p : vec2<f32>, amount : f32, blur : f32) -> f32 {
   return (hash2(floor(p.x * 64.0), floor(p.y * 64.0)) - 0.5) * amount * k;
 }
 
-/** Une rainure creuse, adoucie à la largeur d'un pixel. */
+/**
+ * Une rainure creuse, adoucie à la largeur d'un pixel **et effacée quand son pavage devient
+ * trop serré**.
+ *
+ * L'adoucissement seul ne suffit pas, et c'est ce qui restait à comprendre : une ligne
+ * élargie à la taille d'un pixel reste une ligne, et un quadrillage dont la maille approche
+ * le pixel devient un moiré qui rampe dès que la caméra bouge. Ce sont ces lignes-là qui
+ * grésillaient — le dallage au loin, les lames de parquet en enfilade, les joints de pierre
+ * sur un mur vu de biais —, pas le bruit des matières.
+ *
+ * La seule réponse honnête est de renoncer : sous une certaine densité, un pavage doit
+ * **disparaître** et laisser sa couleur moyenne. C'est exactement ce que ferait un mip-map,
+ * et il n'y en a pas ici.
+ */
 fn groove(x : f32, period : f32, width : f32, blur : f32) -> f32 {
   let d = abs(fract(x / period - 0.5) - 0.5) * period;
-  return 1.0 - smoothstep(width, width + blur * 1.5, d);
+  let edge = 1.0 - smoothstep(width, width + blur * 1.5, d);
+  return edge * fade(blur, period * 0.4);
 }
 
 fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> vec3<f32> {
@@ -269,7 +283,9 @@ fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> 
 
     // Le chanfrein du bord de dalle, tous les mètres.
     let cell = abs(fract(uv) - vec2<f32>(0.5));
-    let edge = (1.0 - smoothstep(0.0, 0.02, 0.5 - max(cell.x, cell.y))) * 0.16;
+    let edge = (1.0 - smoothstep(0.0, 0.02 + max(blur.x, blur.y), 0.5 - max(cell.x, cell.y)))
+      * 0.16
+      * fade(max(blur.x, blur.y), 0.4);
     return (mix(base * mottle, vein, amount) + fine) * (1.0 - edge);
   }
 
@@ -297,13 +313,14 @@ fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> 
 
     let seedX = b.x * 4.0 + plank;
     let seedY = b.y * 4.0 + select(1.0, 0.0, horiz);
-    let tone = 0.80 + 0.40 * hash2(seedX, seedY * 31.0 + 7.0);
+    let tone = 1.0 + (0.40 * hash2(seedX, seedY * 31.0 + 7.0) - 0.20) * fade(max(blur.x, blur.y), 0.06);
     let fil = 1.0 + (0.28 * fbm(vec2<f32>(along * 9.0 + seedX * 3.7, across * 2.0 + seedY * 1.3)) - 0.14)
       * fade(max(blur.x, blur.y), 0.03);
 
     let joint = max(1.0 - smoothstep(0.0, 0.09, across), 1.0 - smoothstep(0.0, 0.09, 1.0 - across));
     let corner = min(min(inside.x, BLOCK - inside.x), min(inside.y, BLOCK - inside.y));
-    let bedge = 1.0 - smoothstep(0.0, 0.012, corner);
+    let bedge = (1.0 - smoothstep(0.0, 0.012 + max(blur.x, blur.y), corner))
+      * fade(max(blur.x, blur.y), 0.25);
 
     var k = tone * fil;
     k = mix(k, k * 0.55, joint * 0.9);
@@ -384,7 +401,7 @@ fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> 
     let col = floor(rx);
     let fx = rx - col;
 
-    let tone = 0.90 + 0.16 * hash2(col, row);
+    let tone = 1.0 + (0.16 * hash2(col, row) - 0.08) * fade(max(blur.x, blur.y), 0.4);
     let n = (fbm(vec2<f32>(uv.x * 8.0 + col * 3.0, uv.y * 16.0)) - 0.5) * fade(max(blur.x, blur.y), 0.06);
     var k = tone * (1.0 + 0.16 * n);
 
@@ -404,7 +421,7 @@ fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> 
   if (m == 6) {
     let cell = fract(uv / 1.2);
     let e = min(min(cell.x, 1.0 - cell.x), min(cell.y, 1.0 - cell.y));
-    let inner = smoothstep(0.09, 0.13, e);
+    let inner = smoothstep(0.09, 0.13 + blur.x, e);
     let depth = mix(1.06, 0.86, inner);
     let shade = 0.14 * (1.0 - smoothstep(0.09, 0.15, min(cell.x, cell.y)));
     let n = 0.97 + 0.06 * fbm(uv * 6.0);
@@ -422,7 +439,7 @@ fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> 
     let seam = groove(uv.y, 0.25, 0.005, blur.y);
     let lip = 1.0 + 0.06 * (1.0 - smoothstep(0.0, 0.04, fract(uv.y / 0.25) * 0.25));
     let hole = fract(uv / 1.5) - vec2<f32>(0.5);
-    let tie = 1.0 - smoothstep(0.010, 0.017, length(hole) * 1.5);
+    let tie = (1.0 - smoothstep(0.010, 0.017, length(hole) * 1.5)) * fade(max(blur.x, blur.y), 0.05);
     return base * tone * mottle * lip * (1.0 - 0.16 * seam) * (1.0 - 0.45 * tie) + fine;
   }
 
@@ -431,13 +448,15 @@ fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> 
   if (m == 8) {
     let CELL = vec2<f32>(2.0, 1.0);
     let panel = floor(uv / CELL);
-    let tone = 0.84 + 0.24 * hash2(panel.x, panel.y);
+    let tone = 1.0 + (0.24 * hash2(panel.x, panel.y) - 0.12) * fade(max(blur.x, blur.y), 0.5);
     let brushed = 1.0 + (0.14 * fbm(vec2<f32>(uv.x * 70.0, uv.y * 2.0)) - 0.07)
       * fade(max(blur.x, blur.y), 0.014);
     let inner = abs(fract(uv / CELL) - vec2<f32>(0.5)) * 2.0;
     let seam = smoothstep(0.9, 0.985, max(inner.x, inner.y));
     let stud = fract(uv / vec2<f32>(0.25, 1.0)) - vec2<f32>(0.5);
-    let rivet = (1.0 - smoothstep(0.14, 0.24, abs(stud.x))) * smoothstep(0.78, 0.9, inner.y);
+    let rivet = (1.0 - smoothstep(0.14, 0.24, abs(stud.x)))
+      * smoothstep(0.78, 0.9, inner.y)
+      * fade(max(blur.x, blur.y), 0.1);
     return base * tone * brushed * (1.0 - 0.45 * seam) * (1.0 + 0.3 * rivet) + fine;
   }
 
@@ -454,12 +473,32 @@ fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> 
   if (m == 10) {
     let pane = fract(uv / 1.2);
     let bar = max(
-      1.0 - smoothstep(0.0, 0.022, min(pane.x, 1.0 - pane.x)),
-      1.0 - smoothstep(0.0, 0.022, min(pane.y, 1.0 - pane.y)),
-    );
+      1.0 - smoothstep(0.0, 0.022 + blur.x, min(pane.x, 1.0 - pane.x)),
+      1.0 - smoothstep(0.0, 0.022 + blur.y, min(pane.y, 1.0 - pane.y)),
+    ) * fade(max(blur.x, blur.y), 0.5);
     let glow = 0.94 + 0.10 * (1.0 - abs(pane.x - 0.5) * 2.0) * (1.0 - abs(pane.y - 0.5) * 2.0);
     let frost = 0.96 + 0.07 * fbm(uv * 10.0);
     return mix(base * frost * glow, vec3<f32>(0.52, 0.51, 0.50), bar);
+  }
+
+  // 13 — Bois de menuiserie : le fil, et rien d'autre.
+  //
+  // Un parquet posé sur un meuble est un contresens qu'on voit tout de suite : ses lames font
+  // quinze centimètres et ses carrés soixante, si bien qu'une moulure de neuf centimètres se
+  // retrouve **entaillée** par des joints qui n'ont rien à y faire. Le bois d'un meuble n'a
+  // pas de lames — il a un fil, dans le sens de la pièce, et il faut le lui donner à part.
+  if (m == 13) {
+    let fil = (fbm(vec2<f32>(uv.x * 1.5, uv.y * 44.0)) - 0.5) * fade(max(blur.x, blur.y), 0.023);
+    let veine = (fbm(vec2<f32>(uv.x * 0.6, uv.y * 9.0)) - 0.5) * fade(max(blur.x, blur.y), 0.11);
+    return base * (1.0 + 0.16 * fil + 0.1 * veine);
+  }
+
+  // 12 — Lumière. Traitée à part dans le fragment : une lampe **émet**, elle n'est pas
+  // éclairée. La renvoyer telle quelle ici ne servirait à rien, puisque le fragment
+  // multiplie ensuite par l'éclairage de la salle — et une ampoule dans une pièce sombre
+  // serait sombre, ce qui est le contraire de ce qu'est une ampoule.
+  if (m == 12) {
+    return base;
   }
 
   // 11 — Uni : aucun motif, aucun quadrillage. Ce n'est pas un aveu de paresse mais la
@@ -474,7 +513,7 @@ fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> 
   // décor. Sans repère régulier, impossible de juger à l'œil si l'image vue à travers une
   // couture est correctement alignée.
   let g = abs(fract(uv - vec2<f32>(0.5)) - vec2<f32>(0.5)) / blur;
-  let line = 1.0 - min(min(g.x, g.y), 1.0);
+  let line = (1.0 - min(min(g.x, g.y), 1.0)) * fade(max(blur.x, blur.y), 0.4);
   return base * (1.0 - 0.34 * line);
 }
 
@@ -502,7 +541,12 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
 
   // Les dérivées se prennent ici, en flot uniforme, et voyagent ensuite : WGSL les
   // interdit sous une condition, et toutes les matières en sont faites.
-  var rgb = surface(in.matter, in.uv, in.color, fwidth(in.uv)) * light;
+  let albedo = surface(in.matter, in.uv, in.color, fwidth(in.uv));
+
+  // **Une lampe émet.** Elle échappe donc à l'éclairage de la salle : la multiplier par lui
+  // ferait une ampoule sombre dans une pièce sombre. Le facteur la pousse au-delà du blanc,
+  // ce qui lui donne le noyau brûlé qu'a toute source vue directement.
+  var rgb = select(albedo * light, albedo * 2.6, i32(in.matter + 0.5) == 12);
 
   // **Le brouillard, en exponentielle carrée et plus dense au ras du sol.**
   //
