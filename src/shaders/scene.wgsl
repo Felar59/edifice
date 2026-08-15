@@ -21,7 +21,7 @@ struct Uniforms {
   params   : vec4<f32>,   // x : lampes ; y : ouvertures ; z : matières coupées
   lattice  : vec4<f32>,   // xyz : décalage de la copie, pour que l'éclairage se répète
   fogBand  : vec4<f32>,   // x : sol de la cellule ; y : plafond, pour la brume basse
-  lights   : array<Light, 16>,
+  lights   : array<Light, 24>,
   mouths   : array<MouthLight, 8>,
 };
 

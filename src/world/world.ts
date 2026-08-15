@@ -44,13 +44,16 @@ import { mouthRadiance, type CellLighting, type Colour } from './light'
 import { heightAtTurn, onSquare, stepAngle, stepHeight } from './spiral'
 import {
   pushBench,
+  pushChandelier,
   pushColumn,
   pushCordon,
   pushDigits,
   pushFrame,
-  pushPendant,
+  pushFramed,
+  pushPictureLight,
   pushPlant,
   pushSconce,
+  pushTorchere,
 } from './props'
 import { frameAt, makeTwist, toWorld } from './twist'
 import type { Block, Cell, Mouth, Passage, Spiral, World } from './types'
@@ -810,24 +813,16 @@ interface Vignette {
    * cellule qui porte les siennes. On y pousse donc la position de chaque flamme, et la
    * salle s'en sert pour éclairer — sans quoi une lampe est un objet peint sur un mur.
    */
-  build: (out: number[], corner: Vec3, lamps: Vec3[]) => void
+  build: (out: number[], corner: Vec3, lamps: Lamp[]) => void
 }
 
-const VIGNETTE_SIDE = 4.4
-const VIGNETTE_HEIGHT = 2.9
-const VIGNETTE_THICK = 0.24
-
-/** Les teintes du mobilier, communes à toutes les scènes : on ne compare qu'une chose. */
-const OAK = FURNITURE.chene
-const IRON = FURNITURE.fonte
-
 /**
- * Les six images du portfolio, dans l'ordre où la page les charge.
+ * Les six images du portfolio, dans l’ordre où la page les charge.
  *
- * Une matière au-delà de cent désigne une couche du tableau d'images. La matière et l'image
- * partagent donc un même nombre — ce n'est pas la plus élégante des conventions, mais elle
- * évite un attribut de sommet de plus, et le nuanceur ne peut de toute façon pas choisir une
- * texture d'après une donnée par sommet : une texture est une ressource, pas une valeur.
+ * Une matière au-delà de cent désigne une couche du tableau d’images : la matière et l’image
+ * partagent un même nombre, ce qui évite un attribut de sommet de plus. Le nuanceur ne peut
+ * de toute façon pas choisir une texture d’après une donnée par sommet — une texture est une
+ * ressource, pas une valeur — alors qu’une couche est un indice ordinaire.
  */
 const PICTURES = {
   musee: 100,
@@ -838,7 +833,38 @@ const PICTURES = {
   antivirus: 105,
 } as const
 
-/** Un cadre accroché au fond du L, à hauteur d'œil de musée — le milieu à 1,55 m. */
+const VIGNETTE_SIDE = 4.4
+const VIGNETTE_HEIGHT = 2.9
+const VIGNETTE_THICK = 0.24
+
+/** Les teintes du mobilier, communes à toutes les scènes : on ne compare qu'une chose. */
+const OAK = FURNITURE.chene
+const IRON = FURNITURE.fonte
+const BRASS = FURNITURE.laiton
+const GLOW = made([1, 0.9, 0.74], MATTER.lumiere)
+const COOL = made([0.9, 0.94, 1], MATTER.lumiere)
+
+/**
+ * Une source déclarée par une scène.
+ *
+ * **C'est l'ambiance qui se joue ici**, plus que la matière. Deux salles aux mêmes murs mais
+ * l'une éclairée d'une flaque chaude et l'autre d'un plafonnier froid n'ont rien à voir ; et
+ * une salle sombre avec une seule toile allumée est infiniment plus juste qu'une salle
+ * uniformément claire. Chaque scène porte donc ses foyers, et la crypte n'assure plus qu'un
+ * fond très faible pour qu'on voie l'allée.
+ */
+interface Lamp {
+  at: Vec3
+  colour: Colour
+  intensity: number
+  radius: number
+}
+
+const WARM: Colour = [1, 0.84, 0.64]
+const CANDLE: Colour = [1, 0.78, 0.52]
+const DAYLIGHT: Colour = [0.86, 0.92, 1]
+
+/** Un cadre simple, celui des premières scènes : une baguette et une toile. */
 function hang(out: number[], c: Vec3, x: number, width: number, height: number, canvas: Color): void {
   pushFrame(
     out,
@@ -852,34 +878,86 @@ function hang(out: number[], c: Vec3, x: number, width: number, height: number, 
   )
 }
 
+/** Un cadre à moulure, filet doré et passe-partout — et sa lampe, s'il en veut une. */
+function exhibit(
+  out: number[],
+  lamps: Lamp[],
+  c: Vec3,
+  x: number,
+  width: number,
+  height: number,
+  canvas: Color,
+  style: 'or' | 'noir' | 'clair',
+  light?: { intensity: number; colour: Colour },
+): void {
+  const centre = { x: c.x + x, y: c.y + 1.6, z: c.z + 0.02 }
+  const styles = {
+    or: {
+      moulding: made([0.42, 0.3, 0.14], MATTER.bois),
+      fillet: made([0.78, 0.62, 0.28], MATTER.uni),
+      mount: made([0.72, 0.7, 0.65], MATTER.uni),
+      width: 0.11,
+    },
+    noir: {
+      moulding: made([0.1, 0.1, 0.11], MATTER.uni),
+      mount: made([0.8, 0.79, 0.77], MATTER.uni),
+      width: 0.05,
+    },
+    clair: {
+      moulding: made([0.62, 0.58, 0.5], MATTER.bois),
+      fillet: made([0.7, 0.66, 0.6], MATTER.uni),
+      width: 0.07,
+    },
+  } as const
+
+  pushFramed(out, centre, { x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, width, height, styles[style], canvas)
+
+  if (!light) return
+  const at = { x: centre.x, y: centre.y + height / 2 + 0.22, z: c.z + 0.02 }
+  pushPictureLight(out, at, { x: 0, y: 0, z: 1 }, Math.min(width * 0.7, 0.8), BRASS, GLOW)
+  // Le foyer est posé **devant** le tableau et un peu au-dessus : c'est la toile qu'on
+  // éclaire, pas le mur.
+  lamps.push({
+    at: { x: at.x, y: at.y - 0.06, z: at.z + 0.3 },
+    colour: light.colour,
+    intensity: light.intensity,
+    radius: 3.4,
+  })
+}
+
 const VIGNETTES: Vignette[] = [
+  // ---- Les sept retenues, dans l'ordre demandé et sans y toucher -----------------
   {
-    about: 'chêne et lambris crème, un cadre — la salle d’époque',
+    about: 'marbre sombre et lambris bleu, cadre et colonne — la salle du soir',
+    floor: made(PAINT.marbreSombre, MATTER.marbre),
+    wall: made(PAINT.bleu, MATTER.lambris),
+    build: (out, c, lamps) => {
+      hang(out, c, 1.1, 1.9, 1.07, made([1, 1, 1], PICTURES.antivirus))
+      pushColumn(out, { x: c.x + 3.4, y: c.y, z: c.z + 3.0 }, 0.3, VIGNETTE_HEIGHT, made([0.3, 0.29, 0.3], MATTER.marbre), made([0.4, 0.39, 0.38], MATTER.platre))
+      pushSconce(out, { x: c.x + 3.2, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, BRASS, GLOW)
+      lamps.push({ at: { x: c.x + 3.2, y: c.y + 2.46, z: c.z + 0.32 }, colour: WARM, intensity: 3, radius: 4.5 })
+    },
+  },
+  {
+    about: 'chêne et lambris crème, le cordon et la plante',
     floor: made(PAINT.chene, MATTER.parquet),
     wall: made(PAINT.creme, MATTER.lambris),
     build: (out, c) => {
-      hang(out, c, 1.3, 1.6, 0.9, made([1, 1, 1], PICTURES.musee))
-      pushCordon(out, { x: c.x + 0.6, y: c.y, z: c.z + 2.2 }, { x: c.x + 3.6, y: c.y, z: c.z + 2.2 }, 3, FURNITURE.laiton, IRON, FURNITURE.cordage)
+      pushCordon(out, { x: c.x + 0.6, y: c.y, z: c.z + 2.4 }, { x: c.x + 3.6, y: c.y, z: c.z + 2.4 }, 3, BRASS, IRON, FURNITURE.cordage)
+      pushPlant(out, { x: c.x + 3.4, y: c.y, z: c.z + 1.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 13)
+      hang(out, c, 1.05, 1.5, 0.85, made([1, 1, 1], PICTURES.musee))
     },
   },
   {
-    about: 'chêne et lambris vert, deux cadres et une applique',
-    floor: made(PAINT.chene, MATTER.parquet),
-    wall: made(PAINT.vert, MATTER.lambris),
+    about: 'tapis rouge et lambris rouge — la salle sourde',
+    floor: made(PAINT.tapisRouge, MATTER.moquette),
+    wall: made(PAINT.rouge, MATTER.lambris),
     build: (out, c, lamps) => {
-      hang(out, c, 0.6, 1.3, 0.73, made([1, 1, 1], PICTURES.julia))
-      hang(out, c, 2.3, 1.3, 0.73, made([1, 1, 1], PICTURES.hunter))
-      pushSconce(out, { x: c.x + 2.05, y: c.y + 2.35, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, IRON, made([1, 0.94, 0.8], MATTER.lumiere))
-      lamps.push({ x: c.x + 2.05, y: c.y + 2.35 + 0.16, z: c.z + 0.06 + 0.26 })
-    },
-  },
-  {
-    about: 'chêne et plâtre — la chambre claire',
-    floor: made(PAINT.chene, MATTER.parquet),
-    wall: made([0.68, 0.67, 0.65], MATTER.platre),
-    build: (out, c) => {
-      pushBench(out, { x: c.x + 2.2, y: c.y, z: c.z + 2.6 }, 2.4, { x: 1, y: 0, z: 0 }, OAK, IRON)
-      pushPlant(out, { x: c.x + 0.9, y: c.y, z: c.z + 1.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 3)
+      hang(out, c, 1.3, 1.7, 0.96, made([1, 1, 1], PICTURES.antivirus))
+      for (const x of [0.7, 3.5]) {
+        pushSconce(out, { x: c.x + x, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, BRASS, GLOW)
+        lamps.push({ at: { x: c.x + x, y: c.y + 2.46, z: c.z + 0.32 }, colour: CANDLE, intensity: 2.4, radius: 4 })
+      }
     },
   },
   {
@@ -889,46 +967,6 @@ const VIGNETTES: Vignette[] = [
     build: (out, c) => {
       pushBench(out, { x: c.x + 2.2, y: c.y, z: c.z + 2.8 }, 2.4, { x: 1, y: 0, z: 0 }, OAK, IRON)
       pushPlant(out, { x: c.x + 3.5, y: c.y, z: c.z + 1.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 5)
-    },
-  },
-  {
-    about: 'marbre clair et lambris bleu, une colonne',
-    floor: made(PAINT.marbreClair, MATTER.marbre),
-    wall: made(PAINT.bleu, MATTER.lambris),
-    build: (out, c) => {
-      pushColumn(out, { x: c.x + 3.3, y: c.y, z: c.z + 1.1 }, 0.34, VIGNETTE_HEIGHT, made(PAINT.marbreClair, MATTER.marbre), made([0.56, 0.54, 0.5], MATTER.uni))
-      hang(out, c, 0.8, 1.5, 0.85, made([1, 1, 1], PICTURES.monde))
-    },
-  },
-  {
-    about: 'marbre sombre et mur crème — le contraste inverse',
-    floor: made(PAINT.marbreSombre, MATTER.marbre),
-    wall: made([0.66, 0.63, 0.58], MATTER.platre),
-    build: (out, c) => {
-      hang(out, c, 1.3, 1.8, 1.0, made([1, 1, 1], PICTURES.shell))
-      pushCordon(out, { x: c.x + 0.6, y: c.y, z: c.z + 2.0 }, { x: c.x + 3.6, y: c.y, z: c.z + 2.0 }, 3, FURNITURE.laiton, IRON, FURNITURE.cordage)
-    },
-  },
-  {
-    about: 'tapis rouge et lambris rouge — la salle sourde',
-    floor: made(PAINT.tapisRouge, MATTER.moquette),
-    wall: made(PAINT.rouge, MATTER.lambris),
-    build: (out, c, lamps) => {
-      hang(out, c, 1.3, 1.7, 0.96, made([1, 1, 1], PICTURES.antivirus))
-      pushSconce(out, { x: c.x + 0.7, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.lumiere))
-      lamps.push({ x: c.x + 0.7, y: c.y + 2.3 + 0.16, z: c.z + 0.06 + 0.26 })
-      pushSconce(out, { x: c.x + 3.5, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.lumiere))
-      lamps.push({ x: c.x + 3.5, y: c.y + 2.3 + 0.16, z: c.z + 0.06 + 0.26 })
-    },
-  },
-  {
-    about: 'dalle et lambris taupe, une suspension',
-    floor: made(PAINT.dalle, MATTER.pierre),
-    wall: made(PAINT.taupe, MATTER.lambris),
-    build: (out, c, lamps) => {
-      pushPendant(out, { x: c.x + 2.1, y: c.y + VIGNETTE_HEIGHT, z: c.z + 2.1 }, 0.9, IRON, made([1, 0.95, 0.85], MATTER.lumiere))
-      lamps.push({ x: c.x + 2.1, y: c.y + VIGNETTE_HEIGHT - 0.9 - 0.3, z: c.z + 2.1 })
-      pushBench(out, { x: c.x + 2.1, y: c.y, z: c.z + 3.2 }, 2.2, { x: 1, y: 0, z: 0 }, OAK, IRON)
     },
   },
   {
@@ -942,44 +980,97 @@ const VIGNETTES: Vignette[] = [
     },
   },
   {
-    about: 'chêne et lambris crème, le cordon et la plante — la scène qui plaisait',
+    about: 'chêne et lambris vert, deux cadres et une applique',
+    floor: made(PAINT.chene, MATTER.parquet),
+    wall: made(PAINT.vert, MATTER.lambris),
+    build: (out, c, lamps) => {
+      hang(out, c, 0.6, 1.3, 0.73, made([1, 1, 1], PICTURES.julia))
+      hang(out, c, 2.3, 1.3, 0.73, made([1, 1, 1], PICTURES.hunter))
+      pushSconce(out, { x: c.x + 2.05, y: c.y + 2.35, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, IRON, GLOW)
+      lamps.push({ at: { x: c.x + 2.05, y: c.y + 2.51, z: c.z + 0.32 }, colour: WARM, intensity: 3, radius: 4.5 })
+    },
+  },
+  {
+    about: 'chêne et lambris crème, un cadre — la salle d’époque',
     floor: made(PAINT.chene, MATTER.parquet),
     wall: made(PAINT.creme, MATTER.lambris),
     build: (out, c) => {
-      pushCordon(out, { x: c.x + 0.6, y: c.y, z: c.z + 2.4 }, { x: c.x + 3.6, y: c.y, z: c.z + 2.4 }, 3, FURNITURE.laiton, IRON, FURNITURE.cordage)
-      pushPlant(out, { x: c.x + 3.4, y: c.y, z: c.z + 1.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 13)
-      hang(out, c, 1.05, 1.5, 0.85, made([1, 1, 1], PICTURES.musee))
+      hang(out, c, 1.3, 1.6, 0.9, made([1, 1, 1], PICTURES.musee))
+      pushCordon(out, { x: c.x + 0.6, y: c.y, z: c.z + 2.2 }, { x: c.x + 3.6, y: c.y, z: c.z + 2.2 }, 3, BRASS, IRON, FURNITURE.cordage)
+    },
+  },
+
+  // ---- Les nouvelles : meilleurs cadres, meilleures lampes, une ambiance chacune --
+  {
+    about: 'le cabinet noir — une seule toile allumée dans le noir',
+    floor: made(PAINT.marbreSombre, MATTER.marbre),
+    wall: made([0.14, 0.15, 0.18], MATTER.lambris),
+    build: (out, c, lamps) => {
+      exhibit(out, lamps, c, 2.2, 1.9, 1.15, made([1, 1, 1], PICTURES.julia), 'or', {
+        intensity: 7,
+        colour: WARM,
+      })
+      pushCordon(out, { x: c.x + 0.9, y: c.y, z: c.z + 2.1 }, { x: c.x + 3.5, y: c.y, z: c.z + 2.1 }, 3, BRASS, IRON, FURNITURE.cordage)
     },
   },
   {
-    about: 'tapis vert et pierre claire — la salle d’étude',
+    about: 'le salon — lustre, tapis rouge, deux cadres dorés',
+    floor: made(PAINT.tapisRouge, MATTER.moquette),
+    wall: made(PAINT.taupe, MATTER.lambris),
+    build: (out, c, lamps) => {
+      exhibit(out, lamps, c, 1.15, 1.4, 0.9, made([1, 1, 1], PICTURES.monde), 'or')
+      exhibit(out, lamps, c, 3.0, 1.4, 0.9, made([1, 1, 1], PICTURES.shell), 'or')
+      pushChandelier(out, { x: c.x + 2.1, y: c.y + VIGNETTE_HEIGHT, z: c.z + 2.4 }, 0.75, 0.42, BRASS, GLOW)
+      lamps.push({ at: { x: c.x + 2.1, y: c.y + VIGNETTE_HEIGHT - 0.9, z: c.z + 2.4 }, colour: CANDLE, intensity: 5.5, radius: 6 })
+      pushBench(out, { x: c.x + 2.1, y: c.y, z: c.z + 3.4 }, 2.2, { x: 1, y: 0, z: 0 }, OAK, IRON)
+    },
+  },
+  {
+    about: 'la galerie blanche — cadres noirs, lumière du jour',
+    floor: made([0.56, 0.44, 0.3], MATTER.parquet),
+    wall: made([0.74, 0.73, 0.71], MATTER.platre),
+    build: (out, c, lamps) => {
+      exhibit(out, lamps, c, 0.85, 1.0, 0.62, made([1, 1, 1], PICTURES.hunter), 'noir')
+      exhibit(out, lamps, c, 2.1, 1.0, 0.62, made([1, 1, 1], PICTURES.julia), 'noir')
+      exhibit(out, lamps, c, 3.35, 1.0, 0.62, made([1, 1, 1], PICTURES.shell), 'noir')
+      lamps.push({ at: { x: c.x + 2.1, y: c.y + VIGNETTE_HEIGHT - 0.5, z: c.z + 1.6 }, colour: DAYLIGHT, intensity: 5, radius: 7 })
+    },
+  },
+  {
+    about: 'le coin de lecture — lampadaire, tapis vert, un banc',
     floor: made(PAINT.tapisVert, MATTER.moquette),
+    wall: made(PAINT.creme, MATTER.lambris),
+    build: (out, c, lamps) => {
+      pushTorchere(out, { x: c.x + 0.8, y: c.y, z: c.z + 1.0 }, IRON, GLOW)
+      lamps.push({ at: { x: c.x + 0.8, y: c.y + 1.75, z: c.z + 1.0 }, colour: WARM, intensity: 5, radius: 5.5 })
+      pushBench(out, { x: c.x + 2.4, y: c.y, z: c.z + 2.4 }, 2.2, { x: 1, y: 0, z: 0 }, OAK, IRON)
+      pushPlant(out, { x: c.x + 3.6, y: c.y, z: c.z + 1.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 21)
+      exhibit(out, lamps, c, 2.4, 1.2, 0.75, made([1, 1, 1], PICTURES.monde), 'clair')
+    },
+  },
+  {
+    about: 'la nuit — pierre, un lampadaire, rien d’autre',
+    floor: made(PAINT.dalle, MATTER.pierre),
     wall: made(PAINT.pierreClaire, MATTER.pierre),
     build: (out, c, lamps) => {
-      pushBench(out, { x: c.x + 2.1, y: c.y, z: c.z + 2.6 }, 2.4, { x: 1, y: 0, z: 0 }, OAK, IRON)
-      pushSconce(out, { x: c.x + 2.1, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, IRON, made([1, 0.94, 0.8], MATTER.lumiere))
-      lamps.push({ x: c.x + 2.1, y: c.y + 2.3 + 0.16, z: c.z + 0.06 + 0.26 })
+      pushTorchere(out, { x: c.x + 3.3, y: c.y, z: c.z + 2.6 }, IRON, COOL)
+      lamps.push({ at: { x: c.x + 3.3, y: c.y + 1.75, z: c.z + 2.6 }, colour: DAYLIGHT, intensity: 4.5, radius: 5 })
+      pushBench(out, { x: c.x + 1.6, y: c.y, z: c.z + 2.6 }, 1.8, { x: 0, y: 0, z: 1 }, OAK, IRON)
     },
   },
   {
-    about: 'marbre clair et pierre — le hall',
+    about: 'l’enfilade — deux appliques, une grande toile éclairée',
     floor: made(PAINT.marbreClair, MATTER.marbre),
     wall: made(PAINT.pierreClaire, MATTER.pierre),
-    build: (out, c) => {
-      pushColumn(out, { x: c.x + 1.1, y: c.y, z: c.z + 1.1 }, 0.34, VIGNETTE_HEIGHT, made(PAINT.marbreClair, MATTER.marbre), made([0.56, 0.54, 0.5], MATTER.uni))
-      pushColumn(out, { x: c.x + 3.3, y: c.y, z: c.z + 1.1 }, 0.34, VIGNETTE_HEIGHT, made(PAINT.marbreClair, MATTER.marbre), made([0.56, 0.54, 0.5], MATTER.uni))
-      pushPlant(out, { x: c.x + 2.2, y: c.y, z: c.z + 3.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 7)
-    },
-  },
-  {
-    about: 'marbre sombre et lambris bleu, cadre et colonne — la salle du soir',
-    floor: made(PAINT.marbreSombre, MATTER.marbre),
-    wall: made(PAINT.bleu, MATTER.lambris),
     build: (out, c, lamps) => {
-      hang(out, c, 1.1, 1.9, 1.07, made([1, 1, 1], PICTURES.antivirus))
-      pushColumn(out, { x: c.x + 3.4, y: c.y, z: c.z + 3.0 }, 0.3, VIGNETTE_HEIGHT, made([0.3, 0.29, 0.3], MATTER.marbre), made([0.4, 0.39, 0.38], MATTER.uni))
-      pushSconce(out, { x: c.x + 3.2, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.lumiere))
-      lamps.push({ x: c.x + 3.2, y: c.y + 2.3 + 0.16, z: c.z + 0.06 + 0.26 })
+      exhibit(out, lamps, c, 2.2, 2.1, 1.25, made([1, 1, 1], PICTURES.musee), 'or', {
+        intensity: 4,
+        colour: WARM,
+      })
+      for (const x of [0.55, 3.85]) {
+        pushSconce(out, { x: c.x + x, y: c.y + 2.2, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, BRASS, GLOW)
+      }
+      lamps.push({ at: { x: c.x + 2.2, y: c.y + 2.36, z: c.z + 0.5 }, colour: CANDLE, intensity: 2, radius: 4 })
     },
   },
 ]
@@ -997,7 +1088,7 @@ function pushVignette(
   vignette: Vignette,
   corner: Vec3,
   number: number,
-  lamps: Vec3[],
+  lamps: Lamp[],
 ): void {
   const side = VIGNETTE_SIDE
   const base = corner.y + 0.06
@@ -1056,23 +1147,28 @@ function pushVignette(
  * compare doit différer par **une** chose à la fois, et une planche d'essais mal rangée
  * mesure surtout la fantaisie de qui l'a rangée.
  */
-function furnishTheCrypt(out: number[]): { blocks: Block[]; lamps: Vec3[] } {
+function furnishTheCrypt(out: number[]): { blocks: Block[]; lamps: Lamp[] } {
   const blocks: Block[] = []
-  const lamps: Vec3[] = []
-  const pitch = 6.0
-  const columns = 4
-  const rows = 4
-  const originX = LOWER_BOX.min.x + 3
-  const originZ = LOWER_BOX.min.z + 5.5
+  const lamps: Lamp[] = []
+  // **Quatre mètres de recul devant chaque rangée.** Une planche d'essais qu'on ne peut
+  // regarder qu'en y entrant ne sert à rien : il faut pouvoir se placer devant une scène,
+  // reculer, comparer avec sa voisine. Le pas des rangées vaut donc la profondeur d'une scène
+  // plus une allée.
+  const pitchX = 5.5
+  const pitchZ = 8.5
+  const columns = 5
+  const rows = 3
+  const originX = LOWER_BOX.min.x + 2.2
+  const originZ = LOWER_BOX.min.z + 3
 
   VIGNETTES.forEach((vignette, i) => {
     const column = i % columns
     const row = Math.floor(i / columns)
     if (row >= rows) return
     const corner = {
-      x: originX + column * pitch,
+      x: originX + column * pitchX,
       y: LOWER_BOX.min.y,
-      z: originZ + row * pitch,
+      z: originZ + row * pitchZ,
     }
     pushVignette(out, vignette, corner, i + 1, lamps)
     blocks.push({
@@ -1680,7 +1776,10 @@ export function buildWorld(): World {
   // pièce d'en face ; quand la pièce d'en face est la même, cet éclairage est déjà compté
   // par ses propres lampes, et l'ajouter poserait une bande claire en travers de la volée.
   const penroseWing = wingData.find((entry) => entry.wing.id === PENROSE_WING)!
-  const lowerMouth = mouth(LOWER, 'salle-basse.porte', LOWER_BOX, 'north', 907.5)
+  // **La porte est au sud**, parce que les scènes s'ouvrent de ce côté. Entrer dans le dos
+  // d'une planche d'essais n'a pas de sens : on veut voir les ouvertures en arrivant, pas les
+  // parois qui les ferment.
+  const lowerMouth = mouth(LOWER, 'salle-basse.porte', LOWER_BOX, 'south', 915)
   // La planche d'essais est bâtie ici, avant l'éclairage : ses appliques et ses suspensions
   // doivent figurer parmi les foyers de la salle, faute de quoi une lampe n'est qu'un objet
   // peint sur un mur.
@@ -1691,15 +1790,16 @@ export function buildWorld(): World {
   // partout : une source unique au plafond en aurait éclairé trois et laissé sept dans
   // l'ombre, et l'on aurait jugé l'éclairage au lieu de la matière.
   const lowerLighting: CellLighting = {
-    ambient: [LOWER_TINT[0] * 0.1, LOWER_TINT[1] * 0.1, LOWER_TINT[2] * 0.1],
+    // **Le fond est presque éteint.** Les scènes portent leur propre lumière, et c'est là
+    // qu'elles se distinguent : une salle sombre avec une toile allumée n'a rien à voir avec
+    // la même sous un plafonnier. Un éclairage général fort les aplatirait toutes.
+    ambient: [LOWER_TINT[0] * 0.045, LOWER_TINT[1] * 0.045, LOWER_TINT[2] * 0.045],
     // Une lampe par rangée d'essais, alignée sur elles : ce qu'on compare doit l'être dans
     // la même lumière, et une planche d'essais mal éclairée mesure surtout l'éclairage.
     lights: [
-      { dx: -6.6, dz: -3.5 },
-      { dx: 6.6, dz: -3.5 },
-      { dx: -6.6, dz: 3.5 },
-      { dx: 6.6, dz: 3.5 },
-      { dx: 0, dz: 10 },
+      { dx: 0, dz: -7 },
+      { dx: 0, dz: 1 },
+      { dx: 0, dz: 9 },
     ].map(({ dx, dz }) => ({
       position: {
         x: (LOWER_BOX.min.x + LOWER_BOX.max.x) / 2 + dx,
@@ -1707,16 +1807,16 @@ export function buildWorld(): World {
         z: (LOWER_BOX.min.z + LOWER_BOX.max.z) / 2 + dz,
       },
       colour: LOWER_TINT,
-      intensity: 8,
-      radius: 15,
+      intensity: 3.2,
+      radius: 13,
     })).concat(
       // Et chaque lampe des scènes, chaude et courte : elle doit se voir sur son mur, pas
       // éclairer l'allée.
-      crypt.lamps.map((at) => ({
-        position: at,
-        colour: [1, 0.86, 0.68] as Colour,
-        intensity: 2.6,
-        radius: 4.5,
+      crypt.lamps.map((lamp) => ({
+        position: lamp.at,
+        colour: lamp.colour,
+        intensity: lamp.intensity,
+        radius: lamp.radius,
       })),
     ),
   }
@@ -1944,7 +2044,7 @@ export function buildWorld(): World {
   // matière. Elle est elle-même de pierre — une crypte au pied de l'escalier — et ses quatre
   // portes donnent sur quatre partis pris qui ne se ressemblent en rien.
   {
-    const holes: RoomHoles = { north: [holeOf(lowerMouth)] }
+    const holes: RoomHoles = { south: [holeOf(lowerMouth)] }
     const extra: number[] = []
     pushReveal(extra, lowerMouth, made(tinted(LOWER_TINT, 0.55), MATTER.pierre))
 

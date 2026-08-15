@@ -552,3 +552,174 @@ export function pushFrame(
     [[0, 1], [1, 1], [1, 0], [0, 0]],
   )
 }
+
+/**
+ * Le profil d'un cadre : une moulure, un filet, un passe-partout.
+ *
+ * Le premier cadre du musée n'avait qu'une baguette. C'est ce qui distingue une caisse d'un
+ * cadre : un vrai cadre a **trois plans** — la moulure large qui l'attache au mur, le filet
+ * doré qui borde l'ouverture, et la marge de carton qui sépare l'œuvre de la moulure. Sans le
+ * passe-partout, une image collée à sa baguette a l'air d'un écran ; avec, elle a l'air
+ * encadrée, et cela ne coûte que deux plans de plus.
+ */
+export interface FrameStyle {
+  moulding: Color
+  /** Le filet, en général doré, qui borde l'ouverture. */
+  fillet?: Color
+  /** Le passe-partout : la marge autour de l'œuvre. */
+  mount?: Color
+  /** Largeur de la moulure. */
+  width?: number
+}
+
+export function pushFramed(
+  out: number[],
+  centre: Vec3,
+  right: Vec3,
+  up: Vec3,
+  width: number,
+  height: number,
+  style: FrameStyle,
+  canvas: Color,
+): void {
+  const normal = normalize(cross(right, up))
+  const bar = style.width ?? 0.1
+  const depth = 0.075
+  const corner = add(add(centre, scale(right, -width / 2)), scale(up, -height / 2))
+
+  const frame = (from: Vec3, along: Vec3, across: Vec3, thick: number, colour: Color): void =>
+    pushBar(out, from, along, across, scale(normal, thick), colour)
+
+  // La moulure, quatre baguettes en onglet grossier.
+  frame(corner, scale(right, width), scale(up, bar), depth, style.moulding)
+  frame(add(corner, scale(up, height - bar)), scale(right, width), scale(up, bar), depth, style.moulding)
+  frame(add(corner, scale(up, bar)), scale(up, height - bar * 2), scale(right, bar), depth, style.moulding)
+  frame(
+    add(add(corner, scale(right, width - bar)), scale(up, bar)),
+    scale(up, height - bar * 2),
+    scale(right, bar),
+    depth,
+    style.moulding,
+  )
+
+  // Le filet, un centimètre et demi, légèrement en avant : c'est lui qui accroche la lumière.
+  const fillet = style.fillet
+  if (fillet) {
+    const f = 0.018
+    const inner = add(add(corner, scale(right, bar)), scale(up, bar))
+    const w = width - bar * 2
+    const h = height - bar * 2
+    frame(inner, scale(right, w), scale(up, f), depth + 0.012, fillet)
+    frame(add(inner, scale(up, h - f)), scale(right, w), scale(up, f), depth + 0.012, fillet)
+    frame(add(inner, scale(up, f)), scale(up, h - f * 2), scale(right, f), depth + 0.012, fillet)
+    frame(
+      add(add(inner, scale(right, w - f)), scale(up, f)),
+      scale(up, h - f * 2),
+      scale(right, f),
+      depth + 0.012,
+      fillet,
+    )
+  }
+
+  // Le passe-partout, dans le plan de l'œuvre mais en retrait de la moulure.
+  const margin = style.mount ? 0.06 : 0
+  if (style.mount) {
+    const inner = add(add(corner, scale(right, bar)), scale(up, bar))
+    const w = width - bar * 2
+    const h = height - bar * 2
+    pushQuad(
+      out,
+      add(inner, scale(normal, 0.035)),
+      add(add(inner, scale(right, w)), scale(normal, 0.035)),
+      add(add(add(inner, scale(right, w)), scale(up, h)), scale(normal, 0.035)),
+      add(add(inner, scale(up, h)), scale(normal, 0.035)),
+      style.mount,
+      [[0, 0], [w, 0], [w, h], [0, h]],
+    )
+  }
+
+  // L'œuvre enfin, mesurée de zéro à un.
+  const art = add(add(corner, scale(right, bar + margin)), scale(up, bar + margin))
+  const aw = width - (bar + margin) * 2
+  const ah = height - (bar + margin) * 2
+  const front = scale(normal, style.mount ? 0.045 : 0.03)
+  pushQuad(
+    out,
+    add(art, front),
+    add(add(art, scale(right, aw)), front),
+    add(add(add(art, scale(right, aw)), scale(up, ah)), front),
+    add(add(art, scale(up, ah)), front),
+    canvas,
+    [[0, 1], [1, 1], [1, 0], [0, 0]],
+  )
+}
+
+/**
+ * La lampe d'un tableau : une potence, un tube de laiton, une lumière vers le bas.
+ *
+ * C'est l'objet qui fait le plus pour l'ambiance d'une salle d'exposition, et personne ne le
+ * regarde jamais — on regarde ce qu'il éclaire. Un musée sombre avec une toile allumée est
+ * infiniment plus juste qu'un musée uniformément clair.
+ */
+export function pushPictureLight(
+  out: number[],
+  at: Vec3,
+  outward: Vec3,
+  span: number,
+  brass: Color,
+  glow: Color,
+): void {
+  const dir = normalize(outward)
+  const side = normalize(cross(dir, { x: 0, y: 1, z: 0 }))
+
+  // La potence contre le mur.
+  pushBar(out, add(add(at, scale(side, -0.02)), { x: 0, y: -0.03, z: 0 }), scale(dir, 0.18), scale(side, 0.04), { x: 0, y: 0.05, z: 0 }, brass)
+  // Le tube, horizontal, ouvert vers le bas.
+  const tube = add(add(at, scale(dir, 0.2)), scale(side, -span / 2))
+  pushBar(out, tube, scale(side, span), scale(dir, 0.09), { x: 0, y: 0.07, z: 0 }, brass)
+  pushBar(out, add(tube, { x: 0, y: -0.012, z: 0 }), scale(side, span * 0.94), scale(dir, 0.07), { x: 0, y: 0.012, z: 0 }, glow)
+}
+
+/**
+ * Un lampadaire : pied, fût, abat-jour retourné.
+ *
+ * Il pose une flaque de lumière au sol et une autre au plafond, ce qu'aucune source encastrée
+ * ne sait faire. Dans une salle qu'on veut chaude, c'est lui qu'il faut.
+ */
+export function pushTorchere(out: number[], at: Vec3, metal: Color, glow: Color): void {
+  pushCylinder(out, at, 0.22, 0.2, 0.04, 16, metal, metal)
+  pushCylinder(out, { ...at, y: at.y + 0.04 }, 0.035, 0.03, 1.5, 10, metal, metal)
+  pushCylinder(out, { ...at, y: at.y + 1.5 }, 0.1, 0.26, 0.3, 16, metal)
+  pushDisc(out, { ...at, y: at.y + 1.62 }, 0.24, 16, glow)
+}
+
+/**
+ * Un lustre : une couronne et ses globes.
+ *
+ * Cinq globes plutôt qu'un : une source unique fait une tache au plafond, cinq font une
+ * lumière. Ils sont émissifs, la couronne ne l'est pas — c'est ce contraste qui donne
+ * l'impression qu'ils brillent.
+ */
+export function pushChandelier(
+  out: number[],
+  ceiling: Vec3,
+  drop: number,
+  radius: number,
+  metal: Color,
+  glow: Color,
+): void {
+  pushCylinder(out, { ...ceiling, y: ceiling.y - drop }, 0.018, 0.018, drop, 8, metal)
+  const hub = { ...ceiling, y: ceiling.y - drop }
+  pushCylinder(out, { ...hub, y: hub.y - 0.06 }, 0.09, 0.05, 0.12, 12, metal, metal)
+
+  const arms = 5
+  for (let i = 0; i < arms; i++) {
+    const a = (i / arms) * TAU
+    const dir = { x: Math.cos(a), y: 0, z: Math.sin(a) }
+    const side = { x: -dir.z, y: 0, z: dir.x }
+    const start = add({ ...hub, y: hub.y - 0.02 }, scale(dir, 0.05))
+    pushBar(out, add(start, scale(side, -0.012)), scale(dir, radius), scale(side, 0.024), { x: 0, y: 0.024, z: 0 }, metal)
+    const tip = add({ ...hub, y: hub.y - 0.02 }, scale(dir, radius))
+    pushCylinder(out, { ...tip, y: tip.y - 0.02 }, 0.055, 0.045, 0.11, 10, glow, glow)
+  }
+}

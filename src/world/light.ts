@@ -49,7 +49,7 @@ export type Colour = readonly [number, number, number]
  * silence**, ce qui se lit dans l'image comme une salle mal éclairée sans que rien ne dise
  * pourquoi.
  */
-export const MAX_LIGHTS = 16
+export const MAX_LIGHTS = 24
 /**
  * Huit, parce que la rotonde en compte sept. Chaque ouverture est évaluée par
  * fragment, donc ce plafond est un vrai budget : le monter davantage se paierait sur
