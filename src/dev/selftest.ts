@@ -17,6 +17,7 @@ import { add, cross, dot, len, normalize, scale, sub, v3, type Vec3 } from '../m
 import { Player } from '../player/player'
 import { Projectiles } from '../player/projectiles'
 import { cameraToWorld } from '../render/camera'
+import { FLOATS_PER_VERTEX } from '../world/geometry'
 import { advance, resolveAgainstCell } from '../world/motion'
 import { angleAt, frameAt, toLocal } from '../world/twist'
 import { getLandmarks, HUB } from '../world/world'
@@ -698,7 +699,78 @@ export function runSelfTest(world: World): Check[] {
     }
   }
 
-  // 12. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
+  // 12. Aucune surface ne doit en recouvrir une autre.
+  //
+  //    Deux quads dans le même plan, qui partagent des pixels, se départagent au dernier
+  //    bit de la profondeur interpolée — différemment d'un pixel à l'autre et d'une image
+  //    à l'autre. Cela donne une bande qui grésille, et le défaut est d'autant plus voyant
+  //    que les deux surfaces n'ont pas la même teinte.
+  //
+  //    Le musée s'était déjà débarrassé de ce défaut une fois, en remplaçant l'encadrement
+  //    peint des ouvertures par le relief des embrasures — c'est ce qui a permis de
+  //    rapprocher le plan proche à quatre millimètres. Il est revenu par une porte à
+  //    laquelle personne n'avait pensé : celle d'un **coffre posé au milieu d'une salle**.
+  //    L'embrasure d'une paroi est creusée dans son épaisseur, donc hors de l'emprise du
+  //    sol ; celle d'un coffre est en plein milieu de la pièce, et sa dalle de seuil tombe
+  //    exactement sur le sol qui passe dessous.
+  //
+  //    D'où ce contrôle, qui ne regarde pas une salle en particulier mais **toute** la
+  //    géométrie du monde. C'est le genre de défaut qu'on ne relie pas à sa cause quand on
+  //    le voit à l'écran : on croit à un problème de rendu, et on cherche des heures du
+  //    mauvais côté.
+  {
+    let pairs = 0
+    let worst = ''
+
+    for (const cell of world.cells.values()) {
+      // La géométrie est émise par quads de six sommets.
+      const quads: { axis: number; plane: number; min: number[]; max: number[] }[] = []
+      const v = cell.verts
+      for (let q = 0; q + 6 * FLOATS_PER_VERTEX <= v.length; q += 6 * FLOATS_PER_VERTEX) {
+        const n = [v[q + 3]!, v[q + 4]!, v[q + 5]!]
+        let axis = 0
+        for (let k = 1; k < 3; k++) if (Math.abs(n[k]!) > Math.abs(n[axis]!)) axis = k
+        // Les faces obliques — celles du tube vrillé — ne sont pas traitées : deux quads
+        // qui tournent ne peuvent pas se recouvrir sans que la vrille elle-même soit
+        // fausse, et c'est déjà vérifié ailleurs.
+        if (Math.abs(n[axis]!) < 0.999) continue
+
+        const min = [Infinity, Infinity, Infinity]
+        const max = [-Infinity, -Infinity, -Infinity]
+        for (let i = 0; i < 6; i++) {
+          for (let k = 0; k < 3; k++) {
+            const c = v[q + i * FLOATS_PER_VERTEX + k]!
+            if (c < min[k]!) min[k] = c
+            if (c > max[k]!) max[k] = c
+          }
+        }
+        quads.push({ axis, plane: min[axis]!, min, max })
+      }
+
+      for (let i = 0; i < quads.length; i++) {
+        for (let j = i + 1; j < quads.length; j++) {
+          const a = quads[i]!
+          const b = quads[j]!
+          if (a.axis !== b.axis || Math.abs(a.plane - b.plane) > 1e-4) continue
+          // Se toucher par une arête ne coûte rien ; c'est partager une surface qui coûte.
+          const shared = [0, 1, 2]
+            .filter((k) => k !== a.axis)
+            .every((k) => Math.min(a.max[k]!, b.max[k]!) - Math.max(a.min[k]!, b.min[k]!) > 1e-3)
+          if (!shared) continue
+          pairs++
+          if (!worst) worst = `${cell.id}, plan ${'xyz'[a.axis]}=${a.plane.toFixed(3)}`
+        }
+      }
+    }
+
+    add_(
+      'géométrie · aucune surface n’en recouvre une autre',
+      pairs === 0,
+      pairs === 0 ? 'aucun plan partagé' : `${pairs} paire(s) coplanaires — la première dans ${worst}`,
+    )
+  }
+
+  // 13. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
   const stray = v3(0, 1.65, 0)
   for (const cell of world.cells.values()) {
     const p = resolveAgainstCell(cell, stray, PROBE_BODY).pos

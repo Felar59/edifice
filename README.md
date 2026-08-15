@@ -328,6 +328,22 @@ coordonnée non représentable, et l'écart mesuré passe à 1,2 × 10⁻⁵ m. 
 et il avait raison. Tout le musée tient sur une **grille au quart de mètre**, où sommes et
 différences restent exactes — une contrainte à connaître avant de poser une cote.
 
+**Et une surface de trop, qui grésillait.** Une embrasure porte quatre jambages : deux
+montants, un linteau, un seuil. Celle d'une paroi est creusée dans son épaisseur, donc
+hors de l'emprise du sol, et sa dalle de seuil est la seule surface à cet endroit. Celle
+d'un coffre est en plein milieu de la salle — et le sol passe dessous. Les deux dalles se
+retrouvaient rigoureusement coplanaires, de deux teintes différentes, et se départageaient
+au dernier bit de la profondeur interpolée : une bande qui grésille au ras de la porte dès
+que la caméra bouge.
+
+Le coffre ne dessine donc pas de seuil. Le sol de la salle est déjà là, au même endroit, et
+il traverse l'embrasure sans rupture.
+
+Ce défaut avait été trouvé à l'œil, et c'est trop tard : il est de ceux qu'on ne relie pas
+à leur cause — on croit à un problème de rendu et on cherche du mauvais côté pendant des
+heures. Le test de torture inspecte donc désormais **toute** la géométrie du monde à la
+recherche de deux surfaces qui partagent un plan et des pixels. Il n'y en a plus aucune.
+
 Enfin, le point de vue du test est pris **de trois quarts, et de loin**. De face et de
 près, le coffre remplit le champ et redevient ce qu'il n'est pas : une porte dans un mur.
 Il faut voir deux de ses faces, ses arêtes contre la salle, et par l'ouverture cette même
@@ -378,6 +394,13 @@ transformations sont composées de zéros, de uns et de translations exactes.
 S'y ajoute l'orthonormalité du repère de la caméra, vérifiée à toutes les
 inclinaisons. C'est l'invariant qui manquait, et son absence a laissé passer le
 défaut le plus visible du prototype.
+
+S'y ajoute un contrôle qui ne parle pas de coutures du tout : **aucune surface n'en
+recouvre une autre**. Toute la géométrie du monde est inspectée, quad par quad, à la
+recherche de deux faces qui partagent un plan *et* des pixels. C'est la cause d'un
+grésillement qu'on attribue toujours au rendu, jamais à la construction — et le seul cas
+que le musée ait connu était le seuil d'une embrasure posée en plein milieu d'une salle,
+là où le sol passait déjà.
 
 S'y ajoutent les invariants du reliquaire, dont trois qui ne parlent pas de coutures mais
 de matière : on ne traverse pas un bloc plein, on n'y reste pas **pris** — un point posé

@@ -169,7 +169,7 @@ function makePassages(
  * supprime la seule géométrie coplanaire de la scène, ce qui permet de rapprocher le
  * plan proche sans craindre le conflit de profondeur.
  */
-function pushReveal(out: number[], m: Mouth, color: Color): void {
+function pushReveal(out: number[], m: Mouth, color: Color, sill = true): void {
   const w = m.halfWidth
   const h = m.halfHeight
   const R = m.right
@@ -184,8 +184,10 @@ function pushReveal(out: number[], m: Mouth, color: Color): void {
     { origin: corner(-w, -h), right: depth, up: scale(U, 2 * h) }, // jambage gauche
     { origin: corner(w, -h), right: scale(U, 2 * h), up: depth }, // jambage droit
     { origin: corner(-w, h), right: depth, up: scale(R, 2 * w) }, // linteau
-    { origin: corner(-w, -h), right: scale(R, 2 * w), up: depth }, // seuil
   ]
+  // Le seuil, lui, ne va pas de soi — voir l'appelant qui le refuse.
+  if (sill) faces.push({ origin: corner(-w, -h), right: scale(R, 2 * w), up: depth })
+
   for (const f of faces) pushWall(out, { origin: f.origin, right: f.right, up: f.up, color })
 }
 
@@ -711,7 +713,22 @@ export function buildWorld(): World {
 
   for (const entry of wingData) {
     const extra: number[] = []
-    for (const m of entry.mouths) pushReveal(extra, m, tinted(entry.wing.tint, 0.55))
+    for (const m of entry.mouths) {
+      // **Une embrasure posée dans une pièce n'a pas de seuil à dessiner.**
+      //
+      // Celle d'une paroi est creusée dans son épaisseur, donc hors de l'emprise du sol,
+      // et sa dalle de seuil est la seule surface à cet endroit. Celle d'un coffre est en
+      // plein milieu de la salle : le sol passe déjà dessous, et les deux dalles se
+      // retrouvent rigoureusement coplanaires. Les profondeurs interpolées se départagent
+      // alors au dernier bit, différemment d'un pixel à l'autre et d'une image à l'autre —
+      // ce qui donne une bande qui grésille au ras de la porte, d'autant plus visible que
+      // les deux dalles n'ont pas la même teinte.
+      //
+      // On ne dessine donc pas la nôtre. Le sol de la salle est déjà là, au même endroit,
+      // et il traverse l'embrasure sans rupture.
+      const inTheOpen = entry.chest !== undefined && m === entry.mouths[1]
+      pushReveal(extra, m, tinted(entry.wing.tint, 0.55), !inTheOpen)
+    }
 
     const twisted = entry.wing.id === 'vrille'
     if (twisted) {
