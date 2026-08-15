@@ -842,7 +842,6 @@ const OAK = FURNITURE.chene
 const IRON = FURNITURE.fonte
 const BRASS = FURNITURE.laiton
 const GLOW = made([1, 0.9, 0.74], MATTER.lumiere)
-const COOL = made([0.9, 0.94, 1], MATTER.lumiere)
 
 /**
  * Une source déclarée par une scène.
@@ -862,7 +861,6 @@ interface Lamp {
 
 const WARM: Colour = [1, 0.84, 0.64]
 const CANDLE: Colour = [1, 0.78, 0.52]
-const DAYLIGHT: Colour = [0.86, 0.92, 1]
 
 /**
  * **Les trois profils de cadre du musée.**
@@ -1058,17 +1056,6 @@ const VIGNETTES: Vignette[] = [
     },
   },
   {
-    about: 'la galerie blanche — cadres noirs, lumière du jour',
-    floor: made([0.56, 0.44, 0.3], MATTER.parquet),
-    wall: made([0.74, 0.73, 0.71], MATTER.platre),
-    build: (out, c, lamps) => {
-      exhibit(out, lamps, c, 0.85, 1.0, 0.62, made([1, 1, 1], PICTURES.hunter), 'noir')
-      exhibit(out, lamps, c, 2.1, 1.0, 0.62, made([1, 1, 1], PICTURES.julia), 'noir')
-      exhibit(out, lamps, c, 3.35, 1.0, 0.62, made([1, 1, 1], PICTURES.shell), 'noir')
-      lamps.push({ at: { x: c.x + 2.1, y: c.y + VIGNETTE_HEIGHT - 0.5, z: c.z + 1.6 }, colour: DAYLIGHT, intensity: 5, radius: 7 })
-    },
-  },
-  {
     about: 'le coin de lecture — lampadaire, tapis vert, un banc',
     floor: made(PAINT.tapisVert, MATTER.moquette),
     wall: made(PAINT.creme, MATTER.lambris),
@@ -1086,31 +1073,6 @@ const VIGNETTES: Vignette[] = [
         4,
       )
       exhibit(out, lamps, c, 2.4, 1.2, 0.75, made([1, 1, 1], PICTURES.monde), 'clair')
-    },
-  },
-  {
-    about: 'la nuit — pierre, un lampadaire, rien d’autre',
-    floor: made(PAINT.dalle, MATTER.pierre),
-    wall: made(PAINT.pierreClaire, MATTER.pierre),
-    build: (out, c, lamps) => {
-      pushTorchere(out, { x: c.x + 3.3, y: c.y, z: c.z + 2.6 }, IRON, COOL)
-      lamps.push({ at: { x: c.x + 3.3, y: c.y + 1.75, z: c.z + 2.6 }, colour: DAYLIGHT, intensity: 4.5, radius: 5 })
-      pushBench(out, { x: c.x + 1.6, y: c.y, z: c.z + 2.6 }, 1.8, { x: 0, y: 0, z: 1 }, OAK, IRON)
-    },
-  },
-  {
-    about: 'l’enfilade — deux appliques, une grande toile éclairée',
-    floor: made(PAINT.marbreClair, MATTER.marbre),
-    wall: made(PAINT.pierreClaire, MATTER.pierre),
-    build: (out, c, lamps) => {
-      exhibit(out, lamps, c, 2.2, 2.1, 1.25, made([1, 1, 1], PICTURES.musee), 'or', {
-        intensity: 4,
-        colour: WARM,
-      })
-      for (const x of [0.55, 3.85]) {
-        pushSconce(out, { x: c.x + x, y: c.y + 2.2, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, BRASS, GLOW)
-      }
-      lamps.push({ at: { x: c.x + 2.2, y: c.y + 2.36, z: c.z + 0.5 }, colour: CANDLE, intensity: 2, radius: 4 })
     },
   },
 ]
@@ -1197,7 +1159,7 @@ function furnishTheCrypt(out: number[]): { blocks: Block[]; lamps: Lamp[] } {
   const pitchX = 5.5
   const pitchZ = 8.5
   const columns = 5
-  const rows = 3
+  const rows = 2
   const originX = LOWER_BOX.min.x + 2.2
   const originZ = LOWER_BOX.min.z + 3
 
