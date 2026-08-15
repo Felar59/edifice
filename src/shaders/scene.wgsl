@@ -138,55 +138,91 @@ fn mouthLight(p : vec3<f32>, n : vec3<f32>, m : MouthLight) -> vec3<f32> {
 // ---------------------------------------------------------------------------
 // Les matières.
 //
-// Tout est calculé ici, à partir des seules coordonnées de surface — pas une image, pas un
-// octet à charger. C'est ainsi que l'ancien moteur du portfolio faisait ses murs de galerie
-// et ses sols de marbre, et la méthode vaut mieux que jamais : ce qui se calcule ne pèse
-// rien au téléchargement, ne pixellise pas de près, et se décline à volonté.
+// **Portées de l'ancien moteur du portfolio**, dont les textures étaient bonnes, et qui les
+// calculait pixel par pixel sur le processeur. Ici elles se calculent par fragment sur la
+// carte : mêmes recettes, mêmes proportions, mais sans image en mémoire, sans pixellisation
+// de près, et sans répétition visible — les coordonnées étant en mètres et continues, un mur
+// de vingt mètres ne répète pas une tuile, il déroule un motif.
 //
-// Les coordonnées sont en **mètres**, ce qui permet de raisonner en tailles réelles : une
-// dalle de marbre fait un mètre, une lame de parquet douze centimètres, une planche de
-// coffrage vingt-cinq. Une cimaise tombe donc toujours à quatre-vingt-dix centimètres,
-// quelle que soit la salle où on la pose.
+// Trois principes hérités, et ce sont eux qui font la différence entre une matière et un
+// aplat teinté :
+//
+// - **un grain fin partout.** Sans lui, une surface plane a l'air d'une image de synthèse de
+//   1995. Il s'efface avec la distance, sinon il grésillerait ;
+// - **une variation par élément.** Chaque bloc de pierre, chaque lame de parquet a son ton
+//   propre, tiré d'un haché de sa position. C'est ce qui casse la régularité ;
+// - **des joints creux, et une arête éclairée juste dessous.** Un joint seul fait un dessin ;
+//   un joint plus son arête fait un relief.
+//
+// Les dérivées d'écran sont **données** aux matières, jamais calculées par elles : WGSL les
+// interdit sous une condition non uniforme, et tout ce fichier est fait de conditions.
 // ---------------------------------------------------------------------------
 
-/** Bruit de valeur haché : reproductible, sans table, et assez bon pour de la matière. */
-fn hash21(p : vec2<f32>) -> f32 {
-  var h = fract(p * vec2<f32>(0.1031, 0.1030));
-  h += dot(h, h.yx + 33.33);
-  return fract((h.x + h.y) * h.x);
+/** Haché entier vers [0,1). Celui de l'ancien moteur, à l'identique. */
+fn hash2(x : f32, y : f32) -> f32 {
+  var h = u32(i32(x) * 668265261) ^ u32(i32(y) * 374761393);
+  h ^= h >> 15u;
+  h *= 2246822519u;
+  h ^= h >> 13u;
+  h *= 3266489917u;
+  h ^= h >> 16u;
+  return f32(h >> 8u) / 16777216.0;
 }
 
-fn noise21(p : vec2<f32>) -> f32 {
+fn vnoise(p : vec2<f32>) -> f32 {
   let i = floor(p);
-  let f = fract(p);
+  let f = p - i;
   let u = f * f * (3.0 - 2.0 * f);
-  let a = hash21(i);
-  let b = hash21(i + vec2<f32>(1.0, 0.0));
-  let c = hash21(i + vec2<f32>(0.0, 1.0));
-  let d = hash21(i + vec2<f32>(1.0, 1.0));
+  let a = hash2(i.x, i.y);
+  let b = hash2(i.x + 1.0, i.y);
+  let c = hash2(i.x, i.y + 1.0);
+  let d = hash2(i.x + 1.0, i.y + 1.0);
   return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 
 fn fbm(p : vec2<f32>) -> f32 {
   var sum = 0.0;
-  var amp = 0.5;
+  var norm = 0.0;
+  var amp = 1.0;
   var at = p;
   for (var i = 0; i < 4; i++) {
-    sum += amp * noise21(at);
-    at *= 2.03;
-    amp *= 0.5;
+    sum += amp * vnoise(at);
+    norm += amp;
+    amp *= 0.55;
+    at *= 2.0;
   }
-  return sum;
+  return sum / norm;
+}
+
+/** fbm « turbulent » : c'est la valeur absolue qui donne au marbre ses veines. */
+fn turbulence(p : vec2<f32>) -> f32 {
+  var sum = 0.0;
+  var norm = 0.0;
+  var amp = 1.0;
+  var at = p;
+  for (var i = 0; i < 4; i++) {
+    sum += amp * abs(vnoise(at) * 2.0 - 1.0);
+    norm += amp;
+    amp *= 0.5;
+    at *= 2.0;
+  }
+  return sum / norm;
 }
 
 /**
- * Une rainure, adoucie à la largeur d'un pixel.
+ * Le grain fin, qui s'efface avec la distance.
  *
- * L'adoucissement lui est **donné**, il ne le calcule pas. Les dérivées d'écran — `fwidth`
- * et sa famille — sont interdites sous une condition qui n'est pas uniforme, et tout ce
- * fichier est fait de conditions sur la matière. On les prend donc une fois pour toutes en
- * tête de nuanceur, là où le flot est uniforme, et on les fait descendre.
+ * Sans lui les surfaces planes ont l'air d'une image de synthèse de 1995 ; sans son
+ * effacement, elles grésillent dès qu'un pixel couvre plus d'un centimètre, faute de
+ * mip-map. On le fait donc disparaître exactement là où il commencerait à bouger.
  */
+fn grain(p : vec2<f32>, amount : f32, blur : f32) -> f32 {
+  let fade = 1.0 - smoothstep(0.004, 0.02, blur);
+  if (fade <= 0.0) { return 0.0; }
+  return (hash2(floor(p.x * 320.0), floor(p.y * 320.0)) - 0.5) * amount * fade;
+}
+
+/** Une rainure creuse, adoucie à la largeur d'un pixel. */
 fn groove(x : f32, period : f32, width : f32, blur : f32) -> f32 {
   let d = abs(fract(x / period - 0.5) - 0.5) * period;
   return 1.0 - smoothstep(width, width + blur * 1.5, d);
@@ -194,113 +230,216 @@ fn groove(x : f32, period : f32, width : f32, blur : f32) -> f32 {
 
 fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> vec3<f32> {
   let m = i32(matter + 0.5);
+  let fine = grain(uv, 0.03, max(blur.x, blur.y));
 
-  // 1 — Marbre. Des veines lentes et un joint tous les mètres. Le veinage est du bruit
-  // replié sur lui-même : c'est ce qui lui donne ses filets nets au milieu des nuages.
+  // 1 — Marbre veiné. Le veinage vient d'une sinusoïde déformée par de la turbulence : là où
+  // la sinusoïde passe par zéro, on trace une veine. Deux familles se superposent — des
+  // veines principales franches, et un réseau secondaire plus fin et plus pâle. La veine est
+  // une **couleur**, pas un éclaircissement : une pierre veinée ne brille pas.
   if (m == 1) {
-    // Les veines d'une pierre ne brillent pas : elles **assombrissent**. Éclaircies, elles
-    // se lisaient comme des éclairs peints sur le sol.
-    let vein = fbm(uv * 0.55);
-    let filament = abs(sin((uv.x + uv.y * 0.6) * 1.6 + vein * 5.0));
-    let veins = pow(1.0 - clamp(filament, 0.0, 1.0), 9.0);
-    let grain = fbm(uv * 9.0) * 0.05;
-    let joint = max(groove(uv.x, 1.0, 0.012, blur.x), groove(uv.y, 1.0, 0.012, blur.y));
-    return base * (0.97 + grain - veins * 0.22) * (1.0 - 0.22 * joint);
+    let t1 = turbulence(uv * 2.6);
+    let s1 = abs(sin((uv.x * 2.6 + uv.y * 1.6 + t1 * 1.6) * 3.14159265));
+    let v1 = 1.0 - smoothstep(0.0, 0.16, s1);
+
+    let t2 = turbulence(uv * 6.0 + vec2<f32>(5.0, 0.0));
+    let s2 = abs(sin((uv.x * 4.7 - uv.y * 3.4 + t2 * 1.9) * 3.14159265));
+    let v2 = (1.0 - smoothstep(0.0, 0.10, s2)) * 0.45;
+
+    let amount = clamp(v1 + v2, 0.0, 1.0) * 0.55;
+    let vein = base * 0.62;
+    let mottle = 0.975 + 0.05 * fbm(uv * 4.0);
+
+    // Le chanfrein du bord de dalle, tous les mètres.
+    let cell = abs(fract(uv) - vec2<f32>(0.5));
+    let edge = (1.0 - smoothstep(0.0, 0.02, 0.5 - max(cell.x, cell.y))) * 0.16;
+    return (mix(base * mottle, vein, amount) + fine) * (1.0 - edge);
   }
 
-  // 2 — Parquet. Lames de douze centimètres, décalées, chacune de son ton, avec le fil du
-  // bois dans le sens de la lame.
+  // 2 — Parquet mosaïque : des carrés de lames alternant à quatre-vingt-dix degrés, comme
+  // dans les vieilles galeries. Chaque lame a son ton et son fil.
   if (m == 2) {
-    let strip = floor(uv.y / 0.12);
-    let shift = fract(strip * 0.37) * 0.8;
-    let plank = floor((uv.x + shift) / 0.85);
-    let tone = 0.82 + hash21(vec2<f32>(plank, strip)) * 0.34;
-    let fibre = 0.94 + fbm(vec2<f32>(uv.x * 3.0, uv.y * 42.0)) * 0.14;
-    let joints = max(groove(uv.y, 0.12, 0.006, blur.y), groove(uv.x + shift, 0.85, 0.008, blur.x));
-    return base * tone * fibre * (1.0 - 0.45 * joints);
+    let BLOCK = 0.6;
+    let PLANK = 0.15;
+    let b = floor(uv / BLOCK);
+    let horiz = (i32(b.x) + i32(b.y)) % 2 == 0;
+    let inside = uv - b * BLOCK;
+
+    var plank = 0.0;
+    var across = 0.0;
+    var along = 0.0;
+    if (horiz) {
+      plank = floor(inside.y / PLANK);
+      across = fract(inside.y / PLANK);
+      along = inside.x / BLOCK;
+    } else {
+      plank = floor(inside.x / PLANK);
+      across = fract(inside.x / PLANK);
+      along = inside.y / BLOCK;
+    }
+
+    let seedX = b.x * 4.0 + plank;
+    let seedY = b.y * 4.0 + select(1.0, 0.0, horiz);
+    let tone = 0.80 + 0.40 * hash2(seedX, seedY * 31.0 + 7.0);
+    let fil = 0.86 + 0.28 * fbm(vec2<f32>(along * 9.0 + seedX * 3.7, across * 2.0 + seedY * 1.3));
+
+    let joint = max(1.0 - smoothstep(0.0, 0.09, across), 1.0 - smoothstep(0.0, 0.09, 1.0 - across));
+    let corner = min(min(inside.x, BLOCK - inside.x), min(inside.y, BLOCK - inside.y));
+    let bedge = 1.0 - smoothstep(0.0, 0.012, corner);
+
+    var k = tone * fil;
+    k = mix(k, k * 0.55, joint * 0.9);
+    k = mix(k, k * 0.62, bedge * 0.7);
+    // Le vernis : un très léger dégradé le long de la lame.
+    k *= 1.0 + 0.05 * (along - 0.5);
+    return base * k + fine;
   }
 
-  // 3 — Moquette. Aucune ligne, seulement un grain fin : c'est l'absence de joint qui la
-  // fait reconnaître sans qu'on y pense.
+  // 3 — Moquette dense : des fibres orientées, des taches lentes, aucun joint. C'est
+  // l'absence de ligne qui la fait reconnaître sans qu'on y pense.
   if (m == 3) {
-    let fluff = fbm(uv * 60.0) * 0.16 + fbm(uv * 13.0) * 0.1;
-    return base * (0.9 + fluff);
+    let fibers = fbm(vec2<f32>(uv.x * 60.0, uv.y * 22.0));
+    let blotch = fbm(uv * 4.0);
+    return base * (0.80 + 0.30 * fibers + 0.10 * blotch) + grain(uv, 0.05, max(blur.x, blur.y));
   }
 
-  // 4 — Mur de galerie : un lambris bas, sa cimaise, le plâtre au-dessus.
+  // 4 — Mur de galerie : plinthe, lambris à panneaux, chapeau, plâtre, cimaise.
+  //
+  // Les hauteurs sont en **mètres réels** et non en fractions de la paroi, contrairement à
+  // l'original : une cimaise est à deux mètres vingt du sol dans une salle de quatre mètres
+  // comme dans une salle de sept, et la faire monter avec le plafond donnait un lambris de
+  // deux mètres de haut.
   if (m == 4) {
-    let grain = fbm(uv * 5.0) * 0.05;
-    if (uv.y < 0.82) {
-      let panel = groove(uv.x, 0.9, 0.01, blur.x);
-      return base * (0.44 + grain) * (1.0 - 0.4 * panel);
+    let h = uv.y;
+    // Le bois n'est pas le mur en plus sombre : c'est une autre matière, plus chaude.
+    // L'ancien moteur prenait les deux tons en paramètre ; ici on tire le second du premier,
+    // ce qui garde le lambris cohérent avec la salle sans qu'on ait à le déclarer.
+    let wood = base * vec3<f32>(0.52, 0.36, 0.24);
+
+    if (h < 0.14) {
+      // Plinthe : plus sombre, plus lisse.
+      return wood * 0.72 + fine;
     }
-    if (uv.y < 0.94) {
-      return base * (0.68 + grain);
+    if (h < 1.0) {
+      // Lambris : un panneau creux tous les quatre-vingt-dix centimètres, avec son biseau.
+      let cell = fract(uv.x / 0.9);
+      let innerX = smoothstep(0.10, 0.145, cell) * (1.0 - smoothstep(0.855, 0.90, cell));
+      let innerY = smoothstep(0.20, 0.26, h) * (1.0 - smoothstep(0.88, 0.94, h));
+      let recess = innerX * innerY;
+      let vein = 0.88 + 0.24 * fbm(vec2<f32>(uv.x * 3.0 + 11.0, h * 26.0));
+      let bevel = 0.20 * (1.0 - smoothstep(0.20, 0.30, h)) - 0.18 * smoothstep(0.84, 0.94, h);
+      return wood * vein * (mix(1.0, 0.80, recess) + bevel * recess) + fine;
     }
-    return base * (1.0 + grain);
+    if (h < 1.06) {
+      // Chapeau du lambris : arête claire, puis ombre.
+      let t = (h - 1.0) / 0.06;
+      return wood * (1.25 - 0.55 * t) + fine;
+    }
+
+    // Plâtre, sali très légèrement vers le bas, et la cimaise à deux mètres vingt.
+    let dirt = 1.0 - 0.10 * (1.0 - smoothstep(1.06, 2.2, h));
+    let mottle = 0.94 + 0.12 * fbm(vec2<f32>(uv.x * 6.0, h * 6.0));
+    var k = base * mottle * dirt;
+    let d = abs(h - 2.2);
+    if (d < 0.018) {
+      k = mix(k, wood * 1.25, 1.0 - d / 0.018);
+    } else if (h > 2.2 && h < 2.26) {
+      k *= 1.0 - 0.22 * (1.0 - (h - 2.218) / 0.042);
+    }
+    return k + fine;
   }
 
-  // 5 — Pierre de taille. Des blocs d'un mètre sur cinquante, en assises décalées, chacun
-  // d'un ton légèrement différent.
+  // 5 — Pierre de taille en appareil régulier. Une assise sur deux décalée d'un demi-bloc,
+  // des joints creux, et **une arête éclairée juste sous le joint horizontal** : c'est elle
+  // qui donne le relief, le joint seul ne ferait qu'un dessin.
   if (m == 5) {
-    let row = floor(uv.y / 0.5);
-    let shift = select(0.0, 0.5, fract(row * 0.5) > 0.25);
-    let block = floor((uv.x + shift) / 1.0);
-    let tone = 0.88 + hash21(vec2<f32>(block, row)) * 0.22;
-    let pit = fbm(uv * 16.0) * 0.09;
-    let joints = max(groove(uv.y, 0.5, 0.018, blur.y), groove(uv.x + shift, 1.0, 0.018, blur.x));
-    return base * (tone + pit) * (1.0 - 0.35 * joints);
+    let ROW = 0.55;
+    let BLOCK = 1.1;
+    let ry = uv.y / ROW;
+    let row = floor(ry);
+    let fy = ry - row;
+    let offset = select(0.5, 0.0, (i32(row) % 2) == 0);
+    let rx = uv.x / BLOCK + offset;
+    let col = floor(rx);
+    let fx = rx - col;
+
+    let tone = 0.90 + 0.16 * hash2(col, row);
+    let n = fbm(vec2<f32>(uv.x * 8.0 + col * 3.0, uv.y * 16.0));
+    var k = tone * (0.92 + 0.16 * n);
+
+    let jx = (0.5 - abs(fx - 0.5)) * 2.0;
+    let jy = (0.5 - abs(fy - 0.5)) * 2.0;
+    let joint = max(1.0 - smoothstep(0.0, 0.055, jx), 1.0 - smoothstep(0.0, 0.10, jy));
+    k = mix(k, k * 0.52, joint);
+    if (fy < 0.12) {
+      k *= 1.0 + 0.10 * (1.0 - fy / 0.12);
+    }
+    return base * k + fine;
   }
 
-  // 6 — Plafond à caissons. Un cadre saillant, un fond en retrait : le relief est feint par
-  // la lumière, et à cette distance personne ne va vérifier.
+  // 6 — Plafond à caissons : un cadre plat, une gorge, un fond en retrait, et l'ombre portée
+  // sur deux côtés seulement. Le relief est feint, mais il tient parce qu'il est éclairé
+  // toujours du même côté.
   if (m == 6) {
-    let cell = abs(fract(uv / 1.2) - vec2<f32>(0.5)) * 2.0;
-    let edge = max(cell.x, cell.y);
-    let frame = smoothstep(0.72, 0.78, edge);
-    let deep = smoothstep(0.0, 0.6, 1.0 - edge);
-    return base * (0.72 + frame * 0.34 - deep * 0.18);
+    let cell = fract(uv / 1.2);
+    let e = min(min(cell.x, 1.0 - cell.x), min(cell.y, 1.0 - cell.y));
+    let inner = smoothstep(0.09, 0.13, e);
+    let depth = mix(1.06, 0.86, inner);
+    let shade = 0.14 * (1.0 - smoothstep(0.09, 0.15, min(cell.x, cell.y)));
+    let n = 0.97 + 0.06 * fbm(uv * 6.0);
+    return base * (depth * n - shade) + fine;
   }
 
-  // 7 — Béton banché. Les planches du coffrage laissent leur trace tous les vingt-cinq
-  // centimètres, et les trous de banche leur grille. C'est la matière de la direction
-  // artistique du musée : brute, monumentale, sans ornement.
+  // 7 — Béton banché. La trace des planches de coffrage tous les vingt-cinq centimètres, les
+  // trous de banche en grille, et des coulures. La matière de la direction artistique du
+  // musée : brute, monumentale, sans ornement.
   if (m == 7) {
     let board = floor(uv.y / 0.25);
-    let tone = 0.93 + hash21(vec2<f32>(board, 3.0)) * 0.1;
-    let mottle = fbm(uv * 2.2) * 0.13 + fbm(uv * 11.0) * 0.05;
-    let seam = groove(uv.y, 0.25, 0.006, blur.y);
+    let tone = 0.94 + 0.08 * hash2(board, 3.0);
+    let mottle = 0.92 + 0.14 * fbm(uv * 1.6) + 0.05 * fbm(uv * 9.0);
+    let seam = groove(uv.y, 0.25, 0.005, blur.y);
+    let lip = 1.0 + 0.06 * (1.0 - smoothstep(0.0, 0.04, fract(uv.y / 0.25) * 0.25));
     let hole = fract(uv / 1.5) - vec2<f32>(0.5);
-    let tie = 1.0 - smoothstep(0.012, 0.02, length(hole) * 1.5);
-    return base * (tone + mottle) * (1.0 - 0.18 * seam) * (1.0 - 0.5 * tie);
+    let tie = 1.0 - smoothstep(0.010, 0.017, length(hole) * 1.5);
+    return base * tone * mottle * lip * (1.0 - 0.16 * seam) * (1.0 - 0.45 * tie) + fine;
   }
 
-  // 8 — Tôle rivetée. Des panneaux, leurs rivets, et le brossé du métal.
+  // 8 — Tôle rivetée. Des panneaux de deux mètres sur un, leurs rivets le long des joints, et
+  // le brossé du métal. C'est la file des rivets qui dit « métal », pas le grain.
   if (m == 8) {
-    let cell = vec2<f32>(2.0, 1.0);
-    let panel = floor(uv / cell);
-    let tone = 0.82 + hash21(panel) * 0.26;
-    let brushed = 0.94 + fbm(vec2<f32>(uv.x * 70.0, uv.y * 2.0)) * 0.14;
-    let inner = abs(fract(uv / cell) - vec2<f32>(0.5)) * 2.0;
+    let CELL = vec2<f32>(2.0, 1.0);
+    let panel = floor(uv / CELL);
+    let tone = 0.84 + 0.24 * hash2(panel.x, panel.y);
+    let brushed = 0.94 + 0.14 * fbm(vec2<f32>(uv.x * 70.0, uv.y * 2.0));
+    let inner = abs(fract(uv / CELL) - vec2<f32>(0.5)) * 2.0;
     let seam = smoothstep(0.9, 0.985, max(inner.x, inner.y));
-    // Les rivets courent le long du joint, comme sur une vraie tôle : c'est leur file qui
-    // dit « métal », pas le grain.
-    let stud = fract(uv / vec2<f32>(0.25, 1.0)) - vec2<f32>(0.5, 0.5);
-    let near = smoothstep(0.78, 0.9, inner.y);
-    let rivet = (1.0 - smoothstep(0.14, 0.24, abs(stud.x))) * near;
-    return base * tone * brushed * (1.0 - 0.45 * seam) * (1.0 + 0.3 * rivet);
+    let stud = fract(uv / vec2<f32>(0.25, 1.0)) - vec2<f32>(0.5);
+    let rivet = (1.0 - smoothstep(0.14, 0.24, abs(stud.x))) * smoothstep(0.78, 0.9, inner.y);
+    return base * tone * brushed * (1.0 - 0.45 * seam) * (1.0 + 0.3 * rivet) + fine;
   }
 
-  // 9 — Plâtre. Rien qu'un nuage très lent, à peine perceptible. C'est la matière la plus
-  // difficile à réussir, parce qu'elle n'a aucun motif pour se rattraper : un plâtre plat
-  // est un aplat, un plâtre trop marqué est du crépi.
+  // 9 — Plâtre tendu, avec un filet de rive discret. Un aplat parfaitement uni fait un trou
+  // blanc au-dessus de la tête ; le filet donne au regard une trame à laquelle s'accrocher.
   if (m == 9) {
-    let cloud = fbm(uv * 0.6) * 0.06 + fbm(uv * 4.0) * 0.02;
-    return base * (0.97 + cloud);
+    let n = 0.97 + 0.05 * fbm(uv * 1.6);
+    let fillet = groove(uv.x, 2.4, 0.006, blur.x) + groove(uv.y, 2.4, 0.006, blur.y);
+    return base * n * (1.0 - 0.06 * clamp(fillet, 0.0, 1.0)) + fine;
   }
 
-  // 0 — Neutre : le quadrillage d'un mètre, qui est un outil de mise au point avant d'être
-  // un décor. Sans repère régulier, impossible de juger à l'œil si l'image vue à travers une
+  // 10 — Verrière : verre dépoli entre meneaux d'acier. Deux meneaux par carreau seulement,
+  // et fins — une grille dense fait un plafond d'usine, pas une verrière.
+  if (m == 10) {
+    let pane = fract(uv / 1.2);
+    let bar = max(
+      1.0 - smoothstep(0.0, 0.022, min(pane.x, 1.0 - pane.x)),
+      1.0 - smoothstep(0.0, 0.022, min(pane.y, 1.0 - pane.y)),
+    );
+    let glow = 0.94 + 0.10 * (1.0 - abs(pane.x - 0.5) * 2.0) * (1.0 - abs(pane.y - 0.5) * 2.0);
+    let frost = 0.96 + 0.07 * fbm(uv * 10.0);
+    return mix(base * frost * glow, vec3<f32>(0.52, 0.51, 0.50), bar);
+  }
+
+  // 0 — Neutre : le quadrillage d'un mètre, qui est un outil de mise au point avant d'être un
+  // décor. Sans repère régulier, impossible de juger à l'œil si l'image vue à travers une
   // couture est correctement alignée.
   let g = abs(fract(uv - vec2<f32>(0.5)) - vec2<f32>(0.5)) / blur;
   let line = 1.0 - min(min(g.x, g.y), 1.0);

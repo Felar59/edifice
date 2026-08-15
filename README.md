@@ -725,10 +725,27 @@ Jusqu'ici le musée était fait d'aplats et d'un quadrillage d'un mètre — un 
 point, pas un décor. Il a maintenant des **matières** : marbre, parquet, moquette, lambris de
 galerie, pierre de taille, plafond à caissons, béton banché, tôle rivetée, plâtre.
 
-Toutes sont **calculées dans le nuanceur**, à partir des seules coordonnées de surface. Pas
-une image, pas un octet à charger. C'est ainsi que l'ancien moteur du portfolio faisait ses
-murs de galerie et ses sols de marbre, et la méthode vaut mieux que jamais : ce qui se calcule
-ne pèse rien au téléchargement, ne pixellise pas de près, et se décline à volonté.
+Les recettes sont **reprises de l'ancien moteur du portfolio**, qui les calculait pixel par
+pixel sur le processeur et les rangeait dans des tuiles. Ici elles se calculent par fragment
+sur la carte : mêmes proportions, mêmes formules, mais sans image en mémoire, sans
+pixellisation de près, et **sans répétition visible** — les coordonnées étant continues, un
+mur de vingt mètres ne répète pas une tuile, il déroule un motif.
+
+Trois principes hérités, et ce sont eux qui font la différence entre une matière et un aplat
+teinté. **Un grain fin partout** : sans lui, une surface plane a l'air d'une image de synthèse
+de 1995 ; il s'efface avec la distance, faute de quoi il grésillerait, n'ayant pas de mip-map
+pour le porter. **Une variation par élément** : chaque bloc de pierre, chaque lame de parquet
+a son ton propre, tiré d'un haché de sa position, et c'est ce qui casse la régularité. **Des
+joints creux, et une arête éclairée juste dessous** : un joint seul fait un dessin, un joint
+plus son arête fait un relief.
+
+Deux écarts assumés avec l'original. Le veinage du marbre vient toujours d'une sinusoïde
+déformée par de la turbulence — là où elle passe par zéro, on trace une veine, et deux
+familles se superposent — mais la veine est une **couleur**, pas un éclaircissement : une
+première version les faisait briller, et le sol ressemblait à des éclairs peints. Et les
+hauteurs du mur de galerie sont en **mètres réels** au lieu de fractions de la paroi : une
+cimaise est à deux mètres vingt du sol dans une salle de quatre mètres comme dans une salle de
+sept, alors que la faire monter avec le plafond donnait un lambris de deux mètres de haut.
 
 Les coordonnées sont **en mètres**, ce qui permet de raisonner en tailles réelles : une dalle
 de marbre fait un mètre, une lame de parquet douze centimètres, une planche de coffrage

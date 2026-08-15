@@ -751,6 +751,33 @@ interface Cabinet {
   lighting: (box: Box, mouths: Mouth[]) => CellLighting
 }
 
+/**
+ * L'éclairage d'un cabinet : quatre sources douces plutôt qu'une forte.
+ *
+ * Une lampe unique au centre du plafond fait une tache brûlée sur le mur d'en face et laisse
+ * les angles noirs — ce qui va pour une salle technique, pas pour une salle qu'on regarde.
+ * Quatre sources aux quarts, moitié moins fortes chacune, donnent une lumière d'exposition :
+ * les matières s'y lisent partout, et plus rien ne brûle.
+ */
+function cabinetLighting(box: Box, tint: Colour, intensity = 5): CellLighting {
+  const lights = []
+  for (const fx of [0.28, 0.72]) {
+    for (const fz of [0.28, 0.72]) {
+      lights.push({
+        position: {
+          x: box.min.x + (box.max.x - box.min.x) * fx,
+          y: box.max.y - 0.6,
+          z: box.min.z + (box.max.z - box.min.z) * fz,
+        },
+        colour: tint,
+        intensity,
+        radius: (box.max.x - box.min.x) * 0.9,
+      })
+    }
+  }
+  return { ambient: [tint[0] * 0.09, tint[1] * 0.09, tint[2] * 0.09], lights }
+}
+
 const CABINET_SIDE = 16
 const CABINET_HEIGHT = 7
 
@@ -790,13 +817,13 @@ const CABINETS: Cabinet[] = [
     lateral: 915,
     tint: [1, 0.93, 0.8],
     palette: {
-      floor: made([0.72, 0.7, 0.66], MATTER.marbre),
-      ceiling: made([0.6, 0.58, 0.54], MATTER.caissons),
-      wall: made([0.68, 0.64, 0.56], MATTER.lambris),
+      floor: made([0.56, 0.545, 0.51], MATTER.marbre),
+      ceiling: made([0.5, 0.48, 0.44], MATTER.caissons),
+      wall: made([0.56, 0.53, 0.47], MATTER.lambris),
     },
     build: (out, box) => {
-      const shaft = made([0.6, 0.57, 0.51], MATTER.marbre)
-      const cap = made([0.66, 0.63, 0.57], MATTER.platre)
+      const shaft = made([0.52, 0.5, 0.45], MATTER.marbre)
+      const cap = made([0.58, 0.56, 0.51], MATTER.platre)
       const blocks: Block[] = []
       for (const x of [box.min.x + 4, box.max.x - 4]) {
         for (const z of [box.min.z + 4, box.max.z - 4]) {
@@ -819,7 +846,7 @@ const CABINETS: Cabinet[] = [
       }
       return blocks
     },
-    lighting: (box, mouths) => lightingFor(box, [1, 0.93, 0.8], mouths),
+    lighting: (box) => cabinetLighting(box, [1, 0.93, 0.8], 4.5),
   },
   {
     id: 'silo',
@@ -899,7 +926,7 @@ const CABINETS: Cabinet[] = [
       }
       return blocks
     },
-    lighting: (box, mouths) => lightingFor(box, [0.8, 0.95, 0.85], mouths),
+    lighting: (box) => cabinetLighting(box, [0.78, 0.9, 0.82], 4),
   },
   {
     id: 'chambre',
@@ -909,8 +936,8 @@ const CABINETS: Cabinet[] = [
     tint: [1, 0.97, 0.94],
     palette: {
       floor: made([0.5, 0.38, 0.26], MATTER.parquet),
-      ceiling: made([0.86, 0.85, 0.83], MATTER.platre),
-      wall: made([0.88, 0.87, 0.85], MATTER.platre),
+      ceiling: made([0.72, 0.71, 0.69], MATTER.platre),
+      wall: made([0.7, 0.69, 0.67], MATTER.platre),
     },
     build: (out, box) => {
       // Presque rien : un banc bas, et c'est tout. Après trois salles qui insistent, une
@@ -925,7 +952,7 @@ const CABINETS: Cabinet[] = [
       })
       return [bench]
     },
-    lighting: (box, mouths) => lightingFor(box, [1, 0.97, 0.94], mouths),
+    lighting: (box) => cabinetLighting(box, [1, 0.97, 0.94], 4),
   },
 ]
 
