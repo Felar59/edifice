@@ -15,12 +15,12 @@
 import { create, invertRigid, multiply, transformDir, transformPoint, type Mat4 } from '../math/mat4'
 import { add, cross, dot, len, normalize, scale, sub, v3, type Vec3 } from '../math/vec3'
 import { Player } from '../player/player'
-import { Projectiles } from '../player/projectiles'
+import { CUBE_SIZE, Projectiles } from '../player/projectiles'
 import { cameraToWorld } from '../render/camera'
 import { FLOATS_PER_VERTEX } from '../world/geometry'
 import { MAX_LIGHTS } from '../world/light'
 import { advance, resolveAgainstCell } from '../world/motion'
-import { heightAtTurn, rampHeight, stepHeight } from '../world/spiral'
+import { heightAtTurn, onSquare, rampHeight, stepHeight } from '../world/spiral'
 import { angleAt, frameAt, toLocal } from '../world/twist'
 import type { Mouth } from '../world/types'
 import { getLandmarks, HUB } from '../world/world'
@@ -36,6 +36,14 @@ const EPS = 1e-5
 
 /** Un corps de sonde, aux mesures du visiteur. */
 const PROBE_BODY = { radius: 0.35, eyeHeight: 1.65, headroom: 0.15, up: v3(0, 1, 0) }
+
+/** Et un corps de cube lancé, qui n'a ni tête ni pieds : son repère est en son centre. */
+const CUBE_BODY = {
+  radius: CUBE_SIZE / 2,
+  eyeHeight: CUBE_SIZE / 2,
+  headroom: CUBE_SIZE / 2,
+  up: v3(0, 1, 0),
+}
 
 function fmt(n: number): string {
   return n.toExponential(1)
@@ -955,6 +963,36 @@ export function runSelfTest(world: World): Check[] {
         'penrose · chaque porte est sur un palier',
         worstSlope < 1e-9,
         `dénivelé maximal ${fmt(worstSlope)} m sur la largeur d’une ouverture`,
+      )
+
+      // **Le sol ne dépend pas de la taille du corps.**
+      //
+      // Deux volées se superposent à chaque secteur, séparées de douze mètres, et il faut
+      // savoir sur laquelle on se tient. La réponse se lisait sur le repère du corps en le
+      // supposant haut — un œil est à un mètre soixante-cinq de son sol. Le centre d'un cube
+      // posé n'est qu'à dix-sept centimètres du sien : il était rangé sur la volée d'en
+      // dessous, et tombait de douze mètres à travers un sol sur lequel un visiteur, au même
+      // endroit, tenait debout. On éprouve donc les deux tailles au même endroit.
+      let worstDrop = 0
+      let dropAt = ''
+      const midRadius = (spiral.inner + spiral.outer) / 2
+      for (let i = 0; i <= 24; i++) {
+        const turn = spiral.from + (spiral.turns * i) / 24
+        const ground = heightAtTurn(spiral, turn)
+        const at = onSquare(spiral.centre, midRadius, spiral.cut + 2 * Math.PI * turn, 0)
+        for (const body of [PROBE_BODY, CUBE_BODY]) {
+          const want = ground + body.eyeHeight
+          const got = resolveAgainstCell(stair, { ...at, y: want }, body).pos.y
+          if (Math.abs(got - want) > worstDrop) {
+            worstDrop = Math.abs(got - want)
+            dropAt = `au tour ${turn.toFixed(2)}, corps de ${body.eyeHeight.toFixed(2)} m`
+          }
+        }
+      }
+      add_(
+        'penrose · le sol ne dépend pas de la taille du corps',
+        worstDrop < 1e-9,
+        worstDrop < 1e-9 ? 'visiteur et cube posés au même endroit' : `${fmt(worstDrop)} m d’écart ${dropAt}`,
       )
 
       const doorway = stair.passages.map((p) => p.from).filter(isDoor)

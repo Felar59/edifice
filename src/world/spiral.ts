@@ -120,10 +120,21 @@ export function heightAtTurn(spiral: Spiral, turn: number): number {
  * Les volées étant séparées de `rise`, soit huit fois la taille d'un corps, la réponse
  * n'est jamais ambiguë. On la borne à ce qui est effectivement construit, faute de quoi un
  * corps tombé trop bas chercherait un sol qui n'existe pas.
+ *
+ * **Le demi-mètre de tolérance se compte vers le bas, pas vers le haut.** Un point donné
+ * n'est pas les pieds d'un corps mais son repère, qui est quelque part entre ses pieds et sa
+ * tête, et l'on ne sait pas où : un œil est à un mètre soixante-cinq de son sol, le centre
+ * d'un cube posé à dix-sept centimètres du sien. Retrancher un demi-mètre revenait à exiger
+ * que le repère soit haut, et rangeait le cube sur la volée d'en dessous — il tombait alors
+ * de douze mètres à travers un sol sur lequel un visiteur, au même endroit, tenait debout.
+ *
+ * L'ajouter, au contraire, accepte tout ce qui se trouve d'un demi-mètre sous le sol à onze
+ * mètres et demi au-dessus. Le couloir en fait trois de haut : rien de ce qui s'y trouve ne
+ * peut en sortir, et la marge du bas absorbe l'enfoncement d'un pas.
  */
 export function flightUnder(spiral: Spiral, p: Vec3): number {
   const sector = turnAt(spiral, p)
-  const raw = Math.floor((p.y - 0.5 - heightAtTurn(spiral, sector)) / spiral.rise)
+  const raw = Math.floor((p.y + 0.5 - heightAtTurn(spiral, sector)) / spiral.rise)
   // Une marge d'un cinquantième de tour sous le premier quartier : c'est la profondeur
   // d'une embrasure. La porte du bas s'ouvre au ras de la dernière marche, et sans cette
   // marge le corps qui s'y engage ne trouve plus de sol — il est alors remonté d'un tour

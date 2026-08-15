@@ -572,10 +572,18 @@ dans les deux sens — de face en montant, de dos en se retournant. Sans son rev
 regardait entre les marches du plafond et l'on apercevait le mur au travers : le plafond
 semblait fait de dalles flottantes.
 
-Enfin, deux volées peuvent occuper le même secteur angulaire à des hauteurs différentes,
-puisque la géométrie déborde d'un quart de tour sous la boucle. La collision doit donc
-savoir **sur laquelle on se tient** : elles sont séparées de douze mètres pour un corps qui
-en fait deux, et le choix n'est jamais douteux.
+Enfin, deux volées occupent le même secteur angulaire à des hauteurs différentes, un étage
+par volée. La collision doit donc savoir **sur laquelle on se tient** : elles sont séparées
+de douze mètres pour un corps qui en fait deux, et l'on croyait le choix jamais douteux.
+
+Il l'était pour ce qui n'a pas la taille d'un visiteur. La volée se lisait sur le repère du
+corps en le supposant haut — un œil est à un mètre soixante-cinq de son sol. Le centre d'un
+cube posé n'est qu'à dix-sept centimètres du sien : il était rangé sur la volée d'en dessous
+et **tombait de douze mètres à travers un sol** sur lequel un visiteur, au même endroit,
+tenait debout. La tolérance se compte donc désormais vers le bas, où elle absorbe
+l'enfoncement d'un pas, et non vers le haut, où elle exigeait une taille. L'invariant éprouve
+les deux corps au même endroit — c'est la question qu'il fallait poser : le sol ne doit pas
+dépendre de la taille de qui s'y pose.
 
 ### La verticalité
 
