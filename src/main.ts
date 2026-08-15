@@ -4,7 +4,7 @@ import { initGpu } from './render/gpu'
 import { Renderer } from './render/renderer'
 import { Player, presets } from './player/player'
 import { CUBE_SIZE, Projectiles } from './player/projectiles'
-import { buildWorld, HUB } from './world/world'
+import { buildWorld, HUB, refreshTwist } from './world/world'
 import { buildCube } from './world/geometry'
 import { Hud } from './ui/hud'
 import { runSelfTest, type Check } from './dev/selftest'
@@ -244,6 +244,13 @@ async function main(): Promise<void> {
       player.update(dt, world, keys)
       projectiles.update(dt, world)
     }
+
+    // La paroi du tunnel-vrille dépend de l'endroit où se trouve le visiteur : si elle a
+    // bougé, elle repart à la carte graphique. Hors du tunnel, et à l'arrêt dedans, il n'y
+    // a rien à envoyer. Ce contrôle est fait même en pause, parce qu'une téléportation de
+    // sonde change l'état sans faire avancer le temps.
+    const moved = refreshTwist()
+    if (moved) renderer.updateCell(moved)
 
     renderer.render(
       { cell: player.cell, pos: player.pos, forward: player.forward, up: player.up },

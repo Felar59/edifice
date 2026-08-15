@@ -246,6 +246,24 @@ export class Renderer {
     this.objectMesh = this.upload(objectVerts, 'objet')
   }
 
+  /**
+   * Réécrit le maillage d'une cellule dont la géométrie a bougé.
+   *
+   * Le tunnel-vrille en a besoin à chaque image où le visiteur avance : sa paroi est une
+   * fonction de l'endroit où il se trouve. Le tampon est réécrit sur place tant que le
+   * compte de sommets ne change pas, ce qui est le cas ordinaire — cent soixante kilo-
+   * octets par image, que la carte avale sans y penser.
+   */
+  updateCell(cell: Cell): void {
+    const mesh = this.meshes.get(cell.id)
+    if (!mesh || mesh.vertexCount * FLOATS_PER_VERTEX !== cell.verts.length) {
+      mesh?.buffer.destroy()
+      this.meshes.set(cell.id, this.upload(cell.verts, `cellule ${cell.id}`))
+      return
+    }
+    this.device.queue.writeBuffer(mesh.buffer, 0, cell.verts)
+  }
+
   private upload(verts: F32, label: string): CellMesh {
     const buffer = this.device.createBuffer({
       label,

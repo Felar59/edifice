@@ -18,9 +18,9 @@ import { Player } from '../player/player'
 import { Projectiles } from '../player/projectiles'
 import { cameraToWorld } from '../render/camera'
 import { advance, resolveAgainstCell } from '../world/motion'
-import { angleAt, frameAt, toLocal } from '../world/twist'
+import { angleAt, frameAt, profileAngle, toLocal, toWorld } from '../world/twist'
 import { getLandmarks, HUB } from '../world/world'
-import type { World } from '../world/types'
+import type { Mouth, World } from '../world/types'
 
 export interface Check {
   name: string
@@ -454,7 +454,24 @@ export function runSelfTest(world: World): Check[] {
 
   // 10. Le tunnel-vrille.
   //
-  //    Quatre propriétés, et la deuxième est la seule qui demande de la réflexion.
+  //    Sept propriétés. Les trois premières tiennent à ce qui fait l'effet — on ne doit
+  //    jamais **voir** le couloir tourner — et les quatre suivantes à la vrille elle-même.
+  //
+  //    **De la rotonde, le couloir est droit.** Pas « presque droit » : l'angle vu doit
+  //    être nul au bit près sur toute la longueur du tube. Une vrille construite une fois
+  //    pour toutes se lit depuis le seuil, et l'effet est mort avant le premier pas.
+  //
+  //    **Entrer ne déplace aucune paroi.** C'est l'invariant qui a de la valeur, parce que
+  //    c'est celui qu'on ne verrait pas venir : un tube dont la forme dépend du visiteur
+  //    peut tressaillir à l'instant précis où il arrive, et cet instant-là est celui où
+  //    l'on regarde le couloir. On mesure donc le déplacement de la paroi de part et
+  //    d'autre du franchissement — par les deux portes, puisque le tunnel a deux bouts.
+  //
+  //    **Au-delà du fondu, plus rien ne tourne.** Toutes les sections qui suivent portent
+  //    le même angle, exactement : le couloir lointain est droit. Ce qui le sépare du
+  //    visiteur n'est qu'un roulis, et celui-là on le veut — c'est le seul signe qu'on
+  //    donne au marcheur que quelque chose se passe. On vérifie donc les deux ensemble :
+  //    aucune courbure au loin, et un roulis franc mais mesuré.
   //
   //    **La vrille est complète.** D'un bout à l'autre, la verticale locale doit avoir
   //    tourné de l'angle annoncé — un quart de tour. C'est ce qui fait que le sol de
@@ -479,19 +496,97 @@ export function runSelfTest(world: World): Check[] {
     } else {
       const twist = tube.twist
       const marks = getLandmarks()
-      const walker = new Player()
-      walker.goTo(
-        {
-          name: 'vrille',
-          cell: marks.hub,
-          pos: add(marks.seamCenter, scale(marks.seamNormal, 0.5)),
-          forward: { x: -marks.seamNormal.x, y: 0, z: -marks.seamNormal.z },
-        },
-        world,
+
+      /** L'angle vu le plus fort de tout le tube. */
+      const worstAngle = (): number => {
+        let worst = 0
+        for (let i = 0; i <= 120; i++) {
+          worst = Math.max(worst, Math.abs(angleAt(twist, (i * twist.length) / 120)))
+        }
+        return worst
+      }
+
+      /**
+       * Les quatre arêtes du tube, échantillonnées d'un bout à l'autre.
+       *
+       * On mesure la paroi elle-même, en coordonnées du monde, et non l'angle : c'est ce
+       * que l'œil voit, et c'est la seule façon d'attraper un tressaillement quelle qu'en
+       * soit la cause — un angle, un repère, une bouche qui aurait bougé sans les autres.
+       */
+      const surface = (): Vec3[] => {
+        const h = twist.halfSize
+        const out: Vec3[] = []
+        for (let i = 0; i <= 60; i++) {
+          const s = (i * twist.length) / 60
+          for (const [u, v] of [[-h, -h], [h, -h], [h, h], [-h, h]] as const) {
+            out.push(toWorld(twist, { s, u, v }))
+          }
+        }
+        return out
+      }
+      const shift = (a: Vec3[], b: Vec3[]): number =>
+        a.reduce((worst, p, i) => Math.max(worst, distance(p, b[i]!)), 0)
+
+      /**
+       * Fait entrer un visiteur par une porte donnée de la rotonde, et mesure de combien
+       * la paroi du tube a bougé pendant qu'il franchissait le seuil.
+       */
+      const enterBy = (door: Mouth): { crossed: boolean; moved: number; walker: Player } => {
+        const walker = new Player()
+        walker.goTo(
+          {
+            name: 'vrille',
+            cell: HUB,
+            pos: {
+              ...add(door.center, scale(door.normal, 0.5)),
+              y: world.cells.get(HUB)!.min.y + PROBE_BODY.eyeHeight,
+            },
+            forward: scale(door.normal, -1),
+          },
+          world,
+        )
+
+        const before = surface()
+        let guard = 0
+        while (walker.cell !== tube.id && guard++ < 40) walker.walk(world, 0.2)
+        return { crossed: walker.cell === tube.id, moved: shift(before, surface()), walker }
+      }
+
+      // Depuis la rotonde, avant d'être entré : un couloir droit, et rien d'autre.
+      add_(
+        'vrille · de la rotonde, le couloir est droit',
+        worstAngle() === 0,
+        `angle vu maximal ${fmt(worstAngle())} rad sur ${twist.length} m`,
       )
 
-      let guard = 0
-      while (walker.cell !== 'vrille' && guard++ < 40) walker.walk(world, 0.2)
+      // Les deux portes de la rotonde qui mènent au tunnel, prises côté rotonde. On entre
+      // par les deux : le tunnel a deux bouts, et celui qui essaie l'autre porte ne doit
+      // pas en apprendre davantage que le premier.
+      const doors = world.cells.get(HUB)!.passages.filter((p) => p.to.cell === tube.id)
+      const front = doors.find((p) => dot(p.to.normal, twist.axis) > 0)
+      const back = doors.find((p) => dot(p.to.normal, twist.axis) < 0)
+      add_(
+        'vrille · les deux bouts donnent sur la rotonde',
+        front !== undefined && back !== undefined,
+        `${doors.length} porte(s) vers le tunnel`,
+      )
+
+      if (back) {
+        const byTheBack = enterBy(back.from)
+        add_(
+          'vrille · entrer par le fond ne déplace aucune paroi',
+          byTheBack.crossed && byTheBack.moved < 1e-9,
+          `${byTheBack.crossed ? '' : 'jamais entré · '}déplacement maximal ${fmt(byTheBack.moved)} m`,
+        )
+      }
+
+      const entered = enterBy(front ? front.from : world.cells.get(HUB)!.passages[0]!.from)
+      add_(
+        'vrille · entrer ne déplace aucune paroi',
+        entered.crossed && entered.moved < 1e-9,
+        `${entered.crossed ? '' : 'jamais entré · '}déplacement maximal ${fmt(entered.moved)} m`,
+      )
+      const walker = entered.walker
 
       const entry = toLocal(twist, walker.pos)
       const upAtEntry = { ...walker.up }
@@ -506,31 +601,64 @@ export function runSelfTest(world: World): Check[] {
       )
       const tiltAtEntry = dot(walker.forward, walker.up)
 
-      // L'amorce doit être franchement droite : c'est elle qui fait l'effet. Depuis le
-      // seuil, le couloir se présente comme un couloir, et la vrille arrive de nulle
-      // part. Répartie sur toute la longueur, elle se verrait dès l'entrée.
+      // Les paliers droits doivent excéder le fondu, sinon les bouches ne sont plus
+      // exactement à l'angle de leur couture — un pivotement d'un degré au moment du
+      // franchissement, assez petit pour qu'on l'attribue à autre chose.
       add_(
-        'vrille · une amorce droite existe',
-        twist.straight >= 2 && angleAt(twist, twist.straight) === 0,
-        `${twist.straight.toFixed(1)} m sans rotation, puis` +
-          ` ${((twist.turn * 180) / Math.PI).toFixed(0)}° sur les ${(twist.length - twist.straight).toFixed(1)} m suivants`,
+        'vrille · les paliers droits couvrent le fondu',
+        twist.blend > 0 && twist.blend <= twist.straight && twist.blend <= twist.runout &&
+          profileAngle(twist, twist.straight) === 0 &&
+          profileAngle(twist, twist.length - twist.runout) === twist.turn,
+        `fondu ${twist.blend.toFixed(1)} m · paliers ${twist.straight.toFixed(1)} et` +
+          ` ${twist.runout.toFixed(1)} m · ${((twist.turn * 180) / Math.PI).toFixed(0)}° répartis sur` +
+          ` ${(twist.length - twist.straight - twist.runout).toFixed(1)} m`,
       )
 
       let worstTilt = 0
-      guard = 0
+      let worstAhead = 0
+      let worstRoll = 0
+      let guard = 0
       while (walker.cell === 'vrille' && toLocal(twist, walker.pos).s < twist.length - 0.4 && guard++ < 400) {
         walker.walk(world, 0.2)
-        if (walker.cell === 'vrille') {
-          worstTilt = Math.max(worstTilt, Math.abs(dot(walker.forward, walker.up) - tiltAtEntry))
+        if (walker.cell !== 'vrille') continue
+        worstTilt = Math.max(worstTilt, Math.abs(dot(walker.forward, walker.up) - tiltAtEntry))
+
+        // Au-delà du fondu, plus une seule section ne tourne : toutes portent le même
+        // angle, et c'est de cette égalité que vient le couloir droit qu'on a sous les
+        // yeux. Ce qui les sépare du visiteur est un **roulis**, pas une courbure — et
+        // c'est lui, au contraire, qu'on veut voir.
+        const here = toLocal(twist, walker.pos).s
+        const far = Math.min(here + twist.blend, twist.length)
+        const settled = angleAt(twist, far)
+        for (let i = 0; i <= 24; i++) {
+          const s = far + ((twist.length - far) * i) / 24
+          worstAhead = Math.max(worstAhead, Math.abs(angleAt(twist, s) - settled))
         }
+        worstRoll = Math.max(worstRoll, Math.abs(settled - angleAt(twist, here)))
       }
+
+      add_(
+        'vrille · au-delà du fondu, le couloir ne tourne plus',
+        worstAhead === 0,
+        `écart maximal ${fmt(worstAhead)} rad sur tout ce qui suit les` +
+          ` ${twist.blend.toFixed(1)} m du fondu`,
+      )
+      // Le roulis résiduel est le prix du fondu, et il doit rester un signe discret : de
+      // l'ordre du dixième de tour, jamais du quart, sans quoi le couloir lointain
+      // paraîtrait franchement couché et vendrait la mèche depuis l'entrée.
+      add_(
+        'vrille · le couloir lointain roule sans se courber',
+        worstRoll > 0.02 && worstRoll < twist.turn / 4,
+        `${((worstRoll * 180) / Math.PI).toFixed(1)}° au plus fort de la vrille`,
+      )
 
       const exit = toLocal(twist, walker.pos)
       const turned = Math.acos(Math.max(-1, Math.min(1, dot(upAtEntry, walker.up))))
-      // L'angle attendu est lu sur le profil et non recalculé : celui-ci n'est pas
-      // linéaire — amorce droite puis montée en fondu — et le supposer tel ferait
-      // échouer l'invariant pour une bonne raison de dessin.
-      const expected = angleAt(twist, exit.s) - angleAt(twist, entry.s)
+      // L'angle attendu est lu sur le **profil**, et non sur ce que la paroi montre : le
+      // profil n'est pas linéaire — paliers droits et montée en fondu — et le supposer tel
+      // ferait échouer l'invariant pour une bonne raison de dessin. C'est bien le profil
+      // que le visiteur accumule, puisqu'il se tient toujours au front du fondu.
+      const expected = profileAngle(twist, exit.s) - profileAngle(twist, entry.s)
 
       add_(
         'vrille · la verticale tourne de l’angle annoncé',
@@ -556,6 +684,15 @@ export function runSelfTest(world: World): Check[] {
         'vrille · on ressort debout',
         walker.cell === marks.hub && uprightness > 1 - 1e-6,
         `cellule ${walker.cell}, verticale à ${(Math.acos(Math.min(1, uprightness)) * 180 / Math.PI).toFixed(2)}° de l’aplomb`,
+      )
+
+      // Et le tunnel se referme comme il était : droit. Sans cette remise au repos, le
+      // visiteur suivant — ou le même, revenu par l'autre porte — trouverait un couloir
+      // déjà tordu par son passage précédent, ce qui est exactement ce qu'on lui cache.
+      add_(
+        'vrille · une fois sorti, le couloir est de nouveau droit',
+        worstAngle() === 0,
+        `angle vu maximal ${fmt(worstAngle())} rad`,
       )
     }
   }

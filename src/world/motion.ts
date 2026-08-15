@@ -14,7 +14,7 @@
 
 import { transformDir, transformPoint } from '../math/mat4'
 import { add, dot, len, scale, sub, type Vec3 } from '../math/vec3'
-import { frameAt, toLocal, toWorld, transport, transportAngle } from './twist'
+import { arcAt, frameAt, setVisitor, toLocal, toWorld, transport, transportAngle } from './twist'
 import type { Cell, Mouth, Passage, World } from './types'
 
 /** Longueur maximale d'un sous-pas, en mètres. */
@@ -117,6 +117,9 @@ function findCrossing(cell: Cell, from: Vec3, seg: Vec3): Crossing | null {
  * direction du regard, la verticale locale, la vitesse. Ils sont **modifiés sur
  * place** : oublier d'en transporter un se voit immédiatement, puisqu'on ressort
  * d'une couture en regardant dans la mauvaise direction.
+ *
+ * `anchor` désigne le corps qui **fait autorité sur la vrille** — le visiteur, et lui
+ * seul. Un cube lancé traverse le tunnel sans rien y changer.
  */
 export function advance(
   world: World,
@@ -125,6 +128,7 @@ export function advance(
   delta: Vec3,
   carried: Vec3[],
   resolve: (cell: Cell, p: Vec3) => Vec3,
+  anchor = false,
 ): Advance {
   let cell = world.cells.get(cellId)
   if (!cell) throw new Error(`Cellule inconnue : ${cellId}`)
@@ -175,6 +179,19 @@ export function advance(
     // c'est bien ce qu'on fait quand on suit un couloir qui vrille.
     const candidate = cell.twist
       ? (() => {
+          // La vrille suit le visiteur **sous-pas par sous-pas**, avant qu'on ne décompose
+          // quoi que ce soit dans son repère.
+          //
+          // Ne la mettre à jour qu'une fois par image semblait suffire — le retard vaut
+          // alors un pas d'image, soit un centième de degré. Mais ce retard est
+          // systématique, toujours du même côté, et il ne se voit pas dans l'angle : il
+          // s'intègre. Le pas est décomposé dans un repère qui traîne derrière celui que
+          // porte le visiteur, si bien qu'à chaque image il part de quelques dixièmes de
+          // millimètre en travers. Sur la longueur du tunnel cela faisait cinquante-cinq
+          // centimètres de déport, assez pour ne plus tenir dans la porte de sortie et
+          // rester enfermé dedans.
+          if (anchor) setVisitor(cell.twist, arcAt(cell.twist, current))
+
           const local = toLocal(cell.twist, current)
           const frame = frameAt(cell.twist, local.s)
           return toWorld(cell.twist, {

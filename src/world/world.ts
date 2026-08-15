@@ -30,16 +30,17 @@ import { create, fromBasis, invertRigid, multiply, type Mat4 } from '../math/mat
 import { add, cross, neg, scale, type Vec3 } from '../math/vec3'
 import {
   buildRoom,
-  buildTwistedTube,
   pushTubeCap,
+  pushTwistedTube,
   pushWall,
   type Color,
   type Hole,
   type RoomHoles,
   type RoomPalette,
+  type TubePalette,
 } from './geometry'
 import { mouthRadiance, type CellLighting, type Colour } from './light'
-import { frameAt, makeTwist, toWorld } from './twist'
+import { arcAt, frameAt, makeTwist, setVisitor, takeVisitChange, toWorld } from './twist'
 import type { Cell, Mouth, Passage, World } from './types'
 
 const DOOR_HALF_W = 0.9
@@ -290,11 +291,15 @@ const HUB_BOX: Box = { min: { x: -7, y: 0, z: -7 }, max: { x: 7, y: 5, z: 7 } }
  * quart de tour n'est pas choisi au hasard : c'est celui qui fait que le sol de l'entrée
  * devient exactement le mur de gauche.
  *
- * Les six premiers mètres sont **parfaitement droits**. Depuis le seuil, le couloir se
- * présente donc comme un couloir : droit, banal, rien à signaler. La vrille ne commence
- * qu'une fois qu'on s'y est engagé, et en fondu — elle arrive de nulle part. Une vrille
- * répartie sur toute la longueur se verrait dès l'entrée, et l'on saurait à quoi
- * s'attendre.
+ * **On ne voit jamais le couloir tourner.** Depuis la rotonde, et par l'une ou l'autre
+ * de ses deux portes, c'est un couloir droit et banal. La vrille ne se forme que devant
+ * celui qui s'y engage, et seulement derrière lui : elle n'est visible qu'en se
+ * retournant. Voir `src/world/twist.ts`, qui ne parle que de cela.
+ *
+ * Les six premiers mètres restent droits même une fois qu'on y est — un temps mort avant
+ * que quoi que ce soit ne commence — et les trois derniers de même. Ces paliers ont aussi
+ * une fonction technique : ils garantissent que chaque bouche est exactement à l'angle de
+ * sa couture.
  *
  * La section est large : quatre mètres quarante, contre trois auparavant. Un couloir
  * étroit qui tourne devient étouffant, et surtout la torsion se lit mal quand les parois
@@ -307,8 +312,30 @@ const VRILLE = makeTwist({
   halfSize: 2.2,
   turn: Math.PI / 2,
   straight: 6,
+  runout: 3,
+  blend: 3,
   up0: { x: 0, y: 1, z: 0 },
 })
+
+/** L'identifiant de l'aile qui accueille le tube. Le monde entier s'y réfère. */
+const TWISTED = 'vrille'
+
+/**
+ * Un anneau tous les quinze centimètres : la vrille est plus rapide en son milieu qu'un
+ * profil linéaire, et des facettes s'y verraient.
+ */
+const TUBE_STATIONS = 150
+
+/**
+ * Quatre faces franchement distinctes : une section carrée qui tourne d'un quart de tour
+ * se superpose à elle-même, et sans ces couleurs la vrille serait parfaitement invisible.
+ */
+const TUBE_PALETTE: TubePalette = {
+  floor: [0.58, 0.36, 0.2],
+  ceiling: [0.2, 0.26, 0.24],
+  left: [0.33, 0.47, 0.42],
+  right: [0.47, 0.63, 0.57],
+}
 
 /**
  * Une bouche au bout du tube.
@@ -321,6 +348,13 @@ const VRILLE = makeTwist({
  * Le centre est décalé du fond de l'embrasure, mais le repère reste celui de la section
  * du fond : sans cela l'embrasure serait construite avec une orientation d'un degré
  * différente de la paroi qu'elle perce, et le raccord se verrait.
+ *
+ * La section du fond **bouge** avec le visiteur, donc cette bouche aussi : tant qu'on
+ * n'est pas entré dans le tunnel, sa porte de sortie est droite comme le couloir qu'elle
+ * ferme, et elle ne prend son quart de tour qu'à mesure qu'on avance vers elle. Le palier
+ * droit de fin garantit qu'elle l'a pris **entièrement** plusieurs mètres avant qu'on
+ * l'atteigne : au moment du franchissement, la couture est exactement celle qui a été
+ * construite, et rien ne bouge sous les pieds.
  */
 function tubeMouth(id: string, atStart: boolean): Mouth {
   const s = atStart ? 0 : VRILLE.length
@@ -330,7 +364,7 @@ function tubeMouth(id: string, atStart: boolean): Mouth {
 
   return {
     id,
-    cell: 'vrille',
+    cell: TWISTED,
     center: add(face, scale(normal, -REVEAL)),
     right: atStart ? right : neg(right),
     up,
@@ -338,6 +372,116 @@ function tubeMouth(id: string, atStart: boolean): Mouth {
     halfWidth: DOOR_HALF_W,
     halfHeight: DOOR_HALF_H,
   }
+}
+
+/** Une bouche du tube et le bout où elle se trouve, ce dernier fixant son orientation. */
+interface MouthSlot {
+  mouth: Mouth
+  atStart: boolean
+}
+
+/** Ce qu'il faut refaire quand le visiteur avance dans le tube. */
+interface TubeState {
+  cell: Cell
+  mouths: MouthSlot[]
+  /** Les quatre passages dont une extrémité est une bouche du tube. */
+  passages: Passage[]
+  tint: Colour
+}
+
+let tube: TubeState | null = null
+/** La géométrie du tube est-elle en retard sur l'état de la vrille ? */
+let tubeStale = false
+
+/**
+ * Le tableau où le maillage du tube se refait, réutilisé d'une image sur l'autre.
+ *
+ * Quarante mille flottants reconstruits par image ne coûtent rien à calculer ; les
+ * réallouer à chaque fois réveillerait le ramasse-miettes, et toujours au mauvais moment.
+ */
+const tubeScratch: number[] = []
+
+/** Le maillage complet du tube, à l'état où la vrille se trouve. */
+function tubeVerts(mouths: MouthSlot[], tint: Colour): number[] {
+  const out = tubeScratch
+  out.length = 0
+
+  pushTwistedTube(out, VRILLE, TUBE_PALETTE, TUBE_STATIONS)
+  for (const { mouth: m } of mouths) pushReveal(out, m, tinted(tint, 0.55))
+  // Les deux fonds du tube, percés de leur porte.
+  for (const { mouth: m, atStart } of mouths) {
+    pushTubeCap(out, VRILLE, atStart, tinted(tint, 0.4), holeOf(m))
+  }
+
+  return out
+}
+
+/**
+ * Dit au tunnel où se trouve le visiteur.
+ *
+ * C'est le seul point d'entrée : le visiteur avance, on le déclare, et tout ce qui
+ * dépend de la vrille — la paroi, les deux bouches, les quatre coutures qui y touchent —
+ * se remet d'aplomb ensemble. Les faire diverger, ne serait-ce qu'une image, donnerait
+ * une porte dessinée à un endroit et franchie à un autre.
+ *
+ * Appelé par le **visiteur** seul. Un cube lancé traverse le tunnel sans rien y changer :
+ * la vrille suit celui qui regarde, pas ce qui vole.
+ *
+ * Le déplacement a déjà déclaré chaque sous-pas ; ce qui se joue ici est la conséquence,
+ * tirée une seule fois pour toute l'image.
+ */
+export function followVisitor(cellId: string, pos: Vec3): void {
+  const state = tube
+  if (!state) return
+
+  setVisitor(VRILLE, cellId === state.cell.id ? arcAt(VRILLE, pos) : null)
+  if (!takeVisitChange(VRILLE)) return
+
+  // Les bouches sont **corrigées sur place** plutôt que remplacées : les passages, des
+  // deux côtés de chaque couture, en gardent la référence, si bien que les corriger ici
+  // les corrige partout d'un coup. Une bouche recréée laisserait derrière elle des
+  // passages pointant vers l'ancienne — une porte dessinée à un endroit et franchie à un
+  // autre, c'est-à-dire le pire genre de défaut.
+  for (const { mouth: m, atStart } of state.mouths) {
+    const fresh = tubeMouth(m.id, atStart)
+    m.center = fresh.center
+    m.right = fresh.right
+    m.up = fresh.up
+  }
+
+  // Les transformations en découlent, et elles seules : la lumière que ces bouches
+  // transmettent, elle, ne bouge pas. Les lampes du tube sont posées **sur son axe**, donc
+  // à distance constante d'une bouche qui pivote autour de ce même axe, et la normale
+  // d'une bouche est l'axe lui-même. Recalculer la radiance rendrait la même valeur.
+  for (const passage of state.passages) {
+    passage.transform = passageTransform(passage.from, passage.to)
+  }
+
+  tubeStale = true
+}
+
+/**
+ * Refait le maillage du tube si la vrille a bougé, et renvoie la cellule à réenvoyer à la
+ * carte graphique — ou `null` s'il n'y a rien à faire.
+ *
+ * Séparé de `followVisitor` parce que le déplacement se découpe en sous-pas, et qu'il
+ * serait absurde de reconstruire quarante mille sommets vingt fois par image. L'état
+ * suffit à tout ; la géométrie n'en est qu'une conséquence, qu'on tire une fois, au
+ * moment de dessiner.
+ */
+export function refreshTwist(): Cell | null {
+  const state = tube
+  if (!state || !tubeStale) return null
+  tubeStale = false
+
+  const verts = tubeVerts(state.mouths, state.tint)
+  // Le compte est le même d'une image sur l'autre — mêmes stations, mêmes découpes — mais
+  // le supposer sans le dire donnerait un maillage tronqué le jour où ce ne serait plus
+  // vrai, ce qui est exactement le genre de chose qu'on ne relie pas à sa cause.
+  if (verts.length !== state.cell.verts.length) state.cell.verts = Float32Array.from(verts)
+  else state.cell.verts.set(verts)
+
+  return state.cell
 }
 
 /**
@@ -359,7 +503,7 @@ const WINGS: Wing[] = [
     tint: [0.55, 0.8, 0.7],
     hubWall: 'north',
     hubLateral: -3.5,
-    purpose: 'le tunnel-vrille : un quart de tour sur dix-huit mètres, gravité comprise',
+    purpose: 'le tunnel-vrille : un quart de tour qui n’apparaît qu’en marchant, gravité comprise',
   },
   {
     id: 'gravite',
@@ -461,14 +605,22 @@ export function getLandmarks(): Landmarks {
 }
 
 export function buildWorld(): World {
+  // La vrille est une constante de module, donc elle survit à la reconstruction du monde :
+  // on la remet au repos, sans quoi un second monde naîtrait avec un tunnel déjà tordu par
+  // le visiteur du précédent.
+  setVisitor(VRILLE, null)
+  takeVisitChange(VRILLE)
+  tube = null
+  tubeStale = false
+
   const hubMouths: { mouth: Mouth; wall: Wall }[] = []
   const wingData: { wing: Wing; mouths: Mouth[]; holes: RoomHoles; lighting: CellLighting }[] = []
 
   // --- Les bouches d'abord : l'éclairage en dépend --------------------------
   for (const wing of WINGS) {
-    const twisted = wing.id === 'vrille'
+    const twisted = wing.id === TWISTED
     const mouths = twisted
-      ? [tubeMouth('vrille.porte', true), tubeMouth('vrille.retour', false)]
+      ? [tubeMouth(`${TWISTED}.porte`, true), tubeMouth(`${TWISTED}.retour`, false)]
       : [mouth(wing.id, `${wing.id}.porte`, wing.box, wing.wall, wing.lateral)]
     const holes: RoomHoles = twisted ? {} : { [wing.wall]: [holeOf(mouths[0]!)] }
 
@@ -518,7 +670,7 @@ export function buildWorld(): World {
     wingPassages.set(entry.wing.id, [fromWing])
   })
 
-  const vrille = wingData.find((entry) => entry.wing.id === 'vrille')!
+  const vrille = wingData.find((entry) => entry.wing.id === TWISTED)!
   const [hubToLoop, loopToHub] = makePassages(
     loopHubMouth,
     hubLighting,
@@ -526,7 +678,7 @@ export function buildWorld(): World {
     vrille.lighting,
   )
   hubPassages.push(hubToLoop)
-  wingPassages.get('vrille')!.push(loopToHub)
+  wingPassages.get(TWISTED)!.push(loopToHub)
 
   // --- La géométrie ---------------------------------------------------------
   const hubHoles: RoomHoles = {}
@@ -550,49 +702,51 @@ export function buildWorld(): World {
   ]
 
   for (const entry of wingData) {
+    const twisted = entry.wing.id === TWISTED
+
+    if (twisted) {
+      // Le tube se construit par la même fonction que celle qui le refera à chaque pas du
+      // visiteur : c'est ce qui garantit que l'état initial est un état comme un autre, et
+      // non un cas particulier qui se mettrait un jour à diverger des suivants.
+      const slots = entry.mouths.map((m, i) => ({ mouth: m, atStart: i === 0 }))
+      const cell: Cell = {
+        id: entry.wing.id,
+        min: entry.wing.box.min,
+        max: entry.wing.box.max,
+        verts: Float32Array.from(tubeVerts(slots, entry.wing.tint)),
+        passages: wingPassages.get(entry.wing.id)!,
+        lighting: entry.lighting,
+        twist: VRILLE,
+      }
+      tube = { cell, mouths: slots, passages: [], tint: entry.wing.tint }
+      cells.push(cell)
+      continue
+    }
+
     const extra: number[] = []
     for (const m of entry.mouths) pushReveal(extra, m, tinted(entry.wing.tint, 0.55))
-
-    const twisted = entry.wing.id === 'vrille'
-    if (twisted) {
-      // Les deux fonds du tube, percés de leur porte.
-      pushTubeCap(extra, VRILLE, true, tinted(entry.wing.tint, 0.4), holeOf(entry.mouths[0]!))
-      pushTubeCap(extra, VRILLE, false, tinted(entry.wing.tint, 0.4), holeOf(entry.mouths[1]!))
-    }
 
     cells.push({
       id: entry.wing.id,
       min: entry.wing.box.min,
       max: entry.wing.box.max,
       verts: concat(
-        twisted
-          ? buildTwistedTube(
-              VRILLE,
-              {
-              // Quatre faces franchement distinctes : une section carrée qui tourne
-              // d'un quart de tour se superpose à elle-même, et sans ces couleurs la
-              // vrille serait parfaitement invisible.
-                floor: [0.58, 0.36, 0.2],
-                ceiling: [0.2, 0.26, 0.24],
-                left: [0.33, 0.47, 0.42],
-                right: [0.47, 0.63, 0.57],
-              },
-              // Un anneau tous les quinze centimètres : la vrille est plus rapide en son
-              // milieu qu'un profil linéaire, et des facettes s'y verraient.
-              150,
-            )
-          : buildRoom(
-              entry.wing.box.min,
-              entry.wing.box.max,
-              paletteFor(entry.wing.tint),
-              entry.holes,
-            ),
+        buildRoom(entry.wing.box.min, entry.wing.box.max, paletteFor(entry.wing.tint), entry.holes),
         extra,
       ),
       passages: wingPassages.get(entry.wing.id)!,
       lighting: entry.lighting,
-      ...(twisted ? { twist: VRILLE } : {}),
     })
+  }
+
+  // Les quatre coutures qui touchent au tube, retenues pour être refaites à chaque pas :
+  // les deux du tunnel, et les deux de la rotonde qui y mènent. Elles sont trouvées plutôt
+  // qu'énumérées à la main, faute de quoi en ajouter une cinquième un jour laisserait une
+  // porte figée au milieu d'un couloir qui tourne.
+  if (tube) {
+    tube.passages = cells
+      .flatMap((cell) => cell.passages)
+      .filter((p) => p.from.cell === TWISTED || p.to.cell === TWISTED)
   }
 
   // Vérification silencieuse mais utile : un repère de bouche doit être direct, sinon la

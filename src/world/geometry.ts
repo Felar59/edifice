@@ -231,13 +231,18 @@ export interface TubePalette {
  * Les sommets sont posés dans le repère local puis renvoyés dans le monde ; les
  * normales sont prises au repère de leur propre station, ce qui donne un ombrage
  * continu le long de la vrille plutôt que des facettes.
+ *
+ * Le maillage est **refait à chaque fois que le visiteur avance** : la vrille dépend de
+ * l'endroit où il se trouve, donc la paroi aussi. D'où l'écriture dans un tableau fourni
+ * par l'appelant plutôt que dans un tableau frais — c'est de la géométrie par image, et
+ * il n'y a aucune raison de la faire ramasser par le collecteur.
  */
-export function buildTwistedTube(
+export function pushTwistedTube(
+  out: number[],
   twist: Twist,
   palette: TubePalette,
   stations = 90,
-): F32 {
-  const out: number[] = []
+): void {
   const h = twist.halfSize
 
   const push = (station: number, u: number, v: number, normal: Vec3, colour: Color): void => {
@@ -303,8 +308,6 @@ export function buildTwistedTube(
       push(s0, d![0], d![1], n0, face.colour)
     }
   }
-
-  return new Float32Array(out)
 }
 
 /**

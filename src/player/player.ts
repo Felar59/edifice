@@ -10,7 +10,7 @@
  */
 
 import { advance, localUp, resolveAgainstCell, type Body } from '../world/motion'
-import { getLandmarks } from '../world/world'
+import { followVisitor, getLandmarks } from '../world/world'
 import type { World } from '../world/types'
 import { add, cross, dot, len, normalize, rotateAxis, scale, sub, v3, type Vec3 } from '../math/vec3'
 
@@ -168,6 +168,10 @@ export class Player {
     this.cell = preset.cell
     this.pos = { ...preset.pos }
     this.forward = normalize(preset.forward)
+    // Le tunnel-vrille est prévenu **avant** qu'on lise la verticale locale, et l'ordre
+    // compte : la forme du tube dépend de l'endroit où se trouve le visiteur, donc lire
+    // son repère avant de l'y avoir annoncé le lirait dans le tube d'avant.
+    followVisitor(this.cell, this.pos)
     // Une téléportation n'a parcouru aucun chemin : sa verticale ne peut pas être
     // transportée, elle doit être lue sur place. Dans un tube vrillé, la verticale du
     // monde n'a aucun sens.
@@ -260,17 +264,30 @@ export class Player {
 
     // La direction du regard et la verticale locale voyagent avec le corps.
     const carried = [this.forward, this.up]
-    const result = advance(world, this.cell, this.pos, delta, carried, (cell, p) => {
-      const resolved = resolveAgainstCell(cell, p, BODY)
-      if (resolved.floor) landed = true
-      if (resolved.ceiling) bumped = true
-      return resolved.pos
-    })
+    const result = advance(
+      world,
+      this.cell,
+      this.pos,
+      delta,
+      carried,
+      (cell, p) => {
+        const resolved = resolveAgainstCell(cell, p, BODY)
+        if (resolved.floor) landed = true
+        if (resolved.ceiling) bumped = true
+        return resolved.pos
+      },
+      // Le visiteur, et lui seul, emmène la vrille avec lui.
+      true,
+    )
     this.forward = carried[0]!
     this.up = carried[1]!
     this.cell = result.cell
     this.pos = result.pos
     this.crossings += result.crossings
+
+    // Le déplacement a déjà emmené la vrille avec lui, sous-pas par sous-pas. Ce qui reste
+    // à faire est ce dont une fois par image suffit : refaire la paroi et les coutures.
+    followVisitor(this.cell, this.pos)
 
     this.grounded = landed
     if (landed && this.vertical < 0) this.vertical = 0
