@@ -15,7 +15,7 @@
 import { transformDir, transformPoint } from '../math/mat4'
 import { add, dot, len, scale, sub, type Vec3 } from '../math/vec3'
 import { frameAt, toLocal, toWorld, transport, transportAngle } from './twist'
-import type { Cell, Mouth, Passage, World } from './types'
+import type { Block, Cell, Mouth, Passage, World } from './types'
 
 /** Longueur maximale d'un sous-pas, en mètres. */
 const SUBSTEP = 0.04
@@ -231,6 +231,18 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, body: Body): Resolved {
   if (cell.twist) return resolveInsideTube(cell, p, body)
   const { radius } = body
 
+  /**
+   * Une bouche percée dans un bloc n'est pas une porte de la pièce.
+   *
+   * La suite raisonne sur les quatre parois de la cellule et lève leur butée devant
+   * chaque ouverture. Une bouche posée sur un coffre au milieu de la salle a bien une
+   * normale horizontale, mais elle ne perce aucune paroi : la prendre pour une porte
+   * lèverait la butée du mur qui lui fait face, et l'on sortirait de la pièce par un mur
+   * plein en s'alignant sur un coffre situé quatre mètres avant.
+   */
+  const inABlock = (m: Mouth): boolean =>
+    cell.blocks !== undefined && cell.blocks.some((b) => b.door === m)
+
   // Le sol et le plafond **d'abord**, et c'est un ordre qui compte.
   //
   // Pendant un pas, la gravité fait descendre les pieds d'un cheveu sous le sol avant
@@ -271,6 +283,7 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, body: Body): Resolved {
 
   for (const passage of cell.passages) {
     const m = passage.from
+    if (inABlock(m)) continue
     if (Math.abs(m.normal.x) > 0.5) {
       if (fits(m, p.z)) {
         if (m.normal.x > 0) clampMinX = false
@@ -316,7 +329,7 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, body: Body): Resolved {
     let smallestGap = Infinity
     for (const passage of cell.passages) {
       const m = passage.from
-      if (!onThisFace(m)) continue
+      if (inABlock(m) || !onThisFace(m)) continue
       const gap = Math.abs(current - lateralOf(m))
       if (gap < smallestGap) {
         smallestGap = gap
@@ -335,8 +348,88 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, body: Body): Resolved {
   x = engage(z < cell.min.z, (m) => m.normal.z > 0.5, (m) => m.center.x, x)
   x = engage(z > cell.max.z, (m) => m.normal.z < -0.5, (m) => m.center.x, x)
 
+  // Puis ce qui est plein **au milieu** de la pièce, et qu'il faut contourner.
+  let pos = { x, y, z }
+  for (const block of cell.blocks ?? []) {
+    const pushed = resolveAgainstBlock(block, pos, body)
+    pos = pushed.pos
+    if (pushed.floor) floor = true
+  }
+
   // Le sol est signalé à l'appelant : c'est ce qui autorise à sauter.
-  return { pos: { x, y, z }, floor, ceiling }
+  return { pos, floor, ceiling }
+}
+
+/**
+ * Collision contre un bloc plein — l'inverse de tout le reste : on reste **dehors**.
+ *
+ * On sort par la face la plus proche, ce qui est la manière ordinaire de résoudre une
+ * boîte et ce qui donne gratuitement le bon comportement dans les trois cas : on glisse
+ * le long d'un côté, on se pose sur le dessus, et on ne se fait jamais éjecter vers le
+ * bas — sortir par en dessous demande de descendre de toute la hauteur du corps plus
+ * celle du bloc, donc cette issue-là n'est jamais la plus courte.
+ *
+ * L'exception de la porte suit celle des parois : on laisse entrer qui est aligné sur
+ * l'ouverture et qui tient dessous. Dès qu'on cesse de l'être, l'embrasure n'est plus
+ * profonde que de vingt-cinq centimètres et c'est donc elle, la sortie la plus proche —
+ * on est reposé devant la porte plutôt qu'enfermé dans la matière.
+ */
+function resolveAgainstBlock(block: Block, p: Vec3, body: Body): { pos: Vec3; floor: boolean } {
+  const r = body.radius
+  const feet = p.y - body.eyeHeight
+  const head = p.y + body.headroom
+
+  // Le corps est ramené à son point de référence, et le bloc grossi d'autant : un
+  // cylindre contre une boîte se traite comme un point contre une boîte élargie.
+  const minX = block.min.x - r
+  const maxX = block.max.x + r
+  const minZ = block.min.z - r
+  const maxZ = block.max.z + r
+
+  if (p.x <= minX || p.x >= maxX) return { pos: p, floor: false }
+  if (p.z <= minZ || p.z >= maxZ) return { pos: p, floor: false }
+  if (head <= block.min.y || feet >= block.max.y) return { pos: p, floor: false }
+
+  const door = block.door
+  if (door && fitsThroughBlockDoor(door, p, feet, head, r)) {
+    // Assez engagé pour que la couture prenne le relais. Reste un filet : si le
+    // franchissement échouait, on s'arrête au fond de l'embrasure au lieu de disparaître
+    // dans la matière. Un défaut visible vaut mieux qu'un défaut silencieux.
+    const depth = dot(door.normal, sub(p, door.center))
+    if (depth >= -0.6) return { pos: p, floor: false }
+  }
+
+  // Les quatre issues latérales, plus le dessus. La plus courte gagne.
+  const exits: { distance: number; pos: Vec3; floor: boolean }[] = [
+    { distance: p.x - minX, pos: { ...p, x: minX }, floor: false },
+    { distance: maxX - p.x, pos: { ...p, x: maxX }, floor: false },
+    { distance: p.z - minZ, pos: { ...p, z: minZ }, floor: false },
+    { distance: maxZ - p.z, pos: { ...p, z: maxZ }, floor: false },
+    {
+      distance: block.max.y - feet,
+      pos: { ...p, y: block.max.y + body.eyeHeight },
+      floor: true,
+    },
+  ]
+
+  let best = exits[0]!
+  for (const exit of exits) if (exit.distance < best.distance) best = exit
+  return { pos: best.pos, floor: best.floor }
+}
+
+/** Le corps tient-il dans la porte d'un bloc, en largeur comme en hauteur ? */
+function fitsThroughBlockDoor(
+  door: Mouth,
+  p: Vec3,
+  feet: number,
+  head: number,
+  radius: number,
+): boolean {
+  const rel = sub(p, door.center)
+  if (Math.abs(dot(rel, door.right)) > door.halfWidth - radius) return false
+  const bottom = door.center.y - door.halfHeight
+  const top = door.center.y + door.halfHeight
+  return feet >= bottom - 1e-4 && head <= top + 1e-4
 }
 
 /** L'abscisse d'une bouche le long de sa paroi. */

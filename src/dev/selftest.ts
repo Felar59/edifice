@@ -560,7 +560,147 @@ export function runSelfTest(world: World): Check[] {
     }
   }
 
-  // 10. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
+  // 11. Le reliquaire — le premier volume impossible.
+  //
+  //    Quatre propriétés, et la première est la seule qui soit vraiment nouvelle pour le
+  //    moteur.
+  //
+  //    **Un bloc plein est plein.** Jusqu'ici un corps savait rester dans une boîte ; il
+  //    ne savait pas en contourner une. On vérifie donc qu'on ne traverse pas le coffre,
+  //    et surtout qu'on n'y reste pas coincé : un point posé en son centre doit ressortir,
+  //    et ressortir dehors. C'est le cas dégénéré du contournement, celui qu'une descente
+  //    de gravité d'un cheveu peut produire pour de vrai.
+  //
+  //    **La porte laisse passer.** L'exception d'ouverture existe déjà pour les parois ;
+  //    il fallait la même pour les blocs, sans quoi le coffre serait hermétique.
+  //
+  //    **On ressort dans la salle de départ, ailleurs.** C'est la boucle : deux
+  //    traversées, la même cellule au bout, et une bonne dizaine de mètres entre le point
+  //    d'entrée et le point de sortie. Sans cette distance, rien ne distinguerait la
+  //    boucle d'un aller-retour par la même porte.
+  //
+  //    **Le contenu ne tient pas dans le contenant.** Le rapport des volumes est l'énoncé
+  //    même de la tricherie ; le mesurer évite qu'un jour on rétrécisse la nef sans s'en
+  //    apercevoir, et que le musée se mette à mentir un peu moins.
+  {
+    const marks = getLandmarks()
+    const room = world.cells.get(marks.chestCell)
+    const chest = room?.blocks?.[0]
+
+    if (!room || !chest) {
+      add_('reliquaire · le coffre existe', false, 'aucun bloc dans la salle du reliquaire')
+    } else {
+      const side = chest.max.x - chest.min.x
+      const centre = {
+        x: (chest.min.x + chest.max.x) / 2,
+        y: chest.min.y + PROBE_BODY.eyeHeight,
+        z: (chest.min.z + chest.max.z) / 2,
+      }
+
+      // Posé au centre du coffre, donc dans la matière : on doit en ressortir.
+      const expelled = resolveAgainstCell(room, centre, PROBE_BODY).pos
+      const outside =
+        expelled.x <= chest.min.x - PROBE_BODY.radius + 1e-6 ||
+        expelled.x >= chest.max.x + PROBE_BODY.radius - 1e-6 ||
+        expelled.z <= chest.min.z - PROBE_BODY.radius + 1e-6 ||
+        expelled.z >= chest.max.z + PROBE_BODY.radius - 1e-6 ||
+        expelled.y - PROBE_BODY.eyeHeight >= chest.max.y - 1e-6
+      add_(
+        'reliquaire · on ne reste pas pris dans le coffre',
+        outside,
+        `du centre vers (${expelled.x.toFixed(2)}, ${expelled.y.toFixed(2)}, ${expelled.z.toFixed(2)})`,
+      )
+
+      // Et on ne le traverse pas : le corps qui pousse contre une face pleine s'arrête à
+      // son rayon, quelle que soit la face.
+      const pierced = chest.door!.normal
+      const blind = { x: -pierced.z, y: 0, z: pierced.x } // une face sans porte
+      const against = {
+        x: centre.x + blind.x * (side / 2 + 2),
+        y: centre.y,
+        z: centre.z + blind.z * (side / 2 + 2),
+      }
+      const walker = new Player()
+      walker.goTo({ name: 'coffre', cell: room.id, pos: against, forward: scale(blind, -1) }, world)
+      walker.walk(world, 4)
+      const gap = Math.max(
+        Math.abs(walker.pos.x - centre.x) - side / 2,
+        Math.abs(walker.pos.z - centre.z) - side / 2,
+      )
+      add_(
+        'reliquaire · une face pleine arrête',
+        walker.cell === room.id && gap >= PROBE_BODY.radius - 1e-3,
+        `arrêté à ${gap.toFixed(3)} m de la paroi, rayon ${PROBE_BODY.radius}`,
+      )
+
+      // La boucle : on entre par la porte du coffre, on traverse la nef, on ressort.
+      const seamInto = room.passages.find((p) => p.from === chest.door)
+      const visitor = new Player()
+      visitor.goTo(
+        { name: 'reliquaire', cell: marks.chestCell, pos: marks.chestPos, forward: marks.chestForward },
+        world,
+      )
+      const start = { ...visitor.pos }
+
+      let guard = 0
+      while (visitor.crossings === 0 && guard++ < 60) visitor.walk(world, 0.2)
+      const nave = world.cells.get(visitor.cell)
+      add_(
+        'reliquaire · la porte du coffre laisse entrer',
+        visitor.crossings === 1 && visitor.cell !== room.id,
+        `${visitor.crossings} traversée(s), cellule ${visitor.cell}`,
+      )
+
+      // Dans la nef, on vise l'autre porte — celle par où l'on n'est pas entré. Marcher
+      // droit devant soi ne prouverait rien : on entre en biais, et seize mètres plus loin
+      // on est contre un mur, ce qui ne dit ni que la salle est traversable ni qu'elle ne
+      // l'est pas.
+      const back = nave?.passages.find((p) => p.from !== seamInto?.to)
+      if (back) visitor.face(normalize(sub(back.from.center, visitor.pos)))
+
+      guard = 0
+      while (visitor.crossings === 1 && guard++ < 160) visitor.walk(world, 0.2)
+      add_(
+        'reliquaire · la nef ressort dans la salle de départ',
+        visitor.crossings === 2 && visitor.cell === room.id,
+        `${visitor.crossings} traversée(s), cellule ${visitor.cell}`,
+      )
+      add_(
+        'reliquaire · on ressort ailleurs qu’on est entré',
+        distance(visitor.pos, start) > 8,
+        `${distance(visitor.pos, start).toFixed(1)} m entre le seuil du coffre et la sortie`,
+      )
+
+      // Le rapport des volumes, qui est l'énoncé de la tricherie.
+      if (nave) {
+        const volume = (c: { min: Vec3; max: Vec3 }): number =>
+          (c.max.x - c.min.x) * (c.max.y - c.min.y) * (c.max.z - c.min.z)
+        const ratio = volume(nave) / volume(chest)
+        add_(
+          'reliquaire · le contenu ne tient pas dans le contenant',
+          ratio > 30,
+          `la nef fait ${ratio.toFixed(0)} fois le volume du coffre,` +
+            ` et ${(volume(nave) / volume(room)).toFixed(1)} fois celui de la salle`,
+        )
+      }
+
+      // Et rien ne rétrécit en passant : les deux bouches ont la même taille, ce qui est
+      // la condition pour que la transformation reste rigide. Le jour où l'on voudra une
+      // vraie porte minuscule, c'est cet invariant-là qu'il faudra remplacer, pas
+      // contourner.
+      add_(
+        'reliquaire · aucun changement d’échelle',
+        seamInto !== undefined &&
+          seamInto.from.halfWidth === seamInto.to.halfWidth &&
+          seamInto.from.halfHeight === seamInto.to.halfHeight,
+        seamInto
+          ? `${(seamInto.from.halfWidth * 2).toFixed(2)} × ${(seamInto.from.halfHeight * 2).toFixed(2)} m des deux côtés`
+          : 'couture du coffre introuvable',
+      )
+    }
+  }
+
+  // 12. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
   const stray = v3(0, 1.65, 0)
   for (const cell of world.cells.values()) {
     const p = resolveAgainstCell(cell, stray, PROBE_BODY).pos

@@ -27,10 +27,11 @@
 
 import type { F32 } from '../f32'
 import { create, fromBasis, invertRigid, multiply, type Mat4 } from '../math/mat4'
-import { add, cross, neg, scale, type Vec3 } from '../math/vec3'
+import { add, cross, neg, normalize, scale, sub, type Vec3 } from '../math/vec3'
 import {
   buildRoom,
   buildTwistedTube,
+  pushBlock,
   pushTubeCap,
   pushWall,
   type Color,
@@ -311,6 +312,165 @@ const VRILLE = makeTwist({
 })
 
 /**
+ * **Le reliquaire** — le premier volume impossible du musée.
+ *
+ * Au centre de la salle, un coffre de deux mètres soixante. Dans sa face, une porte
+ * ordinaire, celle de partout ailleurs : un mètre quatre-vingts sur deux mètres vingt.
+ * Elle occupe donc presque toute la face, et c'est là que le compte cesse d'y être —
+ * une porte à hauteur d'homme dans une boîte à peine plus haute qu'elle.
+ *
+ * Derrière : une nef de seize mètres sur seize, haute de huit. Trente-six fois le volume
+ * du coffre qui la contient, et plus du double de celui de la salle où le coffre est
+ * posé.
+ *
+ * **Aucune tricherie d'échelle.** Les deux bouches de la couture ont exactement la même
+ * taille, la transformation reste rigide, et le visiteur garde sa stature. C'est bien un
+ * plein volume qu'on a rangé dans une boîte trop petite, pas une illusion d'optique ni
+ * un rétrécissement : on peut faire le tour du coffre, le mesurer du regard, et rien ne
+ * change. Le plan appelle cela le meilleur rapport effet/effort du projet, et il a
+ * raison — l'espace cousu le donne presque pour rien.
+ *
+ * **La nef ressort dans la salle de départ.** Sa seconde porte s'ouvre dans le mur d'en
+ * face de la pièce au coffre : on entre dans une boîte de deux mètres soixante et on
+ * ressort seize mètres plus loin par un mur qui était derrière soi, avec le coffre —
+ * intact, minuscule — entre soi et la porte d'entrée. C'est le moment où l'on se retourne
+ * pour vérifier.
+ */
+/** L'aile qui l'accueille : celle réservée à ce qui se contient soi-même. */
+const RELIQUARY_WING = 'recursive'
+/**
+ * Le côté du coffre : deux mètres cinquante, trente centimètres de plus que sa porte.
+ *
+ * Deux mètres cinquante, et non deux mètres soixante — pour une raison qui n'a rien à
+ * voir avec le dessin. Les matrices sont en flottants **32 bits**, et l'invariant qui
+ * vérifie que les deux bouches d'une couture coïncident est exact au bit près. À six
+ * cents mètres de l'origine, le pas du flottant vaut déjà un dixième de millimètre : une
+ * demi-largeur de 1,30 m place la face du coffre sur une coordonnée non représentable, et
+ * l'écart mesuré passe à 1,2 × 10⁻⁵ m — au-dessus du seuil, et à raison.
+ *
+ * Tout le musée tient donc sur une **grille au quart de mètre**, où sommes et différences
+ * restent exactes. C'est une contrainte à connaître avant de poser une cote, pas après.
+ */
+const RELIQUARY_SIDE = 2.5
+/** La paroi du coffre qu'on perce, et celle de la salle par où la nef ressort. */
+const RELIQUARY_FACE: Wall = 'west'
+const NAVE_EXIT_WALL: Wall = 'east'
+
+/** Le coffre, posé au milieu de sa salle et sur son sol. */
+function reliquaryIn(box: Box): Box {
+  const half = RELIQUARY_SIDE / 2
+  const cx = (box.min.x + box.max.x) / 2
+  const cz = (box.min.z + box.max.z) / 2
+  return {
+    min: { x: cx - half, y: box.min.y, z: cz - half },
+    max: { x: cx + half, y: box.min.y + RELIQUARY_SIDE, z: cz + half },
+  }
+}
+
+/** L'abscisse du milieu d'une boîte, le long de la paroi visée. */
+function middleOf(box: Box, wall: Wall): number {
+  return wall === 'north' || wall === 'south'
+    ? (box.min.x + box.max.x) / 2
+    : (box.min.z + box.max.z) / 2
+}
+
+/** La nef, rangée à deux cents mètres de la salle qui la contient. */
+const NAVE_BOX: Box = { min: { x: 800, y: 0, z: 800 }, max: { x: 816, y: 8, z: 816 } }
+const NAVE = 'reliquaire'
+const NAVE_TINT: Colour = [0.42, 0.72, 0.95]
+/** Par où l'on entre dans la nef, et par où l'on en sort. Aux deux bouts, seize mètres. */
+const NAVE_ENTRY_WALL: Wall = 'north'
+const NAVE_RETURN_WALL: Wall = 'south'
+
+/**
+ * Une bouche percée dans la face d'un bloc plein.
+ *
+ * C'est la jumelle de `mouth`, à ceci près qu'on la regarde **de dehors** : la normale
+ * sort du bloc au lieu d'entrer dans la pièce, et l'embrasure s'enfonce dans la matière
+ * au lieu de la traverser. Les repères restent choisis pour que `right × up = normal`,
+ * vérifié à la fin de `buildWorld`.
+ */
+function blockMouth(cell: string, id: string, box: Box, wall: Wall, lateral: number): Mouth {
+  const y = box.min.y + DOOR_HALF_H
+  const common = {
+    id,
+    cell,
+    halfWidth: DOOR_HALF_W,
+    halfHeight: DOOR_HALF_H,
+    up: { x: 0, y: 1, z: 0 },
+  }
+
+  switch (wall) {
+    case 'north':
+      return {
+        ...common,
+        center: { x: lateral, y, z: box.min.z + REVEAL },
+        right: { x: -1, y: 0, z: 0 },
+        normal: { x: 0, y: 0, z: -1 },
+      }
+    case 'south':
+      return {
+        ...common,
+        center: { x: lateral, y, z: box.max.z - REVEAL },
+        right: { x: 1, y: 0, z: 0 },
+        normal: { x: 0, y: 0, z: 1 },
+      }
+    case 'west':
+      return {
+        ...common,
+        center: { x: box.min.x + REVEAL, y, z: lateral },
+        right: { x: 0, y: 0, z: 1 },
+        normal: { x: -1, y: 0, z: 0 },
+      }
+    case 'east':
+      return {
+        ...common,
+        center: { x: box.max.x - REVEAL, y, z: lateral },
+        right: { x: 0, y: 0, z: -1 },
+        normal: { x: 1, y: 0, z: 0 },
+      }
+  }
+}
+
+/**
+ * L'éclairage de la nef.
+ *
+ * Six lampes, le maximum que le nuanceur accepte, et il les faut toutes : une salle de
+ * seize mètres éclairée par une seule source centrale a des coins parfaitement noirs, ce
+ * qui ne dit pas « grand » mais « inachevé ». Quatre lampes hautes en carré, plus une
+ * applique au-dessus de chaque porte pour que la nef ait de quoi transmettre par ses
+ * ouvertures.
+ */
+function naveLighting(mouths: Mouth[]): CellLighting {
+  const tint = NAVE_TINT
+  // Suspendues bas, et non collées au plafond. Une lampe à huit mètres du sol perd
+  // quarante fois son intensité avant de l'atteindre : la nef paraissait alors plus sombre
+  // que la salle où l'on se tient, ce qui inverse exactement ce qu'on veut raconter — la
+  // boîte doit contenir plus grand **et** plus clair que ce qui l'entoure.
+  const quarter = (t: number, u: number): Vec3 => ({
+    x: NAVE_BOX.min.x + (NAVE_BOX.max.x - NAVE_BOX.min.x) * t,
+    y: NAVE_BOX.max.y - 2.5,
+    z: NAVE_BOX.min.z + (NAVE_BOX.max.z - NAVE_BOX.min.z) * u,
+  })
+
+  return {
+    ambient: [tint[0] * 0.07, tint[1] * 0.07, tint[2] * 0.07],
+    lights: [
+      { position: quarter(0.28, 0.28), colour: tint, intensity: 14, radius: 16 },
+      { position: quarter(0.72, 0.28), colour: tint, intensity: 14, radius: 16 },
+      { position: quarter(0.28, 0.72), colour: tint, intensity: 14, radius: 16 },
+      { position: quarter(0.72, 0.72), colour: tint, intensity: 14, radius: 16 },
+      ...mouths.map((m) => ({
+        position: add(add(m.center, scale(m.normal, REVEAL + 0.7)), { x: 0, y: 1.4, z: 0 }),
+        colour: tint,
+        intensity: 5,
+        radius: 7,
+      })),
+    ],
+  }
+}
+
+/**
  * Une bouche au bout du tube.
  *
  * Son repère est celui de la section qu'elle ferme, et non celui du monde : à la
@@ -409,7 +569,7 @@ const WINGS: Wing[] = [
     tint: [0.5, 0.92, 0.95],
     hubWall: 'west',
     hubLateral: -3.5,
-    purpose: 'la salle récursive : une maquette du musée qui se contient elle-même',
+    purpose: 'le reliquaire : un coffre de deux mètres cinquante qui contient une nef',
   },
   {
     id: 'regard',
@@ -449,6 +609,10 @@ export interface Landmarks {
   wingCell: string
   wingPos: Vec3
   wingForward: Vec3
+  /** Une pose dans la salle du reliquaire, à quelques pas du coffre et face à sa porte. */
+  chestCell: string
+  chestPos: Vec3
+  chestForward: Vec3
   /** La liste des ailes et de ce qu'elles accueilleront, pour l'affichage. */
   wings: { id: string; purpose: string }[]
 }
@@ -462,21 +626,45 @@ export function getLandmarks(): Landmarks {
 
 export function buildWorld(): World {
   const hubMouths: { mouth: Mouth; wall: Wall }[] = []
-  const wingData: { wing: Wing; mouths: Mouth[]; holes: RoomHoles; lighting: CellLighting }[] = []
+  const wingData: {
+    wing: Wing
+    mouths: Mouth[]
+    holes: RoomHoles
+    lighting: CellLighting
+    /** Le coffre posé au milieu, pour l'aile qui en a un. */
+    chest?: Box
+  }[] = []
 
   // --- Les bouches d'abord : l'éclairage en dépend --------------------------
+  //
+  // La première de chaque aile est toujours celle qui donne sur la rotonde ; les
+  // suivantes sont propres à l'aile. Le tunnel en a une seconde à son autre bout, et la
+  // salle du reliquaire en a deux : celle du coffre et celle par où la nef ressort.
   for (const wing of WINGS) {
     const twisted = wing.id === 'vrille'
+    const reliquary = wing.id === RELIQUARY_WING
+    const chest = reliquary ? reliquaryIn(wing.box) : null
+
     const mouths = twisted
       ? [tubeMouth('vrille.porte', true), tubeMouth('vrille.retour', false)]
       : [mouth(wing.id, `${wing.id}.porte`, wing.box, wing.wall, wing.lateral)]
+    if (chest) {
+      mouths.push(
+        blockMouth(wing.id, 'reliquaire.coffre', chest, RELIQUARY_FACE, middleOf(chest, RELIQUARY_FACE)),
+        mouth(wing.id, 'reliquaire.sortie', wing.box, NAVE_EXIT_WALL, middleOf(wing.box, NAVE_EXIT_WALL)),
+      )
+    }
+
     const holes: RoomHoles = twisted ? {} : { [wing.wall]: [holeOf(mouths[0]!)] }
+    // La porte du coffre ne perce aucune paroi de la salle : elle perce le coffre.
+    if (chest) holes[NAVE_EXIT_WALL] = [holeOf(mouths[2]!)]
 
     wingData.push({
       wing,
       mouths,
       holes,
       lighting: twisted ? tubeLighting(wing.tint) : lightingFor(wing.box, wing.tint, mouths),
+      ...(chest ? { chest } : {}),
     })
     hubMouths.push({
       mouth: mouth(HUB, `${HUB}.vers-${wing.id}`, HUB_BOX, wing.hubWall, wing.hubLateral),
@@ -528,6 +716,32 @@ export function buildWorld(): World {
   hubPassages.push(hubToLoop)
   wingPassages.get('vrille')!.push(loopToHub)
 
+  // Les deux coutures du reliquaire : le coffre vers la nef, et la nef vers le mur d'en
+  // face de la salle où le coffre est posé. La seconde est ce qui referme la boucle —
+  // sans elle, la nef serait un cul-de-sac et il faudrait ressortir par où l'on est
+  // entré, ce qui laisse au visiteur la possibilité de croire à un simple couloir.
+  const chestWing = wingData.find((entry) => entry.wing.id === RELIQUARY_WING)!
+  const naveMouths = [
+    mouth(NAVE, 'reliquaire.nef', NAVE_BOX, NAVE_ENTRY_WALL, middleOf(NAVE_BOX, NAVE_ENTRY_WALL)),
+    mouth(NAVE, 'reliquaire.retour', NAVE_BOX, NAVE_RETURN_WALL, middleOf(NAVE_BOX, NAVE_RETURN_WALL)),
+  ]
+  const naveLights = naveLighting(naveMouths)
+
+  const [intoNave, outOfNave] = makePassages(
+    chestWing.mouths[1]!,
+    chestWing.lighting,
+    naveMouths[0]!,
+    naveLights,
+  )
+  const [naveToWing, wingToNave] = makePassages(
+    naveMouths[1]!,
+    naveLights,
+    chestWing.mouths[2]!,
+    chestWing.lighting,
+  )
+  wingPassages.get(RELIQUARY_WING)!.push(intoNave, wingToNave)
+  const navePassages: Passage[] = [outOfNave, naveToWing]
+
   // --- La géométrie ---------------------------------------------------------
   const hubHoles: RoomHoles = {}
   for (const { mouth: m, wall } of hubMouths) {
@@ -558,6 +772,19 @@ export function buildWorld(): World {
       // Les deux fonds du tube, percés de leur porte.
       pushTubeCap(extra, VRILLE, true, tinted(entry.wing.tint, 0.4), holeOf(entry.mouths[0]!))
       pushTubeCap(extra, VRILLE, false, tinted(entry.wing.tint, 0.4), holeOf(entry.mouths[1]!))
+    }
+
+    // Le coffre, posé au milieu de sa salle. Il est d'une matière franchement autre que
+    // celle des parois : c'est un objet dans une pièce, pas un morceau d'architecture, et
+    // il faut qu'on ait envie d'en faire le tour avant d'y entrer.
+    if (entry.chest) {
+      pushBlock(
+        extra,
+        entry.chest.min,
+        entry.chest.max,
+        { side: [0.46, 0.42, 0.36], top: [0.54, 0.5, 0.43] },
+        { face: RELIQUARY_FACE, hole: holeOf(entry.mouths[1]!) },
+      )
     }
 
     cells.push({
@@ -592,6 +819,28 @@ export function buildWorld(): World {
       passages: wingPassages.get(entry.wing.id)!,
       lighting: entry.lighting,
       ...(twisted ? { twist: VRILLE } : {}),
+      ...(entry.chest ? { blocks: [{ ...entry.chest, door: entry.mouths[1]! }] } : {}),
+    })
+  }
+
+  // --- La nef, qui ne tient pas dans le coffre qui la contient ----------------
+  {
+    const extra: number[] = []
+    for (const m of naveMouths) pushReveal(extra, m, tinted(NAVE_TINT, 0.55))
+
+    cells.push({
+      id: NAVE,
+      min: NAVE_BOX.min,
+      max: NAVE_BOX.max,
+      verts: concat(
+        buildRoom(NAVE_BOX.min, NAVE_BOX.max, paletteFor(NAVE_TINT), {
+          [NAVE_ENTRY_WALL]: [holeOf(naveMouths[0]!)],
+          [NAVE_RETURN_WALL]: [holeOf(naveMouths[1]!)],
+        }),
+        extra,
+      ),
+      passages: navePassages,
+      lighting: naveLights,
     })
   }
 
@@ -607,6 +856,18 @@ export function buildWorld(): World {
     }
   }
 
+  const chestDoor = chestWing.mouths[1]!
+  const chestView = (() => {
+    const pos = {
+      ...add(
+        add(chestDoor.center, scale(chestDoor.normal, 4.4)),
+        scale(chestDoor.right, 2.2),
+      ),
+      y: chestWing.wing.box.min.y + 1.65,
+    }
+    return { pos, forward: normalize(sub(chestDoor.center, pos)) }
+  })()
+
   const reference = hubPassages[0]!
   landmarks = {
     hub: HUB,
@@ -618,6 +879,13 @@ export function buildWorld(): World {
     // Deux mètres dans l'aile, tourné vers sa porte.
     wingPos: add(add(reference.to.center, scale(reference.to.normal, 2)), { x: 0, y: 0.55, z: 0 }),
     wingForward: neg(reference.to.normal),
+    // **De trois quarts, et de loin.** Pris de face et de près, le coffre remplit le champ
+    // et redevient ce qu'il n'est pas : une porte dans un mur. Il faut voir deux de ses
+    // faces, ses arêtes contre la salle, et la nef par l'ouverture — sans quoi
+    // l'impossibilité ne se voit pas, elle s'explique, ce qui n'est pas la même chose.
+    chestCell: chestWing.wing.id,
+    chestPos: chestView.pos,
+    chestForward: chestView.forward,
     wings: WINGS.map((w) => ({ id: w.id, purpose: w.purpose })),
   }
 

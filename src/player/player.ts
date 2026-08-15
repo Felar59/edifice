@@ -139,6 +139,15 @@ export function presets(): Preset[] {
       name: 'Dans l’embrasure, dos tourné',
       ...beside(0.13, 0, { ...marks.seamNormal }),
     },
+    // Le volume impossible : un coffre de deux mètres cinquante posé au milieu de la
+    // salle, une porte à hauteur d'homme dans sa face, et une nef de seize mètres
+    // derrière. Tout est dans la même image — la boîte, sa porte, et ce qui n'y tient pas.
+    {
+      name: 'Le volume impossible',
+      cell: marks.chestCell,
+      pos: marks.chestPos,
+      forward: marks.chestForward,
+    },
   ]
   return cached
 }

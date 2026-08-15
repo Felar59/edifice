@@ -10,8 +10,9 @@ portfolio. Ce dépôt-ci contient le moteur.
 
 **État : le premier moment signature tourne.** Une rotonde à huit portes, des portails
 qu'on n'arrive pas à prendre en défaut, un éclairage qui franchit les ouvertures, le
-saut et la chute — et le **tunnel-vrille**, dont la section pivote d'un quart de tour
-sur dix-huit mètres, gravité comprise. Six ailes attendent encore leur mécanique.
+saut et la chute — le **tunnel-vrille**, dont la section pivote d'un quart de tour sur
+dix-huit mètres, gravité comprise — et le **volume impossible** : un coffre de deux mètres
+cinquante qui contient une nef de seize. Cinq ailes attendent encore leur mécanique.
 
 ## Démarrer
 
@@ -37,10 +38,11 @@ Le monde n'est pas un espace unique mais un **graphe de cellules** reliées par 
 rigide : franchir cette ouverture, c'est changer de repère.
 
 Le plan du musée est une **rotonde** de 14 × 5 × 14, percée de huit portes, et sept
-**ailes** — une par tricherie géométrique à venir : le tunnel-vrille, la gravité par
-face, l'escalier de Penrose, l'espace pavé, les murs mobiles, la salle récursive, la
-perspective forcée. Elles sont vides, et c'est voulu : on les remplira une par une,
-chacune avec son propre problème.
+**ailes** — une par tricherie géométrique : le tunnel-vrille et le reliquaire, qui
+tournent ; la gravité par face, l'escalier de Penrose, l'espace pavé, les murs mobiles et
+la perspective forcée, qui attendent. Les cinq dernières sont vides, et c'est voulu : on
+les remplira une par une, chacune avec son propre problème. S'y ajoute la **nef** du
+reliquaire, qui n'a pas de porte sur la rotonde : on n'y entre que par le coffre.
 
 Les ailes sont éloignées de **centaines de mètres** les unes des autres et de la
 rotonde. Aucune ne se touche. Ce n'est pas de l'économie de place mais une précaution
@@ -271,6 +273,60 @@ plus à chaque tour.
 Enfin, la couture de sortie **absorbe** la vrille accumulée, puisqu'une transformation
 rigide emporte le repère entier. On ressort donc parfaitement d'aplomb, sans à-coup.
 
+### Le volume impossible
+
+Au centre d'une aile, **un coffre de deux mètres cinquante**. Dans sa face, une porte
+ordinaire, celle de partout ailleurs : un mètre quatre-vingts sur deux mètres vingt. Elle
+occupe donc presque toute la face, et c'est là que le compte cesse d'y être — une porte à
+hauteur d'homme dans une boîte à peine plus haute qu'elle.
+
+Derrière : une nef de seize mètres sur seize, haute de huit. **Cent trente et une fois le
+volume du coffre**, et deux fois et demie celui de la salle où le coffre est posé.
+
+**Aucune tricherie d'échelle.** Les deux bouches de la couture ont exactement la même
+taille, la transformation reste rigide, et le visiteur garde sa stature. Ce n'est ni une
+illusion d'optique ni un rétrécissement : on fait le tour du coffre, on le mesure du
+regard, et rien ne change. C'est ce que le plan appelait le meilleur rapport effet/effort
+du projet, et il avait raison — l'espace cousu le donne presque pour rien.
+
+**La nef ressort dans la salle de départ.** Sa seconde porte s'ouvre dans le mur d'en face
+de la pièce au coffre : on entre dans une boîte de deux mètres cinquante, on marche seize
+mètres, et l'on ressort par un mur qui était derrière soi — avec le coffre, intact et
+minuscule, entre soi et la porte d'entrée. Sans cette boucle, la nef serait un cul-de-sac
+dont on ressortirait par où l'on est entré, ce qui laisse au visiteur la ressource de
+croire à un simple couloir.
+
+Deux choses ont demandé du travail, et une troisième a demandé de l'humilité.
+
+**Un corps savait rester dans une boîte ; il ne savait pas en contourner une.** Toute la
+collision était écrite pour des pièces creuses — on reste dedans. Le coffre est le premier
+volume plein du musée, et il a fallu l'inverse : on sort par la face la plus proche. C'est
+la manière ordinaire de résoudre une boîte, et elle donne gratuitement le bon
+comportement dans les trois cas — on glisse le long d'un côté, on se pose sur le dessus,
+et l'on n'est jamais éjecté vers le bas, puisque sortir par en dessous demanderait de
+descendre de toute la hauteur du corps plus celle du bloc. Ce code servira aux murs
+mobiles, qui sont des blocs qui bougent.
+
+**La porte d'un bloc n'est pas la porte d'une paroi.** Le piège était joliment posé. La
+collision lève la butée d'un mur devant chaque ouverture de la cellule ; une bouche percée
+dans un coffre au milieu de la salle a bien une normale horizontale, et se laisse donc
+prendre pour une porte. On sortait alors de la pièce **par le mur d'en face**, en
+s'alignant sur un coffre situé quatre mètres avant. Les bouches d'un bloc sont désormais
+écartées de ce raisonnement, explicitement.
+
+**Le coffre fait deux mètres cinquante, et non deux mètres soixante.** Les matrices sont en
+flottants 32 bits, et l'invariant qui vérifie que les deux bouches d'une couture coïncident
+est exact au bit près. À six cents mètres de l'origine, le pas du flottant vaut déjà un
+dixième de millimètre : une demi-largeur de 1,30 m place la face du coffre sur une
+coordonnée non représentable, et l'écart mesuré passe à 1,2 × 10⁻⁵ m. Le test l'a refusé,
+et il avait raison. Tout le musée tient sur une **grille au quart de mètre**, où sommes et
+différences restent exactes — une contrainte à connaître avant de poser une cote.
+
+Enfin, le point de vue du test est pris **de trois quarts, et de loin**. De face et de
+près, le coffre remplit le champ et redevient ce qu'il n'est pas : une porte dans un mur.
+Il faut voir deux de ses faces, ses arêtes contre la salle, et la nef par l'ouverture. Un
+volume impossible qu'il faut expliquer est un volume raté.
+
 ### La verticalité
 
 On saute et on tombe. Gravité à dix-huit mètres par seconde carrée — près du double du
@@ -316,6 +372,14 @@ transformations sont composées de zéros, de uns et de translations exactes.
 S'y ajoute l'orthonormalité du repère de la caméra, vérifiée à toutes les
 inclinaisons. C'est l'invariant qui manquait, et son absence a laissé passer le
 défaut le plus visible du prototype.
+
+S'y ajoutent les invariants du reliquaire, dont trois qui ne parlent pas de coutures mais
+de matière : on ne traverse pas un bloc plein, on n'y reste pas **pris** — un point posé
+en son centre doit ressortir, et ressortir dehors —, et la boucle boucle : deux traversées,
+la salle de départ au bout, et une dizaine de mètres entre le seuil du coffre et la sortie.
+S'y ajoute le rapport des volumes, qui est l'énoncé même de la tricherie : le mesurer évite
+qu'on rétrécisse un jour la nef sans s'en apercevoir, et que le musée se mette à mentir un
+peu moins.
 
 **Les points de vue**, capturés dans `shots/` : les dix situations qui trahissent
 un portail mal fait — nez collé à l'ouverture, regard rasant, pile dans

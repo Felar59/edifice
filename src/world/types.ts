@@ -47,11 +47,31 @@ export interface Passage {
   radiance: Colour
 }
 
+/**
+ * Un **bloc plein** posé dans une cellule : de la matière, là où il n'y en avait pas.
+ *
+ * Jusqu'ici un corps savait rester dans une boîte ; il ne savait pas en contourner une.
+ * C'est ce qui manquait pour poser quoi que ce soit au milieu d'une salle — un coffre,
+ * un pilier, et plus tard une cloison qui coulisse.
+ *
+ * `door` est la bouche percée dans une de ses faces, s'il y en a une. Elle est retenue
+ * ici en plus de vivre dans les passages de la cellule, parce que la collision a deux
+ * questions distinctes à lui poser : « cette ouverture perce-t-elle une paroi de la
+ * pièce ? » — non — et « laisse-t-elle entrer dans ce bloc ? » — oui.
+ */
+export interface Block {
+  min: Vec3
+  max: Vec3
+  door?: Mouth
+}
+
 export interface Cell {
   id: string
   /** Boîte englobante intérieure, utilisée pour la collision de l'étape 1. */
   min: Vec3
   max: Vec3
+  /** Ce qui est plein à l'intérieur, et qu'il faut contourner. */
+  blocks?: Block[]
   /** Sommets entrelacés, voir `FLOATS_PER_VERTEX`. */
   verts: F32
   /** Les passages qui partent de cette cellule. */

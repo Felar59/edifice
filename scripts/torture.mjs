@@ -40,6 +40,10 @@ const VIEWS = [
   { file: '10-au-micron', label: 'Au micron de la couture', preset: 10 },
   { file: '11-embrasure-cote', label: 'Dans l’embrasure, regard de côté', preset: 11 },
   { file: '12-embrasure-dos', label: 'Dans l’embrasure, dos tourné', preset: 12 },
+  // Le volume impossible. Ce point de vue ne teste pas une couture : il teste que la
+  // tricherie se **voit** — la boîte, sa porte, et la nef qui n'y tient pas, dans la même
+  // image. Un volume impossible qu'il faut expliquer est un volume raté.
+  { file: '15-volume-impossible', label: 'Le volume impossible', preset: 13 },
 ]
 
 /**

@@ -209,6 +209,83 @@ export function buildRoom(min: Vec3, max: Vec3, pal: RoomPalette, holes: RoomHol
 }
 
 
+/** Les faces d'un bloc, nommées par leur position et non par leur normale. */
+export type Face = 'north' | 'south' | 'west' | 'east'
+
+/**
+ * Un bloc plein, vu **de l'extérieur**.
+ *
+ * Tout le reste du musée est creux et se regarde du dedans ; celui-ci est le premier
+ * volume qu'on contourne. Les normales sortent donc, et le dessous n'est pas dessiné :
+ * le bloc est posé sur le sol, et une face qu'on ne peut pas voir est du travail que la
+ * carte graphique ferait pour rien.
+ *
+ * Une face peut être percée d'une ouverture. C'est un vrai trou dans la géométrie, comme
+ * dans une paroi de pièce, et pour la même raison : un quad de portail posé par-dessus
+ * donnerait un conflit de profondeur.
+ */
+export function pushBlock(
+  out: number[],
+  min: Vec3,
+  max: Vec3,
+  colours: { side: Color; top: Color },
+  pierced?: { face: Face; hole: Hole },
+): void {
+  const dx = max.x - min.x
+  const dy = max.y - min.y
+  const dz = max.z - min.z
+
+  // Chaque face est donnée dans l'ordre qui met sa normale **dehors** : se tromper la
+  // rend simplement invisible, le tri des faces arrière s'en chargeant.
+  const faces: { face: Face | 'top'; origin: Vec3; right: Vec3; up: Vec3; color: Color }[] = [
+    {
+      face: 'north', // z = min.z, normale -Z
+      origin: { x: max.x, y: min.y, z: min.z },
+      right: { x: -dx, y: 0, z: 0 },
+      up: { x: 0, y: dy, z: 0 },
+      color: colours.side,
+    },
+    {
+      face: 'south', // z = max.z, normale +Z
+      origin: { x: min.x, y: min.y, z: max.z },
+      right: { x: dx, y: 0, z: 0 },
+      up: { x: 0, y: dy, z: 0 },
+      color: colours.side,
+    },
+    {
+      face: 'west', // x = min.x, normale -X
+      origin: { x: min.x, y: min.y, z: min.z },
+      right: { x: 0, y: 0, z: dz },
+      up: { x: 0, y: dy, z: 0 },
+      color: colours.side,
+    },
+    {
+      face: 'east', // x = max.x, normale +X
+      origin: { x: max.x, y: min.y, z: max.z },
+      right: { x: 0, y: 0, z: -dz },
+      up: { x: 0, y: dy, z: 0 },
+      color: colours.side,
+    },
+    {
+      face: 'top', // y = max.y, normale +Y
+      origin: { x: min.x, y: max.y, z: max.z },
+      right: { x: dx, y: 0, z: 0 },
+      up: { x: 0, y: 0, z: -dz },
+      color: colours.top,
+    },
+  ]
+
+  for (const f of faces) {
+    pushWall(out, {
+      origin: f.origin,
+      right: f.right,
+      up: f.up,
+      color: f.color,
+      ...(pierced && pierced.face === f.face ? { holes: [pierced.hole] } : {}),
+    })
+  }
+}
+
 /**
  * Les quatre faces d'un tube vrillé, chacune de sa couleur.
  *
