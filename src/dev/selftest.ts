@@ -752,9 +752,18 @@ export function runSelfTest(world: World, physics: Physics): Check[] {
   //    indéfiniment autour du cube sans pouvoir en sortir. On ne bascule donc pas devant
   //    une ouverture — on entre.
   //
-  //    **On ne sort que d'aplomb.** Une couture emporte le repère tel quel : sortir en se
-  //    tenant sur un mur ferait arriver dans la rotonde couché, avec une gravité
-  //    horizontale et rien sous les pieds.
+  //    **On en sort d'aplomb quand on y marche d'aplomb.** Une couture emporte le repère
+  //    tel quel : qui traverse debout arrive debout.
+  //
+  //    **Une arête ne fait pas basculer.** Deux faces abordées exactement de biais ne se
+  //    départagent pas ; on choisissait la plus proche, et dans un angle les deux distances
+  //    sont égales au bruit près — le vainqueur changeait d'une image à l'autre et la salle
+  //    tournait sur place. Rester debout dans un coin est un état stable.
+  //
+  //    **La porte du sol se franchit, et mène loin.** Qui marche sur la paroi qui porte la
+  //    porte a cette porte sous les pieds. Il y tombe, emporte sa gravité, traverse la
+  //    rotonde en vol et va s'écraser dans l'aile d'en face, où la verticale du monde
+  //    reprend ses droits au premier contact.
   {
     const room = [...world.cells.values()].find((c) => c.gravity)
     if (!room) {
@@ -845,9 +854,74 @@ export function runSelfTest(world: World, physics: Physics): Check[] {
         leaver.cell === room.id ? 'toujours dedans après dix secondes de marche' : `sorti vers ${leaver.cell}`,
       )
       add_(
-        'six sols · on ne sort que d’aplomb',
+        'six sols · on en sort d’aplomb quand on y marche d’aplomb',
         dot(leaver.up, v3(0, 1, 0)) > 1 - 1e-6,
         `verticale à ${(Math.acos(Math.min(1, dot(leaver.up, v3(0, 1, 0)))) * 180 / Math.PI).toFixed(2)}° de l’aplomb`,
+      )
+
+      // L'arête. On part du centre et l'on marche exactement dans l'angle : les deux faces
+      // sont abordées à quarante-cinq degrés, donc à égalité, et rien ne doit basculer.
+      const corner = new Player()
+      corner.goTo(
+        { name: 'arête', cell: room.id, pos: { ...middle }, forward: normalize(v3(-1, 0, -1)) },
+        world,
+      )
+      let flips = 0
+      let previous = { ...corner.stance }
+      for (let i = 0; i < 600 && corner.cell === room.id; i++) {
+        corner.update(1 / 60, world, new Set(['KeyW']))
+        if (distance(previous, corner.stance) > 1e-6) {
+          flips++
+          previous = { ...corner.stance }
+        }
+      }
+      add_(
+        'six sols · une arête ne fait pas basculer',
+        flips === 0,
+        flips === 0 ? 'debout dans l’angle, dix secondes durant' : `${flips} bascule(s) dans l’angle`,
+      )
+
+      // La trappe. On monte sur la paroi qui porte la porte, en abordant loin de celle-ci,
+      // puis on longe la paroi jusqu'à l'embrasure — qui est alors un trou dans le sol.
+      const sill = room.passages[0]!.from
+      const faller = new Player()
+      faller.goTo(
+        {
+          name: 'trappe',
+          cell: room.id,
+          pos: add(add(sill.center, scale(sill.normal, 5)), scale(sill.right, 3)),
+          forward: scale(sill.normal, -1),
+        },
+        world,
+      )
+      // La hauteur du départ vaut celle de l'œil ; celle de la porte doit l'englober, sans
+      // quoi le trou passerait sous les pieds sans qu'on y tombe.
+      let dropped = false
+      for (let i = 0; i < 900; i++) {
+        // Dès que la paroi devient le sol, on vise l'embrasure en longeant la paroi. Viser
+        // plus tôt empêcherait d'y monter ; viser plus tard laisserait le corps dériver.
+        if (dot(faller.stance, v3(0, 1, 0)) < 0.9 && !dropped) {
+          const toward = sub(sill.center, faller.pos)
+          faller.face(scale(sill.right, dot(toward, sill.right)))
+        }
+        // On lâche la touche dès que les pieds quittent la paroi : une chute n'est pas une
+        // marche, et continuer d'avancer en vol ferait dériver la trajectoire hors de la
+        // porte d'en face. C'est ce que mesure l'invariant — la chute, pas le pilotage.
+        faller.update(1 / 60, world, new Set(faller.grounded ? ['KeyW'] : []))
+        if (faller.cell !== room.id) dropped = true
+        if (dropped && faller.grounded && dot(faller.stance, v3(0, 1, 0)) > 0.999) break
+      }
+      // La rotonde n'est qu'un passage : la chute la traverse de part en part et finit dans
+      // l'aile qui fait face à celle qu'on vient de quitter.
+      add_(
+        'six sols · la porte du sol mène à l’aile d’en face',
+        dropped && faller.cell !== room.id && faller.cell !== HUB,
+        dropped ? `tombé jusqu’à ${faller.cell}` : 'jamais sorti par le trou',
+      )
+      add_(
+        'six sols · la chute finit d’aplomb',
+        dot(faller.stance, v3(0, 1, 0)) > 0.999 && faller.grounded,
+        `verticale ${fmt(dot(faller.stance, v3(0, 1, 0)))} · ${faller.grounded ? 'posé' : 'en l’air'}`,
       )
     }
   }

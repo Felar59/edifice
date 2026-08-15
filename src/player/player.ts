@@ -317,13 +317,38 @@ export class Player {
     // franchement vers la face — on s'accroche à un mur, on ne s'y accroche pas en passant.
     const cell = world.cells.get(this.cell)
     if (cell?.gravity) {
-      const next = faceChange(cell, this.pos, this.stance, normalize(horizontal), BODY)
-      if (next && dot(next, this.stance) < 0.999) {
-        this.stance = next
-        // On se tenait debout : la vitesse acquise le long de l'ancienne verticale n'a
-        // plus de sens le long de la nouvelle.
-        this.vertical = 0
+      // **Deux verrous, et chacun a coûté un défaut visible.**
+      //
+      // Il faut marcher : à l'arrêt, la direction souhaitée est le vecteur nul, dont la
+      // normalisation ne vaut rien. Les comparaisons contre ce vecteur-là étaient toutes
+      // fausses, y compris celle qui devait écarter les faces qu'on n'aborde pas — et l'on
+      // basculait sans bouger, pour peu qu'on soit posté près d'une arête.
+      //
+      // Et il faut avoir fini de tourner : tant que l'image se redresse, la base de marche
+      // est calculée dans un repère intermédiaire, donc la direction souhaitée pivote toute
+      // seule. Elle finissait par désigner une troisième face, qui en désignait une
+      // quatrième. Une bascule à la fois.
+      const walking = len(horizontal) > 1e-6
+      const settled = dot(this.up, this.stance) > 0.999
+      if (walking && settled) {
+        const next = faceChange(cell, this.pos, this.stance, normalize(horizontal), BODY)
+        if (next && dot(next, this.stance) < 0.999) {
+          this.stance = next
+          // On se tenait debout : la vitesse acquise le long de l'ancienne verticale n'a
+          // plus de sens le long de la nouvelle.
+          this.vertical = 0
+        }
       }
+    } else if (this.stance.y < 0.999 && this.grounded) {
+      // **Hors de la salle aux six sols, une verticale de travers est un état de vol.**
+      //
+      // On l'emporte en tombant par la porte du sol : elle traverse la rotonde, entre dans
+      // l'aile d'en face, et c'est elle qui donne à la chute sa trajectoire. Mais une pièce
+      // ordinaire n'a qu'un sol, et rien n'y permettrait de se remettre d'aplomb. Le premier
+      // contact rend donc la verticale au monde ; l'image, elle, prend son temps comme
+      // ailleurs, et l'on voit la salle se remettre droite autour de soi.
+      this.stance = v3(0, 1, 0)
+      this.vertical = 0
     }
     this.right_up(dt)
   }

@@ -132,6 +132,43 @@ interface Crossing {
 }
 
 /**
+ * Le corps tient-il dans cette ouverture, sachant **comment il est orienté** ?
+ *
+ * Un corps n'est pas une sphère : il est haut d'un côté, large de l'autre. Tant qu'on
+ * traverse une porte debout, sa taille se mesure le long du haut de la bouche et sa largeur
+ * le long de son côté — ce que faisait l'ancienne version, en dur.
+ *
+ * Mais on ne traverse pas toujours debout. Qui marche sur la paroi qui porte la porte a
+ * cette porte **sous les pieds** : il y tombe, et il la franchit dans le sens de sa propre
+ * hauteur. Sa section dans le plan de la bouche n'est alors qu'un disque de son rayon.
+ * Mesurer sa taille en travers de l'ouverture lui refusait le passage sans raison.
+ *
+ * D'où la règle générale : sur chacun des deux axes de la bouche, le corps oppose sa
+ * hauteur si sa verticale suit cet axe, et son rayon sinon.
+ */
+function fitsMouth(m: Mouth, rel: Vec3, body: Body): boolean {
+  return (
+    spans(dot(rel, m.right), m.halfWidth, dot(body.up, m.right), body) &&
+    spans(dot(rel, m.up), m.halfHeight, dot(body.up, m.up), body)
+  )
+}
+
+function spans(offset: number, half: number, along: number, body: Body): boolean {
+  if (Math.abs(along) > 0.5) {
+    // Deux centimètres de mou, et ils sont nécessaires : pendant un pas, la gravité fait
+    // descendre les pieds d'un cheveu sous le sol avant que la collision ne les remonte, et
+    // juger sur cette position-là refuse le passage à qui marche normalement. C'est le même
+    // piège que dans `resolveAgainstCell`, et il se tend une seconde fois ici. Deux
+    // centimètres suffisent — un saut, lui, monte d'un demi-mètre.
+    const sag = 0.02
+    const head = offset + along * body.headroom
+    const feet = offset - along * body.eyeHeight
+    return Math.min(head, feet) >= -half - sag && Math.max(head, feet) <= half + sag
+  }
+  return Math.abs(offset) <= half - body.radius + JAMB
+}
+
+/**
  * Première bouche traversée par le segment `from → from + seg`, s'il y en a une.
  *
  * Une bouche ne se franchit que dans un sens — du côté visible vers le côté caché.
@@ -168,17 +205,7 @@ function findCrossing(cell: Cell, from: Vec3, seg: Vec3, body?: Body): Crossing 
     const across = Math.abs(dot(rel, m.right))
     const along = dot(rel, m.up)
     if (body && !fillsTheWall(cell, m)) {
-      // Un corps, avec sa largeur et sa taille. Un cube lancé n'en a pas : il passe par où
-      // son centre passe, ce qui lui va — il est plus petit que toutes les ouvertures.
-      // Deux centimètres de mou en hauteur, et ils sont nécessaires : pendant un pas, la
-      // gravité fait descendre les pieds d'un cheveu sous le sol avant que la collision ne
-      // les remonte, et juger sur cette position-là refuse le passage à qui marche
-      // normalement. C'est le même piège que dans `resolveAgainstCell`, et il se tend une
-      // seconde fois ici. Deux centimètres suffisent — un saut, lui, monte d'un demi-mètre.
-      const sag = 0.02
-      if (across > m.halfWidth - body.radius + JAMB) continue
-      if (along - body.eyeHeight < -m.halfHeight - sag) continue
-      if (along + body.headroom > m.halfHeight + sag) continue
+      if (!fitsMouth(m, rel, body)) continue
     } else {
       if (across > m.halfWidth) continue
       if (Math.abs(along) > m.halfHeight) continue
@@ -310,34 +337,16 @@ export function advance(
  */
 export function resolveAgainstCell(cell: Cell, p: Vec3, body: Body): Resolved {
   if (cell.twist) return resolveInsideTube(cell, p, body)
-  // Une salle aux six sols se résout autrement — sauf quand on s'y tient d'aplomb, où
-  // elle est une pièce comme une autre. C'est ce qui fait que sa porte ne s'ouvre que
-  // dans ce cas, et c'est voulu : voir `resolveOnFace`.
-  if (cell.gravity && !upright(body.up)) return resolveOnFace(cell, p, body)
+  // **Un corps de travers se résout de travers, où qu'il soit.** La condition portait
+  // autrefois sur la salle aux six sols : elle seule pouvait vous coucher sur un mur, donc
+  // elle seule avait besoin de l'autre résolution. Depuis qu'on peut tomber par la porte
+  // d'une paroi et emporter sa gravité au-dehors, une verticale horizontale traverse la
+  // rotonde et entre dans l'aile d'en face. La pièce n'y est pour rien : c'est le corps qui
+  // décide de l'axe sur lequel se mesure sa taille.
+  if (!upright(body.up)) return resolveOnFace(cell, p, body)
   const { radius } = body
 
-  /**
-   * Cette bouche perce-t-elle une **paroi de la pièce** ?
-   *
-   * La suite raisonne sur les quatre parois de la cellule et lève leur butée devant
-   * chaque ouverture. Or toutes les bouches ne sont pas des portes : celle d'un coffre
-   * posé au milieu de la salle, celle qui referme un escalier sur lui-même, ont bien une
-   * normale horizontale mais ne percent aucun mur. Les prendre pour des portes lèverait
-   * la butée de la paroi qui leur fait face, et l'on sortirait de la pièce par un mur
-   * plein en s'alignant sur un objet situé quatre mètres avant. C'est arrivé.
-   *
-   * Le critère est géométrique et ne se laisse pas oublier : une porte est **au bord**,
-   * au fond de l'embrasure qu'elle perce, donc hors de la boîte. Tout ce qui est au
-   * milieu n'en est pas une.
-   */
-  const onTheHull = (m: Mouth): boolean => {
-    const eps = 1e-3
-    if (m.normal.x > 0.5) return m.center.x <= cell.min.x + eps
-    if (m.normal.x < -0.5) return m.center.x >= cell.max.x - eps
-    if (m.normal.z > 0.5) return m.center.z <= cell.min.z + eps
-    if (m.normal.z < -0.5) return m.center.z >= cell.max.z - eps
-    return false
-  }
+  const onTheHull = (m: Mouth): boolean => onTheWall(cell, m)
 
   // Le sol et le plafond **d'abord**, et c'est un ordre qui compte.
   //
@@ -560,6 +569,34 @@ export function groundAt(cell: Cell, p: Vec3): number {
   return cell.spiral ? rampHeight(cell.spiral, p) : cell.min.y
 }
 
+/**
+ * Cette bouche perce-t-elle une **paroi de la pièce** ?
+ *
+ * La collision raisonne sur les six parois de la cellule et lève leur butée devant chaque
+ * ouverture. Or toutes les bouches ne sont pas des portes : celle d'un coffre posé au milieu
+ * de la salle, celle qui referme un escalier sur lui-même, ont bien une normale horizontale
+ * mais ne percent aucun mur. Les prendre pour des portes lèverait la butée de la paroi qui
+ * leur fait face, et l'on sortirait de la pièce par un mur plein en s'alignant sur un objet
+ * situé quatre mètres avant. C'est arrivé.
+ *
+ * Le critère est géométrique et ne se laisse pas oublier : une porte est **au bord**, au fond
+ * de l'embrasure qu'elle perce, donc contre la boîte. Tout ce qui est au milieu n'en est pas
+ * une. Les six faces sont examinées, et non plus les quatre murs : dans une salle aux six
+ * sols, une porte peut être sous les pieds.
+ */
+function onTheWall(cell: Cell, m: Mouth): boolean {
+  const eps = 1e-3
+  const min = [cell.min.x, cell.min.y, cell.min.z]
+  const max = [cell.max.x, cell.max.y, cell.max.z]
+  const n = [m.normal.x, m.normal.y, m.normal.z]
+  const c = [m.center.x, m.center.y, m.center.z]
+  for (const k of [0, 1, 2]) {
+    if (n[k]! > 0.5) return c[k]! <= min[k]! + eps
+    if (n[k]! < -0.5) return c[k]! >= max[k]! - eps
+  }
+  return false
+}
+
 /** L'axe du monde le plus proche d'une direction, et de quel côté. */
 function dominant(v: Vec3): { axis: 0 | 1 | 2; sign: 1 | -1 } {
   const c = [v.x, v.y, v.z]
@@ -584,13 +621,15 @@ function upright(up: Vec3): boolean {
  * cubique se traite comme une pièce droite dès qu'on accepte que « le bas » soit un
  * paramètre.
  *
- * **Aucune exception d'ouverture ici, et ce n'est pas un oubli.** Les portes ne
- * s'ouvrent que pour qui se tient d'aplomb. Une couture est une transformation rigide :
- * elle emporte le repère du visiteur tel quel, si bien que sortir en se tenant sur un mur
- * ferait arriver dans la rotonde couché sur le côté, avec une gravité horizontale et rien
- * sous les pieds. Refuser est la seule réponse honnête — et la salle s'en charge
- * elle-même, puisque sa porte est au ras d'une arête : qui s'en approche entre dans la
- * bande d'accroche, bascule sur le sol du bas, et se retrouve debout devant elle.
+ * **Et les portes s'ouvrent, y compris sous les pieds.** Elles ne s'ouvraient autrefois que
+ * pour qui se tenait d'aplomb, au motif qu'une couture est une transformation rigide : elle
+ * emporte le repère tel quel, et sortir couché sur un mur faisait arriver dans la rotonde
+ * avec une gravité horizontale et rien sous les pieds. C'était traiter comme un défaut ce
+ * qui est en réalité le seul moyen de sortir d'une salle par le bas. Qui marche sur la paroi
+ * qui porte la porte a cette porte sous les pieds : il y tombe, emporte sa gravité, traverse
+ * la rotonde en vol et va s'écraser dans l'aile d'en face, où la verticale du monde reprend
+ * ses droits dès qu'il touche quelque chose. Le trou dans le sol est le seul endroit du
+ * musée où l'on tombe sans avoir sauté.
  */
 function resolveOnFace(cell: Cell, p: Vec3, body: Body): Resolved {
   const { axis, sign } = dominant(body.up)
@@ -598,27 +637,62 @@ function resolveOnFace(cell: Cell, p: Vec3, body: Body): Resolved {
   const max = [cell.max.x, cell.max.y, cell.max.z]
   const c = [p.x, p.y, p.z]
 
-  // Le sol est la face vers laquelle on tombe, donc celle que la verticale du corps fuit.
-  const ground = sign > 0 ? min[axis]! : max[axis]!
-  const above = sign > 0 ? max[axis]! : min[axis]!
-
   let floor = false
   let ceiling = false
-  if ((c[axis]! - ground) * sign <= body.eyeHeight) {
-    c[axis] = ground + sign * body.eyeHeight
-    floor = true
-  }
-  if ((above - c[axis]!) * sign <= body.headroom) {
-    c[axis] = above - sign * body.headroom
-    ceiling = true
-  }
+
+  // Filet de sécurité, comme dans la résolution ordinaire : même engagé dans une embrasure,
+  // on ne s'éloigne pas indéfiniment de la cellule. Si la traversée échouait, le corps
+  // s'arrêterait au lieu de partir dans le vide.
+  const slack = 1.2
 
   for (const k of [0, 1, 2]) {
-    if (k === axis) continue
-    c[k] = Math.min(Math.max(c[k]!, min[k]! + body.radius), max[k]! - body.radius)
+    // Le corps oppose sa taille à la face qu'il regarde par les pieds ou par le crâne, et
+    // son rayon aux quatre autres. C'est toute la différence entre les axes.
+    const low = k !== axis ? body.radius : sign > 0 ? body.eyeHeight : body.headroom
+    const high = k !== axis ? body.radius : sign > 0 ? body.headroom : body.eyeHeight
+
+    if (c[k]! - min[k]! < low) {
+      if (throughADoor(cell, p, k, 1, body)) c[k] = Math.max(c[k]!, min[k]! - slack)
+      else {
+        c[k] = min[k]! + low
+        if (k === axis) {
+          if (sign > 0) floor = true
+          else ceiling = true
+        }
+      }
+    }
+    if (max[k]! - c[k]! < high) {
+      if (throughADoor(cell, p, k, -1, body)) c[k] = Math.min(c[k]!, max[k]! + slack)
+      else {
+        c[k] = max[k]! - high
+        if (k === axis) {
+          if (sign > 0) ceiling = true
+          else floor = true
+        }
+      }
+    }
   }
 
   return { pos: { x: c[0]!, y: c[1]!, z: c[2]! }, floor, ceiling }
+}
+
+/**
+ * Y a-t-il, dans cette face, une ouverture par où le corps passe **en ce point** ?
+ *
+ * C'est la même mesure que le franchissement, et ce n'est pas un hasard : le critère qui
+ * décide qu'on *peut* passer et celui qui décide qu'on *passe* doivent être le même, sans
+ * quoi les deux se contredisent — et l'endroit où ils se contredisent est le chambranle.
+ */
+function throughADoor(cell: Cell, at: Vec3, axis: number, sign: number, body: Body): boolean {
+  for (const passage of cell.passages) {
+    const m = passage.from
+    if (!onTheWall(cell, m)) continue
+    const n = [m.normal.x, m.normal.y, m.normal.z]
+    if (Math.abs(n[axis]!) < 0.5 || Math.sign(n[axis]!) !== sign) continue
+    if (fillsTheWall(cell, m)) return true
+    if (fitsMouth(m, sub(at, m.center), body)) return true
+  }
+  return false
 }
 
 /**
@@ -637,28 +711,51 @@ function resolveOnFace(cell: Cell, p: Vec3, body: Body): Resolved {
 export function faceChange(cell: Cell, p: Vec3, up: Vec3, wish: Vec3, body: Body): Vec3 | null {
   if (!cell.gravity) return null
 
-  const { axis } = dominant(up)
+  const { axis, sign } = dominant(up)
+
+  // **On ne rattrape pas quelqu'un qui tombe.** Le corps posté au-dessus de l'ouverture
+  // percée dans la paroi qui lui sert de sol n'a plus de sol : il est déjà dans la trappe.
+  // Sans cette clause, la bande d'accroche de la face voisine — large d'une hauteur d'homme,
+  // donc omniprésente — le happait à l'instant précis où il basculait dans le trou, et la
+  // porte du sol devenait impossible à emprunter autrement que par accident.
+  if (throughADoor(cell, p, axis, sign, body)) return null
+
   const min = [cell.min.x, cell.min.y, cell.min.z]
   const max = [cell.max.x, cell.max.y, cell.max.z]
   const at = [p.x, p.y, p.z]
   const toward = [wish.x, wish.y, wish.z]
 
-  let best: { gap: number; axis: number; sign: number } | null = null
+  let best: { approach: number; axis: number; sign: number } | null = null
+  let second = 0
   for (const k of [0, 1, 2]) {
     if (k === axis) continue
     for (const side of [-1, 1]) {
       // On ne bascule que vers une face qu'on aborde franchement.
-      if (toward[k]! * side < 0.1) continue
+      const approach = toward[k]! * side
+      if (!(approach >= 0.1)) continue
       const gap = side > 0 ? max[k]! - at[k]! : at[k]! - min[k]!
       if (gap > body.eyeHeight) continue
       // **Et pas devant une porte : on entre.** Sans cette clause, la bande d'accroche
       // fait grimper le mur juste avant qu'on atteigne l'ouverture, et la salle n'a plus
       // de sortie du tout — on tourne indéfiniment autour du cube. C'était le cas.
       if (facingADoor(cell, p, k, -side, body)) continue
-      if (!best || gap < best.gap) best = { gap, axis: k, sign: -side }
+      if (!best || approach > best.approach) {
+        if (best) second = Math.max(second, best.approach)
+        best = { approach, axis: k, sign: -side }
+      } else second = Math.max(second, approach)
     }
   }
   if (!best) return null
+
+  // **Une arête est une question sans réponse.** Le choix se faisait sur la face la plus
+  // proche : dans un angle, les deux distances sont égales au bruit près, et le vainqueur
+  // changeait d'une image à l'autre — on voyait la salle tourner et retourner sur place.
+  //
+  // On tranche donc sur la franchise de l'abord, pas sur la proximité : la face qu'on
+  // aborde le plus droit gagne, ce qui est aussi celle qu'on avait l'intention d'escalader.
+  // Et quand les deux se valent — l'angle abordé en biseau exact — on ne bascule pas. Rester
+  // debout dans un coin est un état stable ; en choisir une au hasard n'en est pas un.
+  if (best.approach - second < 0.2) return null
 
   // La nouvelle verticale sort de la face abordée, vers l'intérieur de la salle.
   const v = [0, 0, 0]
