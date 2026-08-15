@@ -48,11 +48,11 @@ import {
   pushColumn,
   pushCordon,
   pushDigits,
-  pushFrame,
   pushFramed,
   pushPictureLight,
   pushPlant,
   pushSconce,
+  pushShrub,
   pushTorchere,
 } from './props'
 import { frameAt, makeTwist, toWorld } from './twist'
@@ -864,21 +864,64 @@ const WARM: Colour = [1, 0.84, 0.64]
 const CANDLE: Colour = [1, 0.78, 0.52]
 const DAYLIGHT: Colour = [0.86, 0.92, 1]
 
-/** Un cadre simple, celui des premières scènes : une baguette et une toile. */
+/**
+ * **Les trois profils de cadre du musée.**
+ *
+ * Chacun est une suite de gradins, du plus extérieur au plus intérieur, avec sa saillie. Les
+ * valeurs sont celles d'un vrai encadrement : quatre à six centimètres de moulure pour une
+ * toile d'un mètre. Plus large, c'est le cadre qu'on regarde ; et la première version, à onze
+ * centimètres de baguette unique, écrasait l'œuvre qu'elle portait.
+ *
+ * L'alternance des saillies fait tout le travail. Un gradin en avant attrape la lumière, le
+ * suivant en retrait reste dans l'ombre : trois gradins de dix-huit millimètres se voient
+ * mieux qu'une planche, parce qu'ils ont un relief au lieu d'une surface.
+ */
+const FRAMES = {
+  /** Doré : doucine sombre, gorge, tore vif, filet contre l'ouverture. */
+  or: {
+    profile: [
+      { width: 0.014, out: 0.05, colour: made([0.3, 0.22, 0.1], MATTER.bois) },
+      { width: 0.02, out: 0.072, colour: made([0.72, 0.56, 0.24], MATTER.uni) },
+      { width: 0.012, out: 0.042, colour: made([0.34, 0.25, 0.12], MATTER.bois) },
+      { width: 0.008, out: 0.062, colour: made([0.86, 0.7, 0.34], MATTER.uni) },
+    ],
+    mount: made([0.74, 0.72, 0.67], MATTER.uni),
+    margin: 0.05,
+  },
+  /** Noir : deux gradins, vingt-deux millimètres en tout. Le cadre d'une salle blanche. */
+  noir: {
+    profile: [
+      { width: 0.012, out: 0.032, colour: made([0.1, 0.1, 0.11], MATTER.uni) },
+      { width: 0.01, out: 0.05, colour: made([0.16, 0.16, 0.17], MATTER.uni) },
+    ],
+    mount: made([0.82, 0.81, 0.79], MATTER.uni),
+    margin: 0.055,
+  },
+  /** Bois clair : trois gradins, sans passe-partout. Le cadre ordinaire du musée. */
+  clair: {
+    profile: [
+      { width: 0.012, out: 0.045, colour: made([0.34, 0.24, 0.13], MATTER.bois) },
+      { width: 0.014, out: 0.062, colour: made([0.46, 0.33, 0.18], MATTER.bois) },
+      { width: 0.008, out: 0.038, colour: made([0.28, 0.19, 0.1], MATTER.bois) },
+    ],
+  },
+} as const
+
+/** Un cadre ordinaire, accroché à hauteur d'œil de musée — le milieu à 1,55 m. */
 function hang(out: number[], c: Vec3, x: number, width: number, height: number, canvas: Color): void {
-  pushFrame(
+  pushFramed(
     out,
     { x: c.x + x, y: c.y + 1.55, z: c.z + 0.02 },
     { x: 1, y: 0, z: 0 },
     { x: 0, y: 1, z: 0 },
     width,
     height,
-    made([0.34, 0.24, 0.12], MATTER.bois),
+    FRAMES.clair,
     canvas,
   )
 }
 
-/** Un cadre à moulure, filet doré et passe-partout — et sa lampe, s'il en veut une. */
+/** Un cadre choisi, et sa lampe s'il en veut une. */
 function exhibit(
   out: number[],
   lamps: Lamp[],
@@ -887,33 +930,14 @@ function exhibit(
   width: number,
   height: number,
   canvas: Color,
-  style: 'or' | 'noir' | 'clair',
+  style: keyof typeof FRAMES,
   light?: { intensity: number; colour: Colour },
 ): void {
   const centre = { x: c.x + x, y: c.y + 1.6, z: c.z + 0.02 }
-  const styles = {
-    or: {
-      moulding: made([0.42, 0.3, 0.14], MATTER.bois),
-      fillet: made([0.78, 0.62, 0.28], MATTER.uni),
-      mount: made([0.72, 0.7, 0.65], MATTER.uni),
-      width: 0.11,
-    },
-    noir: {
-      moulding: made([0.1, 0.1, 0.11], MATTER.uni),
-      mount: made([0.8, 0.79, 0.77], MATTER.uni),
-      width: 0.05,
-    },
-    clair: {
-      moulding: made([0.62, 0.58, 0.5], MATTER.bois),
-      fillet: made([0.7, 0.66, 0.6], MATTER.uni),
-      width: 0.07,
-    },
-  } as const
-
-  pushFramed(out, centre, { x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, width, height, styles[style], canvas)
+  pushFramed(out, centre, { x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, width, height, FRAMES[style], canvas)
 
   if (!light) return
-  const at = { x: centre.x, y: centre.y + height / 2 + 0.22, z: c.z + 0.02 }
+  const at = { x: centre.x, y: centre.y + height / 2 + 0.2, z: c.z + 0.02 }
   pushPictureLight(out, at, { x: 0, y: 0, z: 1 }, Math.min(width * 0.7, 0.8), BRASS, GLOW)
   // Le foyer est posé **devant** le tableau et un peu au-dessus : c'est la toile qu'on
   // éclaire, pas le mur.
@@ -966,7 +990,15 @@ const VIGNETTES: Vignette[] = [
     wall: made(PAINT.creme, MATTER.lambris),
     build: (out, c) => {
       pushBench(out, { x: c.x + 2.2, y: c.y, z: c.z + 2.8 }, 2.4, { x: 1, y: 0, z: 0 }, OAK, IRON)
-      pushPlant(out, { x: c.x + 3.5, y: c.y, z: c.z + 1.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 5)
+      pushShrub(
+        out,
+        { x: c.x + 3.4, y: c.y, z: c.z + 1.1 },
+        made([0.34, 0.24, 0.15], MATTER.bois),
+        FURNITURE.humus,
+        made([0.3, 0.21, 0.14], MATTER.bois),
+        made([0.16, 0.3, 0.15], MATTER.uni),
+        9,
+      )
     },
   },
   {
@@ -1044,7 +1076,15 @@ const VIGNETTES: Vignette[] = [
       pushTorchere(out, { x: c.x + 0.8, y: c.y, z: c.z + 1.0 }, IRON, GLOW)
       lamps.push({ at: { x: c.x + 0.8, y: c.y + 1.75, z: c.z + 1.0 }, colour: WARM, intensity: 5, radius: 5.5 })
       pushBench(out, { x: c.x + 2.4, y: c.y, z: c.z + 2.4 }, 2.2, { x: 1, y: 0, z: 0 }, OAK, IRON)
-      pushPlant(out, { x: c.x + 3.6, y: c.y, z: c.z + 1.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 21)
+      pushShrub(
+        out,
+        { x: c.x + 3.5, y: c.y, z: c.z + 1.1 },
+        made([0.32, 0.22, 0.14], MATTER.bois),
+        FURNITURE.humus,
+        made([0.28, 0.2, 0.13], MATTER.bois),
+        made([0.14, 0.28, 0.13], MATTER.uni),
+        4,
+      )
       exhibit(out, lamps, c, 2.4, 1.2, 0.75, made([1, 1, 1], PICTURES.monde), 'clair')
     },
   },

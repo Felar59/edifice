@@ -329,26 +329,8 @@ export function pushPlant(
     const mid = add(add(root, scale(dir, reach * 0.55)), { x: 0, y: rise, z: 0 })
     const tip = add(add(root, scale(dir, reach)), { x: 0, y: rise * 0.55, z: 0 })
     const wide = 0.055
-    const narrow = 0.03
 
-    pushQuad(
-      out,
-      add(root, scale(side, -0.02)),
-      add(root, scale(side, 0.02)),
-      add(mid, scale(side, wide)),
-      add(mid, scale(side, -wide)),
-      leaf,
-      [[0, 0], [0.04, 0], [wide * 2, 0.5], [0, 0.5]],
-    )
-    pushQuad(
-      out,
-      add(mid, scale(side, -wide)),
-      add(mid, scale(side, wide)),
-      add(tip, scale(side, narrow * 0.2)),
-      add(tip, scale(side, -narrow * 0.2)),
-      leaf,
-      [[0, 0.5], [wide * 2, 0.5], [narrow, 1], [0, 1]],
-    )
+    pushLeaf(out, root, mid, tip, side, wide, leaf)
   }
 }
 
@@ -509,67 +491,34 @@ export function pushPendant(
  * `right` et `up` sont unitaires et donnent le plan du mur ; le cadre s'y pose face à
  * `right × up`.
  */
-export function pushFrame(
-  out: number[],
-  centre: Vec3,
-  right: Vec3,
-  up: Vec3,
-  width: number,
-  height: number,
-  moulding: Color,
-  canvas: Color,
-): void {
-  const normal = normalize(cross(right, up))
-  const thick = 0.09
-  const depth = 0.07
-  const half = { x: width / 2, y: height / 2 }
-
-  const corner = add(add(centre, scale(right, -half.x)), scale(up, -half.y))
-  const bar = (from: Vec3, along: Vec3, across: Vec3): void =>
-    pushBar(out, from, along, across, scale(normal, depth), moulding)
-
-  bar(corner, scale(right, width), scale(up, thick))
-  bar(add(corner, scale(up, height - thick)), scale(right, width), scale(up, thick))
-  bar(add(corner, scale(up, thick)), scale(up, height - thick * 2), scale(right, thick))
-  bar(add(add(corner, scale(right, width - thick)), scale(up, thick)), scale(up, height - thick * 2), scale(right, thick))
-
-  // La toile, en retrait de trois centimètres : c'est cette ombre-là qui fait le cadre, et
-  // c'est aussi ce qui la tient à distance du mur — deux surfaces trop voisines finissent par
-  // se disputer les pixels dès qu'on s'éloigne.
-  const inner = add(add(centre, scale(right, -half.x + thick)), scale(up, -half.y + thick))
-  const w = width - thick * 2
-  const h = height - thick * 2
-  pushQuad(
-    out,
-    add(inner, scale(normal, 0.03)),
-    add(add(inner, scale(right, w)), scale(normal, 0.03)),
-    add(add(add(inner, scale(right, w)), scale(up, h)), scale(normal, 0.03)),
-    add(add(inner, scale(up, h)), scale(normal, 0.03)),
-    canvas,
-    // **La toile est mesurée de zéro à un**, et non en mètres comme le reste du musée : une
-    // image se plaque sur ce qu'elle couvre, quelle que soit sa taille. C'est la seule
-    // surface du projet dont les coordonnées ne sont pas des longueurs.
-    [[0, 1], [1, 1], [1, 0], [0, 0]],
-  )
+/**
+ * Le profil d'un cadre : une suite de gradins concentriques.
+ *
+ * Un cadre n'est pas une planche percée. C'est un **profil** — une succession de gradins,
+ * chacun à sa profondeur, qui accrochent la lumière différemment : une doucine qui fuit vers
+ * le mur, une gorge dans l'ombre, un filet vif contre l'ouverture. C'est cette alternance qui
+ * le fait lire comme une moulure, et c'est elle qui permet d'être **fin**.
+ *
+ * Car la première version était large, et pour une mauvaise raison : une baguette unique doit
+ * être épaisse pour se voir, alors que trois gradins de dix-huit millimètres se voient mieux
+ * qu'une planche de onze centimètres — et n'écrasent pas l'œuvre. Un cadre de musée fait
+ * quatre à six centimètres pour une toile d'un mètre ; au-delà, c'est le cadre qu'on regarde.
+ */
+export interface FrameStep {
+  /** Largeur du gradin, en mètres. */
+  width: number
+  /** Saillie par rapport au mur. Alterner les valeurs crée le relief. */
+  out: number
+  colour: Color
 }
 
-/**
- * Le profil d'un cadre : une moulure, un filet, un passe-partout.
- *
- * Le premier cadre du musée n'avait qu'une baguette. C'est ce qui distingue une caisse d'un
- * cadre : un vrai cadre a **trois plans** — la moulure large qui l'attache au mur, le filet
- * doré qui borde l'ouverture, et la marge de carton qui sépare l'œuvre de la moulure. Sans le
- * passe-partout, une image collée à sa baguette a l'air d'un écran ; avec, elle a l'air
- * encadrée, et cela ne coûte que deux plans de plus.
- */
 export interface FrameStyle {
-  moulding: Color
-  /** Le filet, en général doré, qui borde l'ouverture. */
-  fillet?: Color
+  /** Les gradins, du plus extérieur au plus intérieur. */
+  profile: readonly FrameStep[]
   /** Le passe-partout : la marge autour de l'œuvre. */
   mount?: Color
-  /** Largeur de la moulure. */
-  width?: number
+  /** Largeur de cette marge. */
+  margin?: number
 }
 
 export function pushFramed(
@@ -583,66 +532,61 @@ export function pushFramed(
   canvas: Color,
 ): void {
   const normal = normalize(cross(right, up))
-  const bar = style.width ?? 0.1
-  const depth = 0.075
   const corner = add(add(centre, scale(right, -width / 2)), scale(up, -height / 2))
 
-  const frame = (from: Vec3, along: Vec3, across: Vec3, thick: number, colour: Color): void =>
-    pushBar(out, from, along, across, scale(normal, thick), colour)
+  let inset = 0
+  for (const step of style.profile) {
+    const o = add(add(corner, scale(right, inset)), scale(up, inset))
+    const w = width - inset * 2
+    const h = height - inset * 2
+    const thick = scale(normal, step.out)
 
-  // La moulure, quatre baguettes en onglet grossier.
-  frame(corner, scale(right, width), scale(up, bar), depth, style.moulding)
-  frame(add(corner, scale(up, height - bar)), scale(right, width), scale(up, bar), depth, style.moulding)
-  frame(add(corner, scale(up, bar)), scale(up, height - bar * 2), scale(right, bar), depth, style.moulding)
-  frame(
-    add(add(corner, scale(right, width - bar)), scale(up, bar)),
-    scale(up, height - bar * 2),
-    scale(right, bar),
-    depth,
-    style.moulding,
-  )
+    // Un demi-millimètre de trop, exprès. Sans lui, la face intérieure d'un gradin et la face
+    // extérieure du suivant occupent exactement le même plan, et deux surfaces dans le même
+    // plan se disputent les pixels dès qu'on regarde le cadre de biais. En mordant sur son
+    // voisin, la face se retrouve enfouie dans la matière et la question ne se pose plus.
+    const bite = step.width + 0.0006
 
-  // Le filet, un centimètre et demi, légèrement en avant : c'est lui qui accroche la lumière.
-  const fillet = style.fillet
-  if (fillet) {
-    const f = 0.018
-    const inner = add(add(corner, scale(right, bar)), scale(up, bar))
-    const w = width - bar * 2
-    const h = height - bar * 2
-    frame(inner, scale(right, w), scale(up, f), depth + 0.012, fillet)
-    frame(add(inner, scale(up, h - f)), scale(right, w), scale(up, f), depth + 0.012, fillet)
-    frame(add(inner, scale(up, f)), scale(up, h - f * 2), scale(right, f), depth + 0.012, fillet)
-    frame(
-      add(add(inner, scale(right, w - f)), scale(up, f)),
-      scale(up, h - f * 2),
-      scale(right, f),
-      depth + 0.012,
-      fillet,
+    // Les quatre côtés du gradin. Les montants s'arrêtent aux traverses : ils se
+    // recouvriraient sinon, pour la même raison.
+    pushBar(out, o, scale(right, w), scale(up, bite), thick, step.colour)
+    pushBar(out, add(o, scale(up, h - bite)), scale(right, w), scale(up, bite), thick, step.colour)
+    pushBar(out, add(o, scale(up, bite)), scale(up, h - bite * 2), scale(right, bite), thick, step.colour)
+    pushBar(
+      out,
+      add(add(o, scale(right, w - bite)), scale(up, bite)),
+      scale(up, h - bite * 2),
+      scale(right, bite),
+      thick,
+      step.colour,
     )
+    inset += step.width
   }
 
-  // Le passe-partout, dans le plan de l'œuvre mais en retrait de la moulure.
-  const margin = style.mount ? 0.06 : 0
+  const margin = style.mount ? (style.margin ?? 0.045) : 0
+  const deepest = Math.min(...style.profile.map((p) => p.out))
+
   if (style.mount) {
-    const inner = add(add(corner, scale(right, bar)), scale(up, bar))
-    const w = width - bar * 2
-    const h = height - bar * 2
+    const o = add(add(corner, scale(right, inset)), scale(up, inset))
+    const w = width - inset * 2
+    const h = height - inset * 2
+    const flat = scale(normal, deepest * 0.55)
     pushQuad(
       out,
-      add(inner, scale(normal, 0.035)),
-      add(add(inner, scale(right, w)), scale(normal, 0.035)),
-      add(add(add(inner, scale(right, w)), scale(up, h)), scale(normal, 0.035)),
-      add(add(inner, scale(up, h)), scale(normal, 0.035)),
+      add(o, flat),
+      add(add(o, scale(right, w)), flat),
+      add(add(add(o, scale(right, w)), scale(up, h)), flat),
+      add(add(o, scale(up, h)), flat),
       style.mount,
       [[0, 0], [w, 0], [w, h], [0, h]],
     )
   }
 
-  // L'œuvre enfin, mesurée de zéro à un.
-  const art = add(add(corner, scale(right, bar + margin)), scale(up, bar + margin))
-  const aw = width - (bar + margin) * 2
-  const ah = height - (bar + margin) * 2
-  const front = scale(normal, style.mount ? 0.045 : 0.03)
+  // L'œuvre, mesurée de zéro à un, posée juste devant le passe-partout.
+  const art = add(add(corner, scale(right, inset + margin)), scale(up, inset + margin))
+  const aw = width - (inset + margin) * 2
+  const ah = height - (inset + margin) * 2
+  const front = scale(normal, deepest * 0.55 + (style.mount ? 0.008 : 0))
   pushQuad(
     out,
     add(art, front),
@@ -721,5 +665,133 @@ export function pushChandelier(
     pushBar(out, add(start, scale(side, -0.012)), scale(dir, radius), scale(side, 0.024), { x: 0, y: 0.024, z: 0 }, metal)
     const tip = add({ ...hub, y: hub.y - 0.02 }, scale(dir, radius))
     pushCylinder(out, { ...tip, y: tip.y - 0.02 }, 0.055, 0.045, 0.11, 10, glow, glow)
+  }
+}
+
+
+/**
+ * Une feuille : deux tronçons, une nervure, et **deux faces**.
+ *
+ * Un quadrilatère n'a qu'un côté. Le tri des faces arrière l'efface dès qu'on passe derrière,
+ * et une plante faite de quadrilatères simples se troue quand on en fait le tour — c'est le
+ * vide qu'on voyait au-dessus des pots. Chaque feuille est donc posée deux fois, la seconde à
+ * l'envers : deux fois plus de triangles pour un objet qui en compte quelques dizaines, et le
+ * défaut disparaît pour de bon.
+ */
+function pushLeaf(
+  out: number[],
+  root: Vec3,
+  mid: Vec3,
+  tip: Vec3,
+  side: Vec3,
+  wide: number,
+  colour: Color,
+): void {
+  const a0 = add(root, scale(side, -0.012))
+  const a1 = add(root, scale(side, 0.012))
+  const b0 = add(mid, scale(side, -wide))
+  const b1 = add(mid, scale(side, wide))
+  const c0 = add(tip, scale(side, -wide * 0.12))
+  const c1 = add(tip, scale(side, wide * 0.12))
+
+  const low: [number, number][] = [[0, 0], [0.024, 0], [wide * 2, 0.5], [0, 0.5]]
+  const high: [number, number][] = [[0, 0.5], [wide * 2, 0.5], [wide * 0.24, 1], [0, 1]]
+
+  pushQuad(out, a0, a1, b1, b0, colour, low)
+  pushQuad(out, b0, b1, c1, c0, colour, high)
+  // L'envers, dans l'ordre inverse.
+  pushQuad(out, b0, b1, a1, a0, colour, low)
+  pushQuad(out, c0, c1, b1, b0, colour, high)
+}
+
+/**
+ * Un arbuste en bac : un tronc, quatre couronnes de feuilles, un bac carré.
+ *
+ * L'autre plante du musée est une touffe de lames qui partent du sol — un genre d'agave posé
+ * dans un pot rond. Celle-ci est son contraire : un tronc qui monte, un bac carré, et un
+ * feuillage porté en hauteur. Deux espèces suffisent à ce qu'une salle n'ait pas l'air
+ * meublée par catalogue, pourvu qu'elles ne se ressemblent en rien — silhouette, contenant,
+ * hauteur du feuillage.
+ *
+ * Le feuillage est fait de **couronnes** étagées le long du tronc plutôt que de branches
+ * garnies. Des branches nues qui dépassent du feuillage font un parapluie cassé ; des
+ * couronnes qui se recouvrent font une masse, et une masse se lit comme une plante.
+ */
+export function pushShrub(
+  out: number[],
+  at: Vec3,
+  planter: Color,
+  soil: Color,
+  bark: Color,
+  leaf: Color,
+  seed = 1,
+): void {
+  const noise = (i: number): number => {
+    const x = Math.sin(i * 27.13 + seed * 51.7) * 24571.3
+    return x - Math.floor(x)
+  }
+
+  // Le bac : une caisse carrée et son bandeau de rive, qui lui donne une épaisseur.
+  const half = 0.26
+  const high = 0.42
+  pushBar(
+    out,
+    { x: at.x - half, y: at.y, z: at.z - half },
+    { x: half * 2, y: 0, z: 0 },
+    { x: 0, y: high - 0.06, z: 0 },
+    { x: 0, y: 0, z: half * 2 },
+    planter,
+  )
+  const rim = half + 0.025
+  pushBar(
+    out,
+    { x: at.x - rim, y: at.y + high - 0.06, z: at.z - rim },
+    { x: rim * 2, y: 0, z: 0 },
+    { x: 0, y: 0.06, z: 0 },
+    { x: 0, y: 0, z: rim * 2 },
+    planter,
+  )
+  // La terre est posée **au-dessus** du bandeau, et plus étroite : à fleur, les deux surfaces
+  // partageraient le même plan et se disputeraient les pixels.
+  pushDisc(out, { x: at.x, y: at.y + high + 0.006, z: at.z }, rim * 0.86, 4, soil)
+
+  // Le tronc, en trois tronçons qui se décalent : un fût parfaitement droit fait un tuyau.
+  let foot = { x: at.x, y: at.y + high - 0.02, z: at.z }
+  const lean = noise(3) * TAU
+  for (let i = 0; i < 3; i++) {
+    const bottom = 0.055 - i * 0.012
+    pushCylinder(out, foot, bottom, bottom - 0.012, 0.3, 7, bark, bark)
+    foot = {
+      x: foot.x + Math.cos(lean + i * 1.7) * 0.035,
+      y: foot.y + 0.3,
+      z: foot.z + Math.sin(lean + i * 1.7) * 0.035,
+    }
+  }
+
+  // Quatre couronnes étagées. La plus basse est la plus large et retombe le plus ; la plus
+  // haute est courte et dressée. C'est ce dégradé qui donne la silhouette en dôme.
+  const crowns = 4
+  for (let k = 0; k < crowns; k++) {
+    const t = k / (crowns - 1)
+    const centre = {
+      x: at.x + (foot.x - at.x) * (0.55 + t * 0.45),
+      y: at.y + high + 0.36 + t * 0.5,
+      z: at.z + (foot.z - at.z) * (0.55 + t * 0.45),
+    }
+    const leaves = 8 - k
+    for (let i = 0; i < leaves; i++) {
+      const angle = (i / leaves) * TAU + k * 0.7 + noise(k * 17 + i) * 0.6
+      const dir = { x: Math.cos(angle), y: 0, z: Math.sin(angle) }
+      const side = { x: -dir.z, y: 0, z: dir.x }
+      const reach = (0.34 - t * 0.14) * (0.75 + noise(k * 31 + i) * 0.5)
+      // Le port : dressé en haut du tronc, retombant en bas.
+      const rise = (0.16 - t * 0.02) * (0.6 + noise(k * 7 + i) * 0.8)
+      const drop = (1 - t) * 0.22
+
+      const root = centre
+      const mid = add(add(root, scale(dir, reach * 0.5)), { x: 0, y: rise, z: 0 })
+      const tip = add(add(root, scale(dir, reach)), { x: 0, y: rise - drop, z: 0 })
+      pushLeaf(out, root, mid, tip, side, 0.075 - t * 0.02, leaf)
+    }
   }
 }
