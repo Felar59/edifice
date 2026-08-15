@@ -5,6 +5,13 @@ import { Renderer } from './render/renderer'
 import { Player, presets } from './player/player'
 import { CUBE_SIZE, Projectiles } from './player/projectiles'
 import { Physics } from './player/physique'
+import { loadPictures, noPictures } from './render/pictures'
+import musee from './assets/musee1.png?url'
+import julia from './assets/Julia1.png?url'
+import hunter from './assets/my_hunter1.png?url'
+import myworld from './assets/myworld1.png?url'
+import shell from './assets/42sh1.png?url'
+import antivirus from './assets/antivirus.png?url'
 import physiqueUrl from './player/physique.wasm?url'
 import { buildWorld, HUB } from './world/world'
 import { buildCube } from './world/geometry'
@@ -98,6 +105,18 @@ async function main(): Promise<void> {
   const renderer = new Renderer(device, context, format)
   const world = buildWorld()
   renderer.setWorld(world, buildCube(CUBE_SIZE, [0.78, 0.5, 0.26]))
+
+  // **Les tableaux.** Leurs couches sont désignées par les matières que le monde pose sur ses
+  // cadres, dans l'ordre de cette liste. Un échec de chargement ne doit pas empêcher
+  // d'entrer : on se rabat sur un aplat, et le musée reste visitable.
+  try {
+    renderer.setPictures(
+      await loadPictures(device, [musee, julia, hunter, myworld, shell, antivirus]),
+    )
+  } catch (err) {
+    console.error('tableaux :', err)
+    renderer.setPictures(noPictures(device))
+  }
 
   const player = new Player()
 

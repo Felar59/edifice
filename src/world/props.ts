@@ -544,6 +544,9 @@ export function pushFrame(
     add(add(add(inner, scale(right, w)), scale(up, h)), scale(normal, 0.02)),
     add(add(inner, scale(up, h)), scale(normal, 0.02)),
     canvas,
-    [[0, 0], [w, 0], [w, h], [0, h]],
+    // **La toile est mesurée de zéro à un**, et non en mètres comme le reste du musée : une
+    // image se plaque sur ce qu'elle couvre, quelle que soit sa taille. C'est la seule
+    // surface du projet dont les coordonnées ne sont pas des longueurs.
+    [[0, 1], [1, 1], [1, 0], [0, 0]],
   )
 }

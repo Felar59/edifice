@@ -821,6 +821,23 @@ const VIGNETTE_THICK = 0.24
 const OAK = FURNITURE.chene
 const IRON = FURNITURE.fonte
 
+/**
+ * Les six images du portfolio, dans l'ordre où la page les charge.
+ *
+ * Une matière au-delà de cent désigne une couche du tableau d'images. La matière et l'image
+ * partagent donc un même nombre — ce n'est pas la plus élégante des conventions, mais elle
+ * évite un attribut de sommet de plus, et le nuanceur ne peut de toute façon pas choisir une
+ * texture d'après une donnée par sommet : une texture est une ressource, pas une valeur.
+ */
+const PICTURES = {
+  musee: 100,
+  julia: 101,
+  hunter: 102,
+  monde: 103,
+  shell: 104,
+  antivirus: 105,
+} as const
+
 /** Un cadre accroché au fond du L, à hauteur d'œil de musée — le milieu à 1,55 m. */
 function hang(out: number[], c: Vec3, x: number, width: number, height: number, canvas: Color): void {
   pushFrame(
@@ -841,7 +858,7 @@ const VIGNETTES: Vignette[] = [
     floor: made(PAINT.chene, MATTER.parquet),
     wall: made(PAINT.creme, MATTER.lambris),
     build: (out, c) => {
-      hang(out, c, 1.4, 1.5, 1.1, made([0.52, 0.56, 0.58], MATTER.uni))
+      hang(out, c, 1.3, 1.6, 0.9, made([1, 1, 1], PICTURES.musee))
       pushCordon(out, { x: c.x + 0.6, y: c.y, z: c.z + 2.2 }, { x: c.x + 3.6, y: c.y, z: c.z + 2.2 }, 3, FURNITURE.laiton, IRON, FURNITURE.cordage)
     },
   },
@@ -850,8 +867,8 @@ const VIGNETTES: Vignette[] = [
     floor: made(PAINT.chene, MATTER.parquet),
     wall: made(PAINT.vert, MATTER.lambris),
     build: (out, c, lamps) => {
-      hang(out, c, 0.7, 1.2, 0.9, made([0.66, 0.58, 0.42], MATTER.uni))
-      hang(out, c, 2.4, 1.2, 0.9, made([0.5, 0.46, 0.52], MATTER.uni))
+      hang(out, c, 0.6, 1.3, 0.73, made([1, 1, 1], PICTURES.julia))
+      hang(out, c, 2.3, 1.3, 0.73, made([1, 1, 1], PICTURES.hunter))
       pushSconce(out, { x: c.x + 2.05, y: c.y + 2.35, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, IRON, made([1, 0.94, 0.8], MATTER.lumiere))
       lamps.push({ x: c.x + 2.05, y: c.y + 2.35 + 0.16, z: c.z + 0.06 + 0.26 })
     },
@@ -880,7 +897,7 @@ const VIGNETTES: Vignette[] = [
     wall: made(PAINT.bleu, MATTER.lambris),
     build: (out, c) => {
       pushColumn(out, { x: c.x + 3.3, y: c.y, z: c.z + 1.1 }, 0.34, VIGNETTE_HEIGHT, made(PAINT.marbreClair, MATTER.marbre), made([0.56, 0.54, 0.5], MATTER.uni))
-      hang(out, c, 0.8, 1.4, 1.0, made([0.58, 0.44, 0.32], MATTER.uni))
+      hang(out, c, 0.8, 1.5, 0.85, made([1, 1, 1], PICTURES.monde))
     },
   },
   {
@@ -888,7 +905,7 @@ const VIGNETTES: Vignette[] = [
     floor: made(PAINT.marbreSombre, MATTER.marbre),
     wall: made([0.66, 0.63, 0.58], MATTER.platre),
     build: (out, c) => {
-      hang(out, c, 1.5, 1.6, 1.2, made([0.64, 0.6, 0.54], MATTER.uni))
+      hang(out, c, 1.3, 1.8, 1.0, made([1, 1, 1], PICTURES.shell))
       pushCordon(out, { x: c.x + 0.6, y: c.y, z: c.z + 2.0 }, { x: c.x + 3.6, y: c.y, z: c.z + 2.0 }, 3, FURNITURE.laiton, IRON, FURNITURE.cordage)
     },
   },
@@ -897,7 +914,7 @@ const VIGNETTES: Vignette[] = [
     floor: made(PAINT.tapisRouge, MATTER.moquette),
     wall: made(PAINT.rouge, MATTER.lambris),
     build: (out, c, lamps) => {
-      hang(out, c, 1.6, 1.3, 1.6, made([0.6, 0.56, 0.46], MATTER.uni))
+      hang(out, c, 1.3, 1.7, 0.96, made([1, 1, 1], PICTURES.antivirus))
       pushSconce(out, { x: c.x + 0.7, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.lumiere))
       lamps.push({ x: c.x + 0.7, y: c.y + 2.3 + 0.16, z: c.z + 0.06 + 0.26 })
       pushSconce(out, { x: c.x + 3.5, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.lumiere))
@@ -919,9 +936,9 @@ const VIGNETTES: Vignette[] = [
     floor: made(PAINT.chene, MATTER.parquet),
     wall: made(PAINT.taupe, MATTER.lambris),
     build: (out, c) => {
-      hang(out, c, 0.6, 0.9, 0.7, made([0.6, 0.55, 0.42], MATTER.uni))
-      hang(out, c, 1.75, 0.9, 0.7, made([0.46, 0.52, 0.56], MATTER.uni))
-      hang(out, c, 2.9, 0.9, 0.7, made([0.56, 0.46, 0.48], MATTER.uni))
+      hang(out, c, 0.55, 1.0, 0.56, made([1, 1, 1], PICTURES.julia))
+      hang(out, c, 1.7, 1.0, 0.56, made([1, 1, 1], PICTURES.hunter))
+      hang(out, c, 2.85, 1.0, 0.56, made([1, 1, 1], PICTURES.shell))
     },
   },
   {
@@ -931,7 +948,7 @@ const VIGNETTES: Vignette[] = [
     build: (out, c) => {
       pushCordon(out, { x: c.x + 0.6, y: c.y, z: c.z + 2.4 }, { x: c.x + 3.6, y: c.y, z: c.z + 2.4 }, 3, FURNITURE.laiton, IRON, FURNITURE.cordage)
       pushPlant(out, { x: c.x + 3.4, y: c.y, z: c.z + 1.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 13)
-      hang(out, c, 1.1, 1.4, 1.0, made([0.54, 0.5, 0.6], MATTER.uni))
+      hang(out, c, 1.05, 1.5, 0.85, made([1, 1, 1], PICTURES.musee))
     },
   },
   {
@@ -959,7 +976,7 @@ const VIGNETTES: Vignette[] = [
     floor: made(PAINT.marbreSombre, MATTER.marbre),
     wall: made(PAINT.bleu, MATTER.lambris),
     build: (out, c, lamps) => {
-      hang(out, c, 1.2, 1.7, 1.2, made([0.66, 0.56, 0.4], MATTER.uni))
+      hang(out, c, 1.1, 1.9, 1.07, made([1, 1, 1], PICTURES.antivirus))
       pushColumn(out, { x: c.x + 3.4, y: c.y, z: c.z + 3.0 }, 0.3, VIGNETTE_HEIGHT, made([0.3, 0.29, 0.3], MATTER.marbre), made([0.4, 0.39, 0.38], MATTER.uni))
       pushSconce(out, { x: c.x + 3.2, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.lumiere))
       lamps.push({ x: c.x + 3.2, y: c.y + 2.3 + 0.16, z: c.z + 0.06 + 0.26 })

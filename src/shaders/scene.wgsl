@@ -27,6 +27,12 @@ struct Uniforms {
 
 @group(0) @binding(0) var<uniform> u : Uniforms;
 
+// Les tableaux : une couche par image. Une matière au-delà de cent désigne sa couche — le
+// nuanceur ne peut pas choisir une texture d'après une donnée par sommet, une texture étant
+// une ressource et non une valeur, mais une couche est un indice ordinaire.
+@group(1) @binding(0) var pictures : texture_2d_array<f32>;
+@group(1) @binding(1) var pictureSampler : sampler;
+
 struct VSOut {
   @builtin(position) clip : vec4<f32>,
   @location(0) world  : vec3<f32>,
@@ -269,16 +275,23 @@ fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> 
   // veines principales franches, et un réseau secondaire plus fin et plus pâle. La veine est
   // une **couleur**, pas un éclaircissement : une pierre veinée ne brille pas.
   if (m == 1) {
+    // **Une veine est plus fine que le pixel bien avant le reste de la matière.** Le seuil
+    // qui la trace était fixe : elle gardait la même finesse à toute distance, si bien qu'au
+    // sol, en oblique, elle devenait un gribouillis dur qui rampait à chaque pas — le défaut
+    // qu'on prend pour un grésillement du rendu. Le seuil s'élargit donc avec le pixel, et la
+    // veine s'efface quand elle passe dessous : à dix mètres, un marbre est uni, et c'est
+    // exactement ce qu'on voit dans un vrai musée.
+    let px = max(blur.x, blur.y);
     let t1 = turbulence(uv * 2.6);
     let s1 = abs(sin((uv.x * 2.6 + uv.y * 1.6 + t1 * 1.6) * 3.14159265));
-    let v1 = 1.0 - smoothstep(0.0, 0.16, s1);
+    let v1 = (1.0 - smoothstep(0.0, 0.16 + px * 10.0, s1)) * fade(px, 0.05);
 
     let t2 = turbulence(uv * 6.0 + vec2<f32>(5.0, 0.0));
     let s2 = abs(sin((uv.x * 4.7 - uv.y * 3.4 + t2 * 1.9) * 3.14159265));
-    let v2 = (1.0 - smoothstep(0.0, 0.10, s2)) * 0.45;
+    let v2 = (1.0 - smoothstep(0.0, 0.10 + px * 14.0, s2)) * 0.45 * fade(px, 0.03);
 
-    let amount = clamp(v1 + v2, 0.0, 1.0) * 0.55;
-    let vein = base * 0.62;
+    let amount = clamp(v1 + v2, 0.0, 1.0) * 0.42;
+    let vein = base * 0.72;
     let mottle = 0.975 + 0.05 * fbm(uv * 4.0);
 
     // Le chanfrein du bord de dalle, tous les mètres.
@@ -541,12 +554,28 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
 
   // Les dérivées se prennent ici, en flot uniforme, et voyagent ensuite : WGSL les
   // interdit sous une condition, et toutes les matières en sont faites.
-  let albedo = surface(in.matter, in.uv, in.color, fwidth(in.uv));
+  // **L'image se prend avec des gradients explicites.** WGSL interdit `textureSample` sous
+  // une condition qui n'est pas uniforme, et la matière en est une ; `textureSampleGrad`,
+  // lui, ne demande pas de dérivée implicite et se laisse appeler partout. On lui donne donc
+  // celles qu'on a déjà calculées, et les mip-maps font leur travail.
+  // Les trois dérivées se prennent **ensemble et en tête**, là où le flot est uniforme :
+  // `fwidth`, `dpdx` et `dpdy` sont interdites sous une condition qui ne l'est pas, et la
+  // matière en est une. C'est le même piège que pour les motifs calculés, et il se retend à
+  // l'identique dès qu'on ajoute une image.
+  let dx = dpdx(in.uv);
+  let dy = dpdy(in.uv);
+  let matter = i32(in.matter + 0.5);
+
+  var albedo = surface(in.matter, in.uv, in.color, abs(dx) + abs(dy));
+  if (matter >= 100) {
+    albedo = textureSampleGrad(pictures, pictureSampler, in.uv, matter - 100, dx, dy).rgb
+      * in.color;
+  }
 
   // **Une lampe émet.** Elle échappe donc à l'éclairage de la salle : la multiplier par lui
   // ferait une ampoule sombre dans une pièce sombre. Le facteur la pousse au-delà du blanc,
   // ce qui lui donne le noyau brûlé qu'a toute source vue directement.
-  var rgb = select(albedo * light, albedo * 2.6, i32(in.matter + 0.5) == 12);
+  var rgb = select(albedo * light, albedo * 2.6, matter == 12);
 
   // **Le brouillard, en exponentielle carrée et plus dense au ras du sol.**
   //

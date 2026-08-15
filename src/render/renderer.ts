@@ -41,6 +41,7 @@ import { cameraToWorld, type Camera } from './camera'
 export type { Camera }
 import { FLOATS_PER_VERTEX } from '../world/geometry'
 import { MAX_LIGHTS, MAX_MOUTH_LIGHTS } from '../world/light'
+import type { Pictures } from './pictures'
 
 /**
  * La disposition du bloc uniforme de scène, en flottants, déduite des deux plafonds.
@@ -194,6 +195,8 @@ export class Renderer {
   private readonly sceneUniforms: Ring
   private readonly portalUniforms: Ring
   private readonly sceneBindGroup: GPUBindGroup
+  private readonly pictureLayout: GPUBindGroupLayout
+  private pictureBindGroup: GPUBindGroup | null = null
   private readonly portalUniformBindGroup: GPUBindGroup
   private readonly textureBindGroups = new WeakMap<GPUTextureView, GPUBindGroup>()
   private readonly blankBindGroup: GPUBindGroup
@@ -227,6 +230,17 @@ export class Renderer {
           visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
           buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: SCENE_BYTES },
         },
+      ],
+    })
+    this.pictureLayout = device.createBindGroupLayout({
+      label: 'tableaux',
+      entries: [
+        {
+          binding: 0,
+          visibility: GPUShaderStage.FRAGMENT,
+          texture: { sampleType: 'float', viewDimension: '2d-array' },
+        },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
       ],
     })
     this.portalUniformLayout = device.createBindGroupLayout({
@@ -277,6 +291,18 @@ export class Renderer {
     this.blankBindGroup = device.createBindGroup({
       layout: this.portalTextureLayout,
       entries: [{ binding: 0, resource: blank.createView() }],
+    })
+  }
+
+  /** Les images accrochées aux murs. À poser avant la première image, sinon rien ne s'affiche. */
+  setPictures(pictures: Pictures): void {
+    this.pictureBindGroup = this.device.createBindGroup({
+      label: 'tableaux',
+      layout: this.pictureLayout,
+      entries: [
+        { binding: 0, resource: pictures.view },
+        { binding: 1, resource: pictures.sampler },
+      ],
     })
   }
 
@@ -533,6 +559,7 @@ export class Renderer {
     const colorFormat = depth === 0 ? this.canvasFormat : OFFSCREEN_FORMAT
     const scenePipeline = this.scenePipeline(colorFormat)
     pass.setPipeline(scenePipeline)
+    if (this.pictureBindGroup) pass.setBindGroup(1, this.pictureBindGroup)
 
     const mesh = this.meshes.get(cell.id)
     if (mesh) {
@@ -931,7 +958,9 @@ export class Renderer {
     if (!p) {
       p = this.device.createRenderPipeline({
         label: `scène ${format}`,
-        layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.sceneLayout] }),
+        layout: this.device.createPipelineLayout({
+          bindGroupLayouts: [this.sceneLayout, this.pictureLayout],
+        }),
         vertex: {
           module: this.sceneModule,
           entryPoint: 'vs',
