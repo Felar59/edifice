@@ -765,6 +765,49 @@ fichier. Le nuanceur refusait de compiler et l'écran restait **entièrement noi
 message que dans la console. On les calcule donc une fois, là où le flot est uniforme, et on
 les fait descendre en paramètre.
 
+**Chaque salle porte l'allure de ce qu'elle est.** Une allure n'est pas un thème plaqué mais
+un accord de trois matières — sol, plafond, parois — choisi pour tenir ensemble : la rotonde
+est un hall de pierre et de marbre, l'escalier est taillé dans la masse, le tunnel-vrille a de
+la moquette, le cube aux six sols est en béton, la crypte est une crypte. Deux règles sont
+sorties de l'exercice :
+
+- **une salle qui tourne ne supporte pas de motif directionnel.** Dans le tunnel-vrille, les
+  coordonnées de surface suivent le tube : une pierre appareillée y dessinerait des assises en
+  spirale. Il lui faut de la moquette et du plâtre, qui n'ont pas de sens de lecture. Même
+  chose pour le cube aux six sols, dont un motif orienté se lirait de travers dès qu'on
+  bascule ;
+- **une salle qui démontre quelque chose doit rester sobre.** L'escalier de Penrose, le cube
+  et la salle pavée sont là pour une tricherie de géométrie ; leur donner une matière riche
+  reviendrait à disputer l'attention à ce qu'ils ont à montrer.
+
+### Le mobilier
+
+Un cordon de séparation, un banc, une plante en pot. Aucun ne joue de rôle dans la géométrie
+impossible, et c'est justement pour cela qu'ils comptent : **une salle vide se lit comme une
+maquette.** Ce qui la fait basculer en lieu, ce n'est pas une paroi de plus, c'est un objet
+dont on connaît la taille — un banc dit à quelle hauteur on s'assoit, un cordon dit où l'on
+n'a pas le droit d'aller, une plante dit que quelqu'un s'en occupe.
+
+Tout est construit à partir de deux primitives, le quadrilatère quelconque et le cylindre. Il
+n'y a ni maillage importé, ni image, ni transparence : une feuille de plante est donc une
+vraie feuille de géométrie, effilée par ses quatre coins et cassée en deux tronçons pour
+qu'elle retombe. C'est la cassure qui fait la plante ; une feuille droite fait un plumeau.
+
+Deux pièges, tous deux attrapés par l'invariant des surfaces qui se recouvrent — celui qui ne
+regarde pas une salle en particulier mais toute la géométrie du monde.
+
+**Une boîte décrite par « le long, la largeur, l'épaisseur » n'est pas toujours dans un repère
+direct.** Une face à l'envers ne disparaît pas pour autant : le tri des faces arrière la garde
+et fait disparaître *l'autre*, celle qui était juste. Deux surfaces se retrouvent alors dans le
+même plan à se disputer les pixels. Le mobilier calcule donc la normale de chaque face et
+retourne celles qui rentrent.
+
+**Une corde faite de tronçons de boîte se chevauche à chaque coude**, et deux spires cousues
+au même poteau se recouvrent. Le cordon est donc balayé d'un seul tenant, en partageant ses
+anneaux d'un tronçon au suivant — un tube, pas une file de caisses. La flèche fait le reste :
+une corde tendue droite ressemble à une barre, une corde qui pend d'un sixième de sa portée
+ressemble à une corde.
+
 ### Les quatre cabinets
 
 Le musée s'est construit sur des tricheries de géométrie, dans des salles volontairement nues :
