@@ -1,223 +1,203 @@
 /**
- * Les cubes qu'on lance à travers la couture.
+ * Les objets lancés.
  *
- * C'est le test le plus convaincant de l'étape, et le moins coûteux : un objet qui
- * franchit l'ouverture, atterrit de l'autre côté et reste visible **à travers**
- * l'ouverture prouve d'un coup que la géométrie, le déplacement et le rendu
- * partagent bien la même transformation. Un portail purement visuel se trahit ici
- * en une seconde.
+ * **Le calcul est en Rust**, compilé vers WebAssembly ; ce fichier n'est plus qu'un guichet.
+ * Il fait naître les cubes, prête au noyau son tableau de corps, et rend au moteur de rendu
+ * des matrices. Tout ce qui ressemble à de la physique — la chute, les rebonds, le
+ * frottement, le basculement, les cubes entre eux — vit dans `physique/src/lib.rs`.
  *
- * Aucun traitement particulier n'est nécessaire côté rendu : un objet est dessiné
- * dans la cellule où il se trouve, et si cette cellule est vue à travers une
- * couture, l'objet apparaît dedans naturellement.
+ * ## Pourquoi ce morceau-là, et pourquoi maintenant
  *
- * L'orientation est stockée comme une **base de trois vecteurs**, et non comme un
- * axe et un angle. C'est plus encombrant, et c'est ce qui permet de la faire
- * voyager : tout ce qui a une direction doit être transformé en traversant une
- * couture, orientation comprise. La version précédente ne transportait que la
- * vitesse, si bien qu'un cube changeait brusquement d'orientation en franchissant
- * une porte — il reprenait sa rotation dans l'ancien repère.
+ * C'est le seul endroit du moteur dont le coût dépend du **nombre d'objets** plutôt que du
+ * nombre de pixels, donc le seul qui gagne à quitter la page. Et c'est aussi celui dont on
+ * voulait faire davantage : l'ancienne version faisait tourner les cubes à vitesse constante
+ * autour d'un axe tiré au hasard et les arrêtait net en touchant le sol. Un cube est
+ * maintenant un solide — il a une inertie, il rebondit sur ses arêtes, il bascule, il frotte,
+ * il se pose à plat, il se cogne aux autres.
+ *
+ * ## Ce qui reste de ce côté-ci
+ *
+ * Le lancer, parce qu'il part du visiteur et doit franchir les coutures comme n'importe quel
+ * déplacement ; la durée de vie ; et la traduction entre l'identifiant d'une cellule et son
+ * indice. Rien qui coûte par image.
  */
 
 import { create, fromBasis, type Mat4 } from '../math/mat4'
-import { add, cross, dot, len, normalize, rotateAxis, scale, sub, v3, type Vec3 } from '../math/vec3'
-import { advance, downAt, faceGap, resolveAgainstCell } from '../world/motion'
+import { add, cross, normalize, scale, type Vec3 } from '../math/vec3'
+import { advance, resolveAgainstCell } from '../world/motion'
 import type { Cell, World } from '../world/types'
 import type { Player } from './player'
+import { STRIDE, type Physics } from './physique'
 
+/** Le côté d'un cube lancé. Le noyau connaît la même valeur ; les deux doivent s'accorder. */
 export const CUBE_SIZE = 0.34
 const HALF = CUBE_SIZE / 2
-const GRAVITY = 11
+
 const THROW_SPEED = 8.5
-/** Vitesse de rotation propre, en radians par seconde. */
-const SPIN = 4.5
 const LIFETIME = 26
 const MAX_COUNT = 24
 
-interface Projectile {
-  cell: string
-  pos: Vec3
-  vel: Vec3
-  /** Base d'orientation : les colonnes du repère de l'objet. */
-  ex: Vec3
-  ey: Vec3
-  ez: Vec3
-  /** Axe de la rotation propre, exprimé dans le repère du monde. */
-  axis: Vec3
-  age: number
-  resting: boolean
+/**
+ * Un cube est un corps centré : ses « pieds » et son « crâne » sont à égale distance de son
+ * centre. Ne sert plus qu'au point d'apparition, la collision étant passée en Rust.
+ */
+const CUBE_BODY = { radius: HALF, eyeHeight: HALF, headroom: HALF, up: { x: 0, y: 1, z: 0 } }
+
+function clampInside(cell: Cell, p: Vec3): Vec3 {
+  return resolveAgainstCell(cell, p, CUBE_BODY).pos
 }
 
 export class Projectiles {
-  private readonly list: Projectile[] = []
+  private count_ = 0
+  private readonly ages: number[] = []
+
+  constructor(private readonly physics: Physics) {}
 
   get count(): number {
-    return this.list.length
+    return this.count_
   }
 
   clear(): void {
-    this.list.length = 0
+    this.count_ = 0
+    this.ages.length = 0
   }
 
   throwFrom(player: Player, world: World): void {
-    if (this.list.length >= MAX_COUNT) this.list.shift()
-
-    // Le point d'apparition doit franchir les coutures comme n'importe quel
-    // déplacement. Naïvement, on fait naître l'objet cinquante centimètres devant
-    // les yeux pour ne pas le poser dans la tête du visiteur — mais collé à une
-    // ouverture, ces cinquante centimètres tombent **au-delà** de la bouche,
-    // c'est-à-dire hors de la cellule. L'objet naît alors dans le vide derrière le
-    // mur, et il ne peut plus jamais rentrer : la traversée exige de partir du bon
-    // côté du plan.
+    // Le point d'apparition doit franchir les coutures comme n'importe quel déplacement.
+    // Naïvement, on fait naître l'objet cinquante centimètres devant les yeux pour ne pas le
+    // poser dans la tête du visiteur — mais collé à une ouverture, ces cinquante centimètres
+    // tombent **au-delà** de la bouche, c'est-à-dire hors de la cellule. L'objet naîtrait
+    // alors dans le vide derrière le mur, sans pouvoir jamais rentrer : la traversée exige de
+    // partir du bon côté du plan.
     const carried = [{ ...player.forward }, { ...player.up }]
-    const spawn = advance(
-      world,
-      player.cell,
-      player.pos,
-      scale(player.forward, 0.5),
-      carried,
-      clampInside,
-    )
+    const spawn = advance(world, player.cell, player.pos, scale(player.forward, 0.5), carried, clampInside)
     const forward = carried[0]!
     const up = carried[1]!
     const right = normalize(cross(forward, up))
+    const pos = add(spawn.pos, scale(up, -0.18))
+    const velocity = scale(forward, THROW_SPEED)
 
-    this.list.push({
-      cell: spawn.cell,
-      pos: add(spawn.pos, scale(up, -0.18)),
-      vel: scale(forward, THROW_SPEED),
-      ex: right,
-      ey: cross(right, forward),
-      ez: scale(forward, -1),
-      // Un axe oblique, pour que la rotation reste lisible sous tous les angles.
-      axis: normalize(add(right, scale(up, 0.6))),
-      age: 0,
-      resting: false,
-    })
+    // Le tableau est un anneau : le plus vieux cède sa place. Le noyau ne connaît que le
+    // nombre de corps actifs, et ils sont toujours au début.
+    const slot = this.count_ < MAX_COUNT ? this.count_++ : this.shiftOut()
+    const bodies = this.physics.bodies()
+    const at = slot * STRIDE
+
+    bodies[at] = pos.x
+    bodies[at + 1] = pos.y
+    bodies[at + 2] = pos.z
+    // Orientation de départ : celle du regard, en quaternion. Une base de trois vecteurs
+    // n'aurait pas survécu aux milliers de rotations qui suivent.
+    const q = quatOfBasis(right, cross(right, forward), scale(forward, -1))
+    bodies[at + 3] = q[0]
+    bodies[at + 4] = q[1]
+    bodies[at + 5] = q[2]
+    bodies[at + 6] = q[3]
+    bodies[at + 7] = velocity.x
+    bodies[at + 8] = velocity.y
+    bodies[at + 9] = velocity.z
+    // Un peu de rotation prise au lancer, oblique pour rester lisible sous tous les angles.
+    bodies[at + 10] = right.x * 2.2 + up.x * 1.3
+    bodies[at + 11] = right.y * 2.2 + up.y * 1.3
+    bodies[at + 12] = right.z * 2.2 + up.z * 1.3
+    bodies[at + 13] = this.physics.cellIndex(spawn.cell)
+    bodies[at + 14] = 0
+    bodies[at + 15] = 0
+    this.ages[slot] = 0
+  }
+
+  /** Retire le plus ancien en tassant le tableau, et rend la place libérée. */
+  private shiftOut(): number {
+    const bodies = this.physics.bodies()
+    bodies.copyWithin(0, STRIDE, this.count_ * STRIDE)
+    this.ages.shift()
+    return this.count_ - 1
   }
 
   update(dt: number, world: World): void {
-    for (let i = this.list.length - 1; i >= 0; i--) {
-      const p = this.list[i]!
-      p.age += dt
-      if (p.age > LIFETIME) {
-        this.list.splice(i, 1)
-        continue
-      }
-      if (p.resting) continue
+    void world
+    if (this.count_ === 0) return
 
-      // Un cube n'a pas de tête, donc pas de face choisie : dans une salle aux six sols,
-      // il tombe vers la paroi dont il est le plus près. Sans code de plus, les objets
-      // lancés s'accumulent alors sur les six faces — et un cube qu'on jette vers un mur
-      // finit par y tomber plutôt que d'y rebondir bêtement.
-      const here = world.cells.get(p.cell)
-      p.vel = add(p.vel, scale(here ? downAt(here, p.pos) : v3(0, -1, 0), GRAVITY * dt))
+    this.physics.step(dt, this.count_)
 
-      // Rotation propre, appliquée à la base entière.
-      const angle = SPIN * dt
-      p.ex = rotateAxis(p.ex, p.axis, angle)
-      p.ey = rotateAxis(p.ey, p.axis, angle)
-      p.ez = rotateAxis(p.ez, p.axis, angle)
-      orthonormalise(p)
-
-      const delta = scale(p.vel, dt)
-      if (len(delta) < 1e-6) continue
-
-      let touched = false
-      // Tout ce qui a une direction doit voyager : la vitesse, la base d'orientation
-      // et l'axe de la rotation propre. En oublier un seul se voit immédiatement —
-      // c'est exactement ce qui faisait tourner les cubes de travers après une
-      // traversée.
-      const carried = [p.vel, p.ex, p.ey, p.ez, p.axis]
-      const result = advance(world, p.cell, p.pos, delta, carried, (cell, candidate) => {
-        const resolved = clampInside(cell, candidate)
-        if (
-          Math.abs(resolved.x - candidate.x) > 1e-9 ||
-          Math.abs(resolved.y - candidate.y) > 1e-9 ||
-          Math.abs(resolved.z - candidate.z) > 1e-9
-        ) {
-          touched = true
-        }
-        return resolved
-      })
-
-      p.vel = carried[0]!
-      p.ex = carried[1]!
-      p.ey = carried[2]!
-      p.ez = carried[3]!
-      p.axis = carried[4]!
-      p.cell = result.cell
-      p.pos = result.pos
-      if (result.crossings > 0) orthonormalise(p)
-
-      if (touched) {
-        // Aucune prétention à la physique : le cube s'immobilise. Ce qui compte ici
-        // est la traversée, pas le rebond.
-        p.vel = scale(p.vel, 0.25)
-
-        // Mais il ne s'immobilise que **posé**. Sans cette condition, un cube qui
-        // frôle deux fois le montant d'une porte perd assez de vitesse pour être
-        // déclaré au repos en pleine embrasure, et reste suspendu en l'air.
-        //
-        // « Posé » veut dire contre la paroi vers laquelle il tombe : le sol d'ordinaire,
-        // n'importe laquelle des six dans la salle de la gravité.
-        const cell = world.cells.get(p.cell)
-        const gap = cell ? faceGap(cell, p.pos) : Infinity
-        if (gap <= HALF + 1e-3 && len(p.vel) < 0.6) {
-          p.resting = true
-          p.vel = v3(0, 0, 0)
-        }
-      }
+    // La durée de vie se compte ici : le noyau n'a pas à savoir qu'un cube disparaît.
+    const bodies = this.physics.bodies()
+    for (let i = this.count_ - 1; i >= 0; i--) {
+      this.ages[i] = (this.ages[i] ?? 0) + dt
+      if (this.ages[i]! <= LIFETIME) continue
+      bodies.copyWithin(i * STRIDE, (i + 1) * STRIDE, this.count_ * STRIDE)
+      this.ages.splice(i, 1)
+      this.count_--
     }
   }
 
   /**
    * L'état brut, pour l'auto-test.
    *
-   * La liste de rendu ne porte qu'une matrice, alors que l'invariant qui compte met
-   * en jeu la vitesse : c'est l'angle entre les axes de l'objet et sa trajectoire
-   * qui doit rester continu en traversant une couture.
+   * La liste de rendu ne porte qu'une matrice, alors que l'invariant qui compte met en jeu
+   * la vitesse : c'est l'angle entre les axes de l'objet et sa trajectoire qui doit rester
+   * continu en traversant une couture.
    */
   inspect(): { cell: string; pos: Vec3; vel: Vec3; ex: Vec3; ey: Vec3; ez: Vec3 }[] {
-    return this.list.map((p) => ({
-      cell: p.cell,
-      pos: p.pos,
-      vel: p.vel,
-      ex: p.ex,
-      ey: p.ey,
-      ez: p.ez,
-    }))
+    const bodies = this.physics.bodies()
+    const out = []
+    for (let i = 0; i < this.count_; i++) {
+      const at = i * STRIDE
+      const q: Quat = [bodies[at + 3]!, bodies[at + 4]!, bodies[at + 5]!, bodies[at + 6]!]
+      out.push({
+        cell: this.physics.cellName(bodies[at + 13]!),
+        pos: { x: bodies[at]!, y: bodies[at + 1]!, z: bodies[at + 2]! },
+        vel: { x: bodies[at + 7]!, y: bodies[at + 8]!, z: bodies[at + 9]! },
+        ex: turn(q, { x: 1, y: 0, z: 0 }),
+        ey: turn(q, { x: 0, y: 1, z: 0 }),
+        ez: turn(q, { x: 0, y: 0, z: 1 }),
+      })
+    }
+    return out
   }
 
   toRenderList(): { cell: string; model: Mat4 }[] {
-    return this.list.map((p) => ({
-      cell: p.cell,
-      model: fromBasis(create(), p.ex, p.ey, p.ez, p.pos),
+    return this.inspect().map((c) => ({
+      cell: c.cell,
+      model: fromBasis(create(), c.ex, c.ey, c.ez, c.pos),
     }))
   }
 }
 
-/**
- * Remise d'équerre de la base d'orientation, par Gram-Schmidt.
- *
- * Les rotations successives et les transformations de couture sont rigides en
- * théorie ; en pratique l'arrondi s'accumule, et une base qui dérive fait
- * lentement cisailler le cube. Trois produits vectoriels suffisent à l'éviter.
- */
-function orthonormalise(p: Projectile): void {
-  p.ex = normalize(p.ex)
-  p.ey = normalize(sub(p.ey, scale(p.ex, dot(p.ey, p.ex))))
-  p.ez = cross(p.ex, p.ey)
-  p.axis = normalize(p.axis)
+type Quat = [number, number, number, number]
+
+/** Un vecteur tourné par un quaternion. */
+function turn(q: Quat, v: Vec3): Vec3 {
+  const [x, y, z, w] = q
+  const u = { x, y, z }
+  const uv = u.x * v.x + u.y * v.y + u.z * v.z
+  const uu = u.x * u.x + u.y * u.y + u.z * u.z
+  const c = cross(u, v)
+  return {
+    x: 2 * uv * u.x + v.x * (w * w - uu) + 2 * w * c.x,
+    y: 2 * uv * u.y + v.y * (w * w - uu) + 2 * w * c.y,
+    z: 2 * uv * u.z + v.z * (w * w - uu) + 2 * w * c.z,
+  }
 }
 
 /**
- * Un cube est un corps centré : ses « pieds » et son « crâne » sont à égale distance de
- * son centre. Le sol et le plafond sont désormais traités par la résolution commune,
- * qui n'avait pas cette notion quand rien ne tombait.
+ * Le quaternion d'une base directe. Méthode de Shepperd : on part de la plus grande des
+ * quatre composantes, faute de quoi une racine carrée de presque zéro amplifie le bruit.
  */
-const CUBE_BODY = { radius: HALF, eyeHeight: HALF, headroom: HALF, up: v3(0, 1, 0) }
-
-function clampInside(cell: Cell, p: Vec3): Vec3 {
-  return resolveAgainstCell(cell, p, CUBE_BODY).pos
+function quatOfBasis(ex: Vec3, ey: Vec3, ez: Vec3): Quat {
+  const trace = ex.x + ey.y + ez.z
+  if (trace > 0) {
+    const s = Math.sqrt(trace + 1) * 2
+    return [(ey.z - ez.y) / s, (ez.x - ex.z) / s, (ex.y - ey.x) / s, 0.25 * s]
+  }
+  if (ex.x > ey.y && ex.x > ez.z) {
+    const s = Math.sqrt(1 + ex.x - ey.y - ez.z) * 2
+    return [0.25 * s, (ey.x + ex.y) / s, (ez.x + ex.z) / s, (ey.z - ez.y) / s]
+  }
+  if (ey.y > ez.z) {
+    const s = Math.sqrt(1 + ey.y - ex.x - ez.z) * 2
+    return [(ey.x + ex.y) / s, 0.25 * s, (ez.y + ey.z) / s, (ez.x - ex.z) / s]
+  }
+  const s = Math.sqrt(1 + ez.z - ex.x - ey.y) * 2
+  return [(ez.x + ex.z) / s, (ez.y + ey.z) / s, 0.25 * s, (ex.y - ey.x) / s]
 }

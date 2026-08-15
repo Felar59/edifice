@@ -9,7 +9,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "check": "tsc --noEmit",
-    "torture": "node scripts/torture.mjs"
+    "torture": "node scripts/torture.mjs",
+    "physique": "cargo build --release --manifest-path physique/Cargo.toml --target wasm32-unknown-unknown && node -e \"require('fs').copyFileSync('physique/target/wasm32-unknown-unknown/release/edifice_physique.wasm','src/player/physique.wasm')\""
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.60",

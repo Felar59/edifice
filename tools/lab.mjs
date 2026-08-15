@@ -23,7 +23,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -77,6 +77,21 @@ function build({ quiet = false } = {}) {
 
 const load = (path) => require(join(build(), path))
 
+/**
+ * Le noyau de physique, chargé depuis le disque et gorgé du monde.
+ *
+ * Le module WebAssembly se charge aussi bien ici que dans la page : son interface n'est que
+ * des nombres, il n'a besoin d'aucun outil intermédiaire. C'est ce qui permet à l'atelier de
+ * faire tomber des cubes sans navigateur.
+ */
+async function physicsFor(world) {
+  const { Physics } = load('player/physique.js')
+  const bytes = readFileSync(join(ROOT, 'src', 'player', 'physique.wasm'))
+  const physics = await Physics.load(bytes)
+  physics.setWorld(world)
+  return physics
+}
+
 // `require` depuis un module ES.
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
@@ -110,10 +125,11 @@ const fmt = (v) => `(${v.x.toFixed(2)}, ${v.y.toFixed(2)}, ${v.z.toFixed(2)})`
 const commands = {}
 
 /** Les invariants, sans navigateur. Le premier réflexe après toute modification. */
-commands.check = (opts) => {
+commands.check = async (opts) => {
   const { buildWorld } = load('world/world.js')
   const { runSelfTest } = load('dev/selftest.js')
-  const checks = runSelfTest(buildWorld())
+  const world = buildWorld()
+  const checks = runSelfTest(world, await physicsFor(world))
   const shown = opts.all ? checks : checks.filter((c) => !c.ok)
   const filter = opts.only ? new RegExp(opts.only, 'i') : null
 

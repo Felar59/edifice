@@ -15,6 +15,7 @@
 import { create, invertRigid, multiply, transformDir, transformPoint, type Mat4 } from '../math/mat4'
 import { add, cross, dot, len, normalize, scale, sub, v3, type Vec3 } from '../math/vec3'
 import { Player } from '../player/player'
+import type { Physics } from '../player/physique'
 import { CUBE_SIZE, Projectiles } from '../player/projectiles'
 import { cameraToWorld } from '../render/camera'
 import { FLOATS_PER_VERTEX } from '../world/geometry'
@@ -65,7 +66,7 @@ function distance(a: Vec3, b: Vec3): number {
   return len(sub(a, b))
 }
 
-export function runSelfTest(world: World): Check[] {
+export function runSelfTest(world: World, physics: Physics): Check[] {
   const checks: Check[] = []
   const add_ = (name: string, ok: boolean, detail: string): void => {
     checks.push({ name, ok, detail })
@@ -427,7 +428,7 @@ export function runSelfTest(world: World): Check[] {
       pos: add(marks.seamCenter, scale(marks.seamNormal, 2.2)),
       forward: { x: -marks.seamNormal.x, y: 0, z: -marks.seamNormal.z },
     })
-    const cubes = new Projectiles()
+    const cubes = new Projectiles(physics)
     cubes.throwFrom(thrower, world)
 
     const step = 1 / 120
@@ -436,6 +437,8 @@ export function runSelfTest(world: World): Check[] {
     let worstDet = 0
     let worstJump = 0
     let previous: number | null = null
+    let seams = 0
+    let where = HUB
 
     for (let i = 0; i < 300; i++) {
       cubes.update(step, world)
@@ -451,11 +454,25 @@ export function runSelfTest(world: World): Check[] {
       )
       worstDet = Math.max(worstDet, Math.abs(dot(cross(cube.ex, cube.ey), cube.ez) - 1))
 
-      // Un cube au repos a une vitesse nulle : plus de trajectoire, plus d'angle.
+      // **La mesure se fait au franchissement, et là seulement.**
+      //
+      // Ce qu'on veut interdire est une discontinuité de l'orientation **à la traversée** :
+      // le cube doit ressortir tourné comme la couture le demande, ni plus ni moins. Mesurer
+      // image par image n'a plus de sens depuis que les cubes sont des solides — un choc
+      // change d'un coup la direction de leur vitesse, et l'angle qu'elle fait avec leurs
+      // axes avec elle, ce qui est parfaitement légitime.
+      //
+      // On compare donc l'angle entre l'axe du cube et sa trajectoire de part et d'autre de
+      // la couture. Entre ces deux images il ne se passe qu'un tour de rotation propre et un
+      // pas de gravité : l'écart doit rester petit.
       const speed = len(cube.vel)
       if (speed < 0.5) break
       const relative = dot(cube.ex, scale(cube.vel, 1 / speed))
-      if (previous !== null) worstJump = Math.max(worstJump, Math.abs(relative - previous))
+      if (cube.cell !== where && previous !== null) {
+        worstJump = Math.max(worstJump, Math.abs(relative - previous))
+        seams++
+      }
+      where = cube.cell
       previous = relative
     }
 
@@ -464,8 +481,8 @@ export function runSelfTest(world: World): Check[] {
     add_('objet lancé · base directe', worstDet < 1e-4, `écart ${fmt(worstDet)}`)
     add_(
       'objet lancé · orientation transportée',
-      worstJump < 0.12,
-      `saut maximal ${worstJump.toFixed(4)} par image (rotation propre : ${(4.5 * step).toFixed(4)})`,
+      seams > 0 && worstJump < 0.05,
+      `${seams} traversée(s), écart maximal ${worstJump.toFixed(4)} de part et d’autre`,
     )
   }
 

@@ -1,0 +1,17 @@
+[package]
+name = "edifice-physique"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+# Le module est chargé par la page : il doit être petit, et il n'a personne à qui
+# raconter ses paniques.
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

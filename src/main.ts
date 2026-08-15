@@ -4,6 +4,8 @@ import { initGpu } from './render/gpu'
 import { Renderer } from './render/renderer'
 import { Player, presets } from './player/player'
 import { CUBE_SIZE, Projectiles } from './player/projectiles'
+import { Physics } from './player/physique'
+import physiqueUrl from './player/physique.wasm?url'
 import { buildWorld, HUB } from './world/world'
 import { buildCube } from './world/geometry'
 import { Hud } from './ui/hud'
@@ -98,7 +100,12 @@ async function main(): Promise<void> {
   renderer.setWorld(world, buildCube(CUBE_SIZE, [0.78, 0.5, 0.26]))
 
   const player = new Player()
-  const projectiles = new Projectiles()
+
+  // **Le noyau de physique est chargé avant la première image.** Il porte le monde, et un
+  // cube lancé avant qu'il ne soit prêt n'aurait nulle part où tomber.
+  const physics = await Physics.load(await (await fetch(physiqueUrl)).arrayBuffer())
+  physics.setWorld(world)
+  const projectiles = new Projectiles(physics)
   const hud = new Hud()
   const keys = new Set<string>()
 
@@ -178,7 +185,7 @@ async function main(): Promise<void> {
   // --- Prise de contrôle pour le script de test -----------------------------
   const hook: DevHook = {
     frames: 0,
-    selfTest: () => runSelfTest(world),
+    selfTest: () => runSelfTest(world, physics),
     goTo: (index) => {
       const preset = presets()[index]
       if (preset) player.goTo(preset, world)

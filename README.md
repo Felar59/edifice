@@ -677,6 +677,46 @@ qui n'a pas de coin** — et rien, à l'écran, ne se trouve à cet endroit pour
 règle qui manquait : une bouche qui couvre toute sa paroi n'a pas de paroi autour d'elle,
 donc rien à rater, donc aucun test d'encombrement à passer.
 
+### La physique, en Rust
+
+Les objets lancés sont simulés par un module **Rust compilé vers WebAssembly**, dans
+`physique/`. C'est le premier morceau du moteur à quitter TypeScript, et le choix de
+celui-là n'est pas un hasard : la physique est le seul endroit dont le coût dépend du
+**nombre d'objets** plutôt que du nombre de pixels. Tout le reste — le pilotage de WebGPU,
+la construction du monde, le déplacement du visiteur — vit très bien côté page, et franchir
+la frontière à chaque image ne ferait que ralentir la boucle d'itération, qui est exactement
+ce qui compte pendant qu'on cherche.
+
+**L'interface est purement numérique.** Pas de `wasm-bindgen`, pas d'objets, pas de chaînes :
+le monde et les corps sont des `Float32Array` posés dans la mémoire du module. Ce n'est pas
+une coquetterie — ce qui coûte à la frontière se paie soixante fois par seconde — et cela
+rend le module chargeable d'un `WebAssembly.instantiate`, donc sans outil intermédiaire :
+`cargo build` suffit, et le `.wasm` est versionné pour que `npm run dev` marche sans avoir
+Rust installé. La contrepartie est que le format d'échange est décrit à deux endroits, un de
+chaque côté, et que les deux doivent se croire sur parole. C'est le seul endroit du projet
+où c'est le cas, et il est documenté des deux côtés.
+
+Ce que le noyau a apporté n'est pas de la vitesse mais du **comportement**. L'ancienne
+version faisait tourner les cubes à vitesse constante autour d'un axe tiré au hasard et les
+arrêtait net en touchant le sol. Un cube est maintenant un solide : il a une inertie, ses
+huit coins sont testés séparément, il rebondit sur une arête, il bascule, il frotte, il se
+pose à plat, et il se cogne aux autres. Le tenseur d'inertie d'un cube étant **isotrope**,
+son inverse se réduit à un scalaire — c'est ce qui rend un solveur à impulsions aussi court
+ici qu'un long chapitre ailleurs.
+
+Le noyau connaît les quatre formes de sol du musée : plat, six faces, rampe d'escalier
+tournant, tube vrillé. Les quatre, et pas trois : en laisser une de côté aurait obligé à
+faire cohabiter deux moteurs de physique et à décider, pour chaque cube et à chaque image,
+lequel des deux a raison.
+
+**Un cube ne s'endort que s'il est porté.** Un solide au repos garde toujours un peu de
+vitesse — les impulsions ne s'annulent jamais exactement — et ce reste se voit comme un
+frisson ; on l'endort donc au bout d'un tiers de seconde de calme. Mais « au repos » ne veut
+pas dire « qui touche quelque chose » : un cube ralenti qui frôle une paroi verticale n'est
+pas posé, et le confondre avec un cube posé le fige **en l'air**, contre le mur. Le contact
+ne compte que si sa normale s'oppose à la chute. Le défaut s'est vu du premier coup, dans le
+tunnel-vrille, où trois cubes flottaient à mi-hauteur.
+
 ### La verticalité
 
 On saute et on tombe. Gravité à dix-huit mètres par seconde carrée — près du double du

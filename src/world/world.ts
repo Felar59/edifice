@@ -269,7 +269,11 @@ function holeOf(m: Mouth): Hole {
  * d'autre à regarder.
  */
 function haze(tint: Colour): readonly [number, number, number] {
-  return [0.02 + tint[0] * 0.045, 0.02 + tint[1] * 0.045, 0.02 + tint[2] * 0.045]
+  // **Une brume claire, pas un fond noir.** Un lointain plus sombre que la salle qu'il
+  // termine se lit comme un trou, et un musée n'a pas de trous : l'air éloigne les choses en
+  // les **éclaircissant**, parce qu'il diffuse la lumière qui le traverse. Assombrir donne
+  // une cave ; éclaircir donne de la distance.
+  return [0.055 + tint[0] * 0.2, 0.055 + tint[1] * 0.2, 0.055 + tint[2] * 0.2]
 }
 
 function tinted(tint: Colour, level: number): Color {
@@ -1474,8 +1478,10 @@ export function buildWorld(): World {
               z: PAVE_BOX.max.z - PAVE_BOX.min.z,
               radius: 4,
             },
-            // Un horizon plus proche qu'ailleurs : c'est lui qui efface le bord du réseau.
-            fog: 0.055,
+            // Un horizon un peu plus proche qu'ailleurs : c'est lui qui efface le bord du
+            // réseau. Pas trop proche pour autant — l'intérêt de la salle est justement de
+            // voir loin, et une brume qui ferme à vingt mètres la rendrait ordinaire.
+            fog: 0.028,
           }
         : {}),
       ...(sixSided ? { gravity: { grip: GRIP } } : {}),

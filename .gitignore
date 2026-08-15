@@ -9,3 +9,7 @@ shots/probe-*.png
 
 # L'atelier est versionné — voir tools/README.md — mais pas sa compilation.
 tools/.build/
+
+# La compilation du noyau de physique. Le `.wasm` produit, lui, est versionné :
+# `npm run dev` doit fonctionner sans avoir Rust installé.
+physique/target/

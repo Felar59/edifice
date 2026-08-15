@@ -177,7 +177,7 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
   let ground = u.fogBand.x;
   let ceiling = max(u.fogBand.y, ground + 0.001);
   let height = clamp((in.world.y - ground) / (ceiling - ground), 0.0, 1.0);
-  let thickness = u.fog.w * mix(1.5, 0.6, height);
+  let thickness = u.fog.w * mix(1.25, 0.85, height);
   let reach = dist * thickness;
   let fogAmount = clamp(1.0 - exp(-reach * reach), 0.0, 1.0);
   rgb = mix(rgb, u.fog.rgb, fogAmount);
