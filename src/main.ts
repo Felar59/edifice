@@ -7,6 +7,7 @@ import { CUBE_SIZE, Projectiles } from './player/projectiles'
 import { buildWorld, HUB } from './world/world'
 import { buildCube } from './world/geometry'
 import { Hud } from './ui/hud'
+import { SettingsPage } from './ui/settings'
 import { runSelfTest, type Check } from './dev/selftest'
 
 /**
@@ -99,16 +100,28 @@ async function main(): Promise<void> {
   const hud = new Hud()
   const keys = new Set<string>()
 
+  // Les paramètres s'appliquent dès leur construction : la page relit la valeur retenue de
+  // la visite précédente et la pousse au rendu avant la première image.
+  const settings = new SettingsPage((values) => {
+    renderer.fovY = (values.fov * Math.PI) / 180
+  })
+
   resize()
   window.addEventListener('resize', resize)
 
   // --- Souris capturée ------------------------------------------------------
   overlay.addEventListener('click', () => void canvas.requestPointerLock())
+  // `Échap` rend déjà la souris ; ici, il referme la page et rend la marche.
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Escape' && settings.open) settings.setOpen(false)
+  })
   canvas.addEventListener('click', () => {
     if (document.pointerLockElement !== canvas) void canvas.requestPointerLock()
   })
   document.addEventListener('pointerlockchange', () => {
-    overlay.hidden = document.pointerLockElement === canvas
+    // L'écran d'entrée revient quand on rend la souris — sauf si c'est la page de
+    // paramètres qui l'a demandée, auquel cas c'est elle qu'on regarde.
+    overlay.hidden = document.pointerLockElement === canvas || settings.open
   })
   document.addEventListener('mousemove', (e) => {
     if (document.pointerLockElement === canvas) player.look(e.movementX, e.movementY)
@@ -140,6 +153,9 @@ async function main(): Promise<void> {
         break
       case 'KeyH':
         hud.toggle()
+        break
+      case 'KeyP':
+        settings.toggle()
         break
       case 'BracketLeft':
         renderer.maxDepth = Math.max(0, renderer.maxDepth - 1)

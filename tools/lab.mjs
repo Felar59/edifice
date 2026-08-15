@@ -323,7 +323,9 @@ commands.shot = async (opts) => {
     }
     browser = await launch(url, { width: Number(opts.width ?? 1100), height: Number(opts.height ?? 620) })
     await browser.waitFor('() => !!window.__edifice')
-    await browser.eval('window.__edifice.setChrome(false)')
+    // Les panneaux sont masqués par défaut : une capture sert à juger d'une salle, pas de
+    // l'interface. `--chrome` les garde, pour photographier l'interface elle-même.
+    if (!opts.chrome) await browser.eval('window.__edifice.setChrome(false)')
     await browser.eval('window.__edifice.setPaused(true)')
 
     const out = opts.out ?? 'shots/probe-lab.png'
