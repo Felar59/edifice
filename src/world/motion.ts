@@ -91,8 +91,17 @@ interface Crossing {
  *
  * Une bouche ne se franchit que dans un sens — du côté visible vers le côté caché.
  * L'autre sens est assuré par la bouche jumelle, qui est un passage distinct.
+ *
+ * **Le corps doit tenir dans l'ouverture, pas seulement le point de référence.** Le même
+ * critère décide qu'on *peut* passer, dans la collision, et qu'on *passe*, ici : sans quoi
+ * les deux se contredisent, et l'endroit où ils se contredisent est le chambranle. Frôler
+ * un jambage y devenait une téléportation là où il fallait simplement se cogner.
+ *
+ * Les mesures se prennent dans le repère de la bouche et non dans celui du monde : au bout
+ * du tunnel-vrille, la section a tourné d'un quart de tour, et le haut du corps n'y est pas
+ * la verticale du monde.
  */
-function findCrossing(cell: Cell, from: Vec3, seg: Vec3): Crossing | null {
+function findCrossing(cell: Cell, from: Vec3, seg: Vec3, body?: Body): Crossing | null {
   let best: Crossing | null = null
   const to = add(from, seg)
 
@@ -111,8 +120,24 @@ function findCrossing(cell: Cell, from: Vec3, seg: Vec3): Crossing | null {
 
     // Le point d'impact doit tomber **dans** l'ouverture, pas sur la paroi.
     const rel = sub(add(from, scale(seg, t)), m.center)
-    if (Math.abs(dot(rel, m.right)) > m.halfWidth) continue
-    if (Math.abs(dot(rel, m.up)) > m.halfHeight) continue
+    const across = Math.abs(dot(rel, m.right))
+    const along = dot(rel, m.up)
+    if (body) {
+      // Un corps, avec sa largeur et sa taille. Un cube lancé n'en a pas : il passe par où
+      // son centre passe, ce qui lui va — il est plus petit que toutes les ouvertures.
+      // Deux centimètres de mou en hauteur, et ils sont nécessaires : pendant un pas, la
+      // gravité fait descendre les pieds d'un cheveu sous le sol avant que la collision ne
+      // les remonte, et juger sur cette position-là refuse le passage à qui marche
+      // normalement. C'est le même piège que dans `resolveAgainstCell`, et il se tend une
+      // seconde fois ici. Deux centimètres suffisent — un saut, lui, monte d'un demi-mètre.
+      const sag = 0.02
+      if (across > m.halfWidth - body.radius) continue
+      if (along - body.eyeHeight < -m.halfHeight - sag) continue
+      if (along + body.headroom > m.halfHeight + sag) continue
+    } else {
+      if (across > m.halfWidth) continue
+      if (Math.abs(along) > m.halfHeight) continue
+    }
 
     if (!best || t < best.t) best = { passage, t }
   }
@@ -134,6 +159,8 @@ export function advance(
   delta: Vec3,
   carried: Vec3[],
   resolve: (cell: Cell, p: Vec3) => Vec3,
+  /** Le corps qui se déplace, s'il en a un : une couture ne se franchit que s'il y tient. */
+  body?: Body,
 ): Advance {
   let cell = world.cells.get(cellId)
   if (!cell) throw new Error(`Cellule inconnue : ${cellId}`)
@@ -149,7 +176,7 @@ export function advance(
     const stepLen = Math.min(total, SUBSTEP)
     const seg = scale(remaining, stepLen / total)
 
-    const hit = findCrossing(cell, current, seg)
+    const hit = findCrossing(cell, current, seg, body)
     if (hit) {
       const t = hit.passage.transform
       const impact = add(current, scale(seg, hit.t))

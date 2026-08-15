@@ -287,8 +287,18 @@ export class Player {
     this.move(world, add(horizontal, scale(this.stance, this.vertical * dt)))
 
     // --- La salle aux six sols ----------------------------------------------
+    //
+    // **On bascule en l'air aussi**, et c'est ce qui manquait. La règle voulait qu'on ait
+    // les pieds au sol : sauter contre une paroi ne faisait donc rien, et la bascule
+    // survenait à la retombée, une seconde plus tard, sans qu'on puisse la relier au geste.
+    // Ce contretemps était le plus déroutant des deux comportements possibles.
+    //
+    // Rien ne s'y opposait, d'ailleurs. La bascule se déclenche à une hauteur d'œil de la
+    // face abordée, c'est-à-dire là où le corps se tiendra debout dessus : elle ne coûte
+    // aucun déplacement, en l'air comme au sol. Reste la condition qui compte, marcher
+    // franchement vers la face — on s'accroche à un mur, on ne s'y accroche pas en passant.
     const cell = world.cells.get(this.cell)
-    if (cell?.gravity && this.grounded) {
+    if (cell?.gravity) {
       const next = faceChange(cell, this.pos, this.stance, normalize(horizontal), BODY)
       if (next && dot(next, this.stance) < 0.999) {
         this.stance = next
@@ -356,12 +366,20 @@ export class Player {
     // La direction du regard et les deux verticales voyagent avec le corps.
     const carried = [this.forward, this.up, this.stance]
     const body = { ...BODY, up: this.stance }
-    const result = advance(world, this.cell, this.pos, delta, carried, (cell, p) => {
-      const resolved = resolveAgainstCell(cell, p, body)
-      if (resolved.floor) landed = true
-      if (resolved.ceiling) bumped = true
-      return resolved.pos
-    })
+    const result = advance(
+      world,
+      this.cell,
+      this.pos,
+      delta,
+      carried,
+      (cell, p) => {
+        const resolved = resolveAgainstCell(cell, p, body)
+        if (resolved.floor) landed = true
+        if (resolved.ceiling) bumped = true
+        return resolved.pos
+      },
+      body,
+    )
     this.forward = carried[0]!
     this.up = carried[1]!
     this.stance = carried[2]!

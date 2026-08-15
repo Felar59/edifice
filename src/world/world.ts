@@ -178,8 +178,16 @@ function passageTransform(from: Mouth, to: Mouth): Mat4 {
 /**
  * Les deux sens d'une même couture.
  *
- * Chacun porte la lumière de la pièce vers laquelle il mène. C'est ce qui fait qu'on
- * voit la teinte de la pièce voisine se déposer au sol devant sa porte.
+ * Chacun porte la lumière de la pièce vers laquelle il mène. C'est ce qui fait qu'on voit la
+ * teinte de la pièce voisine se déposer au sol devant sa porte.
+ *
+ * **Sauf quand la pièce d'en face est la même.** La radiance d'une bouche sert à faire
+ * entrer chez soi l'éclairage d'ailleurs ; quand cet ailleurs est ici, il est déjà compté
+ * par les lampes de la salle, et l'ajouter une seconde fois pose une flaque claire au pied
+ * de chaque ouverture. C'est ce qui se voyait dans la salle du reliquaire, dont les deux
+ * bouches se répondent : une bande plus lumineuse en travers du seuil, aux deux portes, que
+ * rien dans le dessin n'expliquait. La règle valait déjà pour les raccords de l'escalier,
+ * où elle était écrite à la main ; elle est ici pour toutes.
  */
 function makePassages(
   a: Mouth,
@@ -187,9 +195,21 @@ function makePassages(
   b: Mouth,
   bLighting: CellLighting,
 ): [Passage, Passage] {
+  const dark: Colour = [0, 0, 0]
+  const home = a.cell === b.cell
   return [
-    { from: a, to: b, transform: passageTransform(a, b), radiance: mouthRadiance(b, bLighting) },
-    { from: b, to: a, transform: passageTransform(b, a), radiance: mouthRadiance(a, aLighting) },
+    {
+      from: a,
+      to: b,
+      transform: passageTransform(a, b),
+      radiance: home ? dark : mouthRadiance(b, bLighting),
+    },
+    {
+      from: b,
+      to: a,
+      transform: passageTransform(b, a),
+      radiance: home ? dark : mouthRadiance(a, aLighting),
+    },
   ]
 }
 

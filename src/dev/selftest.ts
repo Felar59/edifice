@@ -1232,7 +1232,34 @@ export function runSelfTest(world: World): Check[] {
     )
   }
 
-  // 16. Aucune cellule ne dépasse le budget de lampes du nuanceur.
+  // 16. Une couture qui relie une cellule à elle-même ne transmet aucune lumière.
+  //
+  //    La radiance d'une bouche sert à faire entrer chez soi l'éclairage d'ailleurs. Quand
+  //    cet ailleurs est ici, il est déjà compté par les lampes de la salle, et l'ajouter une
+  //    seconde fois pose une flaque claire au pied de l'ouverture — une bande plus lumineuse
+  //    en travers du seuil que rien dans le dessin n'explique.
+  //
+  //    La règle était connue et appliquée à la main aux raccords de l'escalier ; la salle du
+  //    reliquaire, dont les deux bouches se répondent, y avait échappé.
+  {
+    const leaking: string[] = []
+    for (const cell of world.cells.values()) {
+      for (const passage of cell.passages) {
+        if (passage.to.cell !== cell.id) continue
+        const [r, g, b] = passage.radiance
+        if (r !== 0 || g !== 0 || b !== 0) leaking.push(passage.from.id)
+      }
+    }
+    add_(
+      'éclairage · une couture vers soi-même ne s’éclaire pas elle-même',
+      leaking.length === 0,
+      leaking.length === 0
+        ? 'aucune fuite'
+        : `${leaking.length} couture(s) qui rayonnent chez elles : ${leaking.join(', ')}`,
+    )
+  }
+
+  // 17. Aucune cellule ne dépasse le budget de lampes du nuanceur.
   //
   //    Le dépassement est **silencieux** : le rendu prend les premières et laisse tomber le
   //    reste. Une salle mal éclairée n'a alors aucune cause visible, et l'on cherche du côté
@@ -1253,7 +1280,7 @@ export function runSelfTest(world: World): Check[] {
     )
   }
 
-  // 17. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
+  // 18. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
   const stray = v3(0, 1.65, 0)
   for (const cell of world.cells.values()) {
     const p = resolveAgainstCell(cell, stray, PROBE_BODY).pos

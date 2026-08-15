@@ -204,6 +204,18 @@ seconde couture. Le pas est donc découpé en sous-pas de quatre centimètres, e
 chaque sous-pas on teste la traversée **avant** la collision — dans l'autre sens,
 le mur qui contient la porte arrêterait net celui qui cherche à la franchir.
 
+**La collision et la couture jugent sur le même critère**, et il a fallu le leur imposer.
+La collision demandait que le corps entier tienne dans l'ouverture — sa largeur moins un
+rayon, ses pieds sur le seuil, sa tête sous le linteau —, la traversée ne regardait que le
+point de référence. Là où les deux se contredisent, c'est-à-dire dans l'embrasure, la
+traversée gagnait : la paroi arrêtait le corps et la couture l'emportait quand même de
+l'autre côté. Sauter vers une porte trop basse, ou frôler un jambage, téléportait au lieu de
+cogner. La traversée applique donc désormais la même mesure — dans le repère de la bouche, et
+non celui du monde, puisqu'au bout du tunnel-vrille le haut du corps n'est plus la verticale.
+
+Un cube lancé, lui, n'a pas de corps : il passe par où son centre passe, ce qui lui va, étant
+plus petit que toutes les ouvertures.
+
 Les vecteurs à transporter (direction du regard, verticale locale, vitesse) sont
 passés à `advance` et transformés à chaque traversée. Après quoi on les **remet à
 l'unité, et rien de plus** : une version antérieure projetait aussi le regard
@@ -347,6 +359,14 @@ Ce défaut avait été trouvé à l'œil, et c'est trop tard : il est de ceux qu
 heures. Le test de torture inspecte donc désormais **toute** la géométrie du monde à la
 recherche de deux surfaces qui partagent un plan et des pixels. Il n'y en a plus aucune.
 
+**Une couture qui relie une salle à elle-même ne l'éclaire pas.** Celle-ci en a deux, et
+elles rayonnaient chez elles : la radiance d'une bouche sert à faire entrer l'éclairage de la
+pièce d'en face, mais quand cette pièce est la même, il est déjà compté par ses propres
+lampes. On voyait donc une bande plus claire en travers de chacun des deux seuils, que rien
+dans le dessin n'expliquait — le genre de défaut qu'on prend pour un problème de texture. La
+règle valait déjà pour les raccords de l'escalier de Penrose, où elle était écrite à la main ;
+elle vaut maintenant pour toute couture, et un invariant la garde.
+
 Enfin, le point de vue du test est pris **de trois quarts, et de loin**. De face et de
 près, le coffre remplit le champ et redevient ce qu'il n'est pas : une porte dans un mur.
 Il faut voir deux de ses faces, ses arêtes contre la salle, et par l'ouverture cette même
@@ -367,6 +387,14 @@ rien à déplacer : il ne fait que tourner un repère. Déclencher plus tôt ou 
 obligerait à déplacer le corps d'autant, et cet à-coup passerait pour un défaut de rendu.
 La bordure claire peinte le long de chaque arête marque cette bande : la règle et son
 signe sont la même chose, ce qui évite d'avoir à l'expliquer.
+
+**On bascule en l'air aussi.** La règle a d'abord voulu qu'on ait les pieds au sol :
+sauter contre une paroi ne faisait donc rien, et la bascule survenait à la retombée, une
+seconde plus tard, sans qu'on puisse la relier au geste. C'était le plus déroutant des deux
+comportements possibles. Rien ne s'y opposait d'ailleurs : le déclenchement se fait à une
+hauteur d'œil de la face, c'est-à-dire là où le corps se tiendra debout dessus, donc sans
+déplacement, en l'air comme au sol. Reste la seule condition qui compte — marcher franchement
+vers la face. On s'accroche à un mur, on ne s'y accroche pas en passant.
 
 **Le visiteur porte deux verticales.** Celle qu'il *subit* — la face sur laquelle il se
 tient, crantée sur un axe — commande la gravité et la collision, et change d'un coup.
