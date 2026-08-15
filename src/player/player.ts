@@ -174,6 +174,15 @@ export function presets(): Preset[] {
       pos: marks.pavedPos,
       forward: marks.pavedForward,
     },
+    // Le palier de la salle basse. Ce point de vue ne teste aucune géométrie : il teste la
+    // **direction artistique**, en montrant les quatre cabinets par leurs portes, côte à
+    // côte, dans la même image.
+    {
+      name: 'Les quatre matières',
+      cell: marks.cryptCell,
+      pos: marks.cryptPos,
+      forward: marks.cryptForward,
+    },
   ]
   return cached
 }

@@ -42,6 +42,8 @@ struct VSOut {
    * en s'éloignant, ce qui trahirait aussitôt la répétition.
    */
   @location(4) local  : vec3<f32>,
+  /** L'identifiant de matière, constant sur toute une surface. */
+  @location(5) matter : f32,
 };
 
 @vertex
@@ -50,6 +52,7 @@ fn vs(
   @location(1) nrm : vec3<f32>,
   @location(2) uv  : vec2<f32>,
   @location(3) col : vec3<f32>,
+  @location(4) mat : f32,
 ) -> VSOut {
   var out : VSOut;
   let w = u.model * vec4<f32>(pos, 1.0);
@@ -59,6 +62,7 @@ fn vs(
   out.normal = (u.model * vec4<f32>(nrm, 0.0)).xyz;
   out.uv = uv;
   out.color = col;
+  out.matter = mat;
   return out;
 }
 
@@ -131,6 +135,178 @@ fn mouthLight(p : vec3<f32>, n : vec3<f32>, m : MouthLight) -> vec3<f32> {
   return m.colour.rgb * lambert * area / (area + 2.0 * PI * d2);
 }
 
+// ---------------------------------------------------------------------------
+// Les matières.
+//
+// Tout est calculé ici, à partir des seules coordonnées de surface — pas une image, pas un
+// octet à charger. C'est ainsi que l'ancien moteur du portfolio faisait ses murs de galerie
+// et ses sols de marbre, et la méthode vaut mieux que jamais : ce qui se calcule ne pèse
+// rien au téléchargement, ne pixellise pas de près, et se décline à volonté.
+//
+// Les coordonnées sont en **mètres**, ce qui permet de raisonner en tailles réelles : une
+// dalle de marbre fait un mètre, une lame de parquet douze centimètres, une planche de
+// coffrage vingt-cinq. Une cimaise tombe donc toujours à quatre-vingt-dix centimètres,
+// quelle que soit la salle où on la pose.
+// ---------------------------------------------------------------------------
+
+/** Bruit de valeur haché : reproductible, sans table, et assez bon pour de la matière. */
+fn hash21(p : vec2<f32>) -> f32 {
+  var h = fract(p * vec2<f32>(0.1031, 0.1030));
+  h += dot(h, h.yx + 33.33);
+  return fract((h.x + h.y) * h.x);
+}
+
+fn noise21(p : vec2<f32>) -> f32 {
+  let i = floor(p);
+  let f = fract(p);
+  let u = f * f * (3.0 - 2.0 * f);
+  let a = hash21(i);
+  let b = hash21(i + vec2<f32>(1.0, 0.0));
+  let c = hash21(i + vec2<f32>(0.0, 1.0));
+  let d = hash21(i + vec2<f32>(1.0, 1.0));
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+fn fbm(p : vec2<f32>) -> f32 {
+  var sum = 0.0;
+  var amp = 0.5;
+  var at = p;
+  for (var i = 0; i < 4; i++) {
+    sum += amp * noise21(at);
+    at *= 2.03;
+    amp *= 0.5;
+  }
+  return sum;
+}
+
+/**
+ * Une rainure, adoucie à la largeur d'un pixel.
+ *
+ * L'adoucissement lui est **donné**, il ne le calcule pas. Les dérivées d'écran — `fwidth`
+ * et sa famille — sont interdites sous une condition qui n'est pas uniforme, et tout ce
+ * fichier est fait de conditions sur la matière. On les prend donc une fois pour toutes en
+ * tête de nuanceur, là où le flot est uniforme, et on les fait descendre.
+ */
+fn groove(x : f32, period : f32, width : f32, blur : f32) -> f32 {
+  let d = abs(fract(x / period - 0.5) - 0.5) * period;
+  return 1.0 - smoothstep(width, width + blur * 1.5, d);
+}
+
+fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> vec3<f32> {
+  let m = i32(matter + 0.5);
+
+  // 1 — Marbre. Des veines lentes et un joint tous les mètres. Le veinage est du bruit
+  // replié sur lui-même : c'est ce qui lui donne ses filets nets au milieu des nuages.
+  if (m == 1) {
+    // Les veines d'une pierre ne brillent pas : elles **assombrissent**. Éclaircies, elles
+    // se lisaient comme des éclairs peints sur le sol.
+    let vein = fbm(uv * 0.55);
+    let filament = abs(sin((uv.x + uv.y * 0.6) * 1.6 + vein * 5.0));
+    let veins = pow(1.0 - clamp(filament, 0.0, 1.0), 9.0);
+    let grain = fbm(uv * 9.0) * 0.05;
+    let joint = max(groove(uv.x, 1.0, 0.012, blur.x), groove(uv.y, 1.0, 0.012, blur.y));
+    return base * (0.97 + grain - veins * 0.22) * (1.0 - 0.22 * joint);
+  }
+
+  // 2 — Parquet. Lames de douze centimètres, décalées, chacune de son ton, avec le fil du
+  // bois dans le sens de la lame.
+  if (m == 2) {
+    let strip = floor(uv.y / 0.12);
+    let shift = fract(strip * 0.37) * 0.8;
+    let plank = floor((uv.x + shift) / 0.85);
+    let tone = 0.82 + hash21(vec2<f32>(plank, strip)) * 0.34;
+    let fibre = 0.94 + fbm(vec2<f32>(uv.x * 3.0, uv.y * 42.0)) * 0.14;
+    let joints = max(groove(uv.y, 0.12, 0.006, blur.y), groove(uv.x + shift, 0.85, 0.008, blur.x));
+    return base * tone * fibre * (1.0 - 0.45 * joints);
+  }
+
+  // 3 — Moquette. Aucune ligne, seulement un grain fin : c'est l'absence de joint qui la
+  // fait reconnaître sans qu'on y pense.
+  if (m == 3) {
+    let fluff = fbm(uv * 60.0) * 0.16 + fbm(uv * 13.0) * 0.1;
+    return base * (0.9 + fluff);
+  }
+
+  // 4 — Mur de galerie : un lambris bas, sa cimaise, le plâtre au-dessus.
+  if (m == 4) {
+    let grain = fbm(uv * 5.0) * 0.05;
+    if (uv.y < 0.82) {
+      let panel = groove(uv.x, 0.9, 0.01, blur.x);
+      return base * (0.44 + grain) * (1.0 - 0.4 * panel);
+    }
+    if (uv.y < 0.94) {
+      return base * (0.68 + grain);
+    }
+    return base * (1.0 + grain);
+  }
+
+  // 5 — Pierre de taille. Des blocs d'un mètre sur cinquante, en assises décalées, chacun
+  // d'un ton légèrement différent.
+  if (m == 5) {
+    let row = floor(uv.y / 0.5);
+    let shift = select(0.0, 0.5, fract(row * 0.5) > 0.25);
+    let block = floor((uv.x + shift) / 1.0);
+    let tone = 0.88 + hash21(vec2<f32>(block, row)) * 0.22;
+    let pit = fbm(uv * 16.0) * 0.09;
+    let joints = max(groove(uv.y, 0.5, 0.018, blur.y), groove(uv.x + shift, 1.0, 0.018, blur.x));
+    return base * (tone + pit) * (1.0 - 0.35 * joints);
+  }
+
+  // 6 — Plafond à caissons. Un cadre saillant, un fond en retrait : le relief est feint par
+  // la lumière, et à cette distance personne ne va vérifier.
+  if (m == 6) {
+    let cell = abs(fract(uv / 1.2) - vec2<f32>(0.5)) * 2.0;
+    let edge = max(cell.x, cell.y);
+    let frame = smoothstep(0.72, 0.78, edge);
+    let deep = smoothstep(0.0, 0.6, 1.0 - edge);
+    return base * (0.72 + frame * 0.34 - deep * 0.18);
+  }
+
+  // 7 — Béton banché. Les planches du coffrage laissent leur trace tous les vingt-cinq
+  // centimètres, et les trous de banche leur grille. C'est la matière de la direction
+  // artistique du musée : brute, monumentale, sans ornement.
+  if (m == 7) {
+    let board = floor(uv.y / 0.25);
+    let tone = 0.93 + hash21(vec2<f32>(board, 3.0)) * 0.1;
+    let mottle = fbm(uv * 2.2) * 0.13 + fbm(uv * 11.0) * 0.05;
+    let seam = groove(uv.y, 0.25, 0.006, blur.y);
+    let hole = fract(uv / 1.5) - vec2<f32>(0.5);
+    let tie = 1.0 - smoothstep(0.012, 0.02, length(hole) * 1.5);
+    return base * (tone + mottle) * (1.0 - 0.18 * seam) * (1.0 - 0.5 * tie);
+  }
+
+  // 8 — Tôle rivetée. Des panneaux, leurs rivets, et le brossé du métal.
+  if (m == 8) {
+    let cell = vec2<f32>(2.0, 1.0);
+    let panel = floor(uv / cell);
+    let tone = 0.82 + hash21(panel) * 0.26;
+    let brushed = 0.94 + fbm(vec2<f32>(uv.x * 70.0, uv.y * 2.0)) * 0.14;
+    let inner = abs(fract(uv / cell) - vec2<f32>(0.5)) * 2.0;
+    let seam = smoothstep(0.9, 0.985, max(inner.x, inner.y));
+    // Les rivets courent le long du joint, comme sur une vraie tôle : c'est leur file qui
+    // dit « métal », pas le grain.
+    let stud = fract(uv / vec2<f32>(0.25, 1.0)) - vec2<f32>(0.5, 0.5);
+    let near = smoothstep(0.78, 0.9, inner.y);
+    let rivet = (1.0 - smoothstep(0.14, 0.24, abs(stud.x))) * near;
+    return base * tone * brushed * (1.0 - 0.45 * seam) * (1.0 + 0.3 * rivet);
+  }
+
+  // 9 — Plâtre. Rien qu'un nuage très lent, à peine perceptible. C'est la matière la plus
+  // difficile à réussir, parce qu'elle n'a aucun motif pour se rattraper : un plâtre plat
+  // est un aplat, un plâtre trop marqué est du crépi.
+  if (m == 9) {
+    let cloud = fbm(uv * 0.6) * 0.06 + fbm(uv * 4.0) * 0.02;
+    return base * (0.97 + cloud);
+  }
+
+  // 0 — Neutre : le quadrillage d'un mètre, qui est un outil de mise au point avant d'être
+  // un décor. Sans repère régulier, impossible de juger à l'œil si l'image vue à travers une
+  // couture est correctement alignée.
+  let g = abs(fract(uv - vec2<f32>(0.5)) - vec2<f32>(0.5)) / blur;
+  let line = 1.0 - min(min(g.x, g.y), 1.0);
+  return base * (1.0 - 0.34 * line);
+}
+
 @fragment
 fn fs(in : VSOut) -> @location(0) vec4<f32> {
   let toEye = u.camPos.xyz - in.world;
@@ -153,15 +329,9 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
     light += mouthLight(in.local, n, u.mouths[i]);
   }
 
-  var rgb = in.color * light;
-
-  // Quadrillage d'un mètre, antialiasé par la dérivée d'écran.
-  // Sans repère régulier, il est impossible de juger à l'œil si l'image vue à
-  // travers une couture est correctement alignée — c'est l'outil de diagnostic
-  // principal de cette étape.
-  let g = abs(fract(in.uv - vec2<f32>(0.5)) - vec2<f32>(0.5)) / fwidth(in.uv);
-  let line = 1.0 - min(min(g.x, g.y), 1.0);
-  rgb = rgb * (1.0 - 0.34 * line);
+  // Les dérivées se prennent ici, en flot uniforme, et voyagent ensuite : WGSL les
+  // interdit sous une condition, et toutes les matières en sont faites.
+  var rgb = surface(in.matter, in.uv, in.color, fwidth(in.uv)) * light;
 
   // **Le brouillard, en exponentielle carrée et plus dense au ras du sol.**
   //

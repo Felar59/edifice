@@ -13,10 +13,22 @@ import type { Spiral } from './types'
 import { onSquare, stepAngle, stepHeight } from './spiral'
 import { add, cross, len, normalize, scale, sub, type Vec3 } from '../math/vec3'
 
-/** position (3) · normale (3) · uv (2) · couleur (3) */
-export const FLOATS_PER_VERTEX = 11
+/** position (3) · normale (3) · uv (2) · couleur (3) · matière (1) */
+export const FLOATS_PER_VERTEX = 12
 
-export type Color = readonly [number, number, number]
+/**
+ * Une couleur, et éventuellement la **matière** qui la porte.
+ *
+ * Le quatrième nombre est un identifiant de motif, calculé par le nuanceur à partir des
+ * coordonnées de surface : marbre, parquet, lambris, pierre, béton, tôle. Il voyage avec la
+ * couleur plutôt qu'à côté, et pour une raison bête : la couleur traverse une trentaine de
+ * fonctions de construction, et lui faire de la place partout aurait coûté un fichier de
+ * modifications sans rien apporter. Une matière **est** un aspect de surface ; qu'elle
+ * voyage avec la teinte de cette surface se défend.
+ *
+ * Absente, elle vaut zéro : la matière neutre, celle du quadrillage de mise au point.
+ */
+export type Color = readonly [number, number, number, number?]
 
 export interface Hole {
   center: Vec3
@@ -72,9 +84,9 @@ function pushSubQuad(
   const v0 = t0 * wUp
   const v1 = t1 * wUp
 
-  const [r, g, b] = spec.color
+  const [r, g, b, matter] = spec.color
   const push = (p: Vec3, u: number, v: number): void => {
-    out.push(p.x, p.y, p.z, n.x, n.y, n.z, u, v, r, g, b)
+    out.push(p.x, p.y, p.z, n.x, n.y, n.z, u, v, r, g, b, matter ?? 0)
   }
 
   push(p00, u0, v0); push(p10, u1, v0); push(p11, u1, v1)
@@ -319,9 +331,9 @@ export function pushQuad(
   uvs: [number, number][],
 ): void {
   const n = normalize(cross(sub(b, a), sub(d, a)))
-  const [r, g, bl] = colour
+  const [r, g, bl, matter] = colour
   const push = (p: Vec3, uv: [number, number]): void => {
-    out.push(p.x, p.y, p.z, n.x, n.y, n.z, uv[0], uv[1], r, g, bl)
+    out.push(p.x, p.y, p.z, n.x, n.y, n.z, uv[0], uv[1], r, g, bl, matter ?? 0)
   }
 
   push(a, uvs[0]!); push(b, uvs[1]!); push(c, uvs[2]!)
@@ -538,7 +550,7 @@ export function buildTwistedTube(
       // Les coordonnées de texture suivent le tube et non le monde : le quadrillage
       // reste régulier alors même que la géométrie se tord.
       station, u + v,
-      colour[0], colour[1], colour[2],
+      colour[0], colour[1], colour[2], colour[3] ?? 0,
     )
   }
 

@@ -43,7 +43,7 @@ import {
 import { mouthRadiance, type CellLighting, type Colour } from './light'
 import { heightAtTurn, onSquare, stepAngle, stepHeight } from './spiral'
 import { frameAt, makeTwist, toWorld } from './twist'
-import type { Cell, Mouth, Passage, Spiral, World } from './types'
+import type { Block, Cell, Mouth, Passage, Spiral, World } from './types'
 
 const DOOR_HALF_W = 0.9
 const DOOR_HALF_H = 1.1
@@ -690,8 +690,249 @@ const STAIR: Spiral = {
 
 
 /** La salle basse, où l'on aboutit en descendant. */
+/**
+ * **Les matières.** Le nuanceur les calcule à partir des seules coordonnées de surface —
+ * pas une image, pas un octet à charger. Le numéro voyage avec la couleur, en quatrième
+ * composante ; voir `Color` dans `geometry.ts`.
+ */
+const MATTER = {
+  /** Le quadrillage d'un mètre : un outil de mise au point avant d'être un décor. */
+  neutre: 0,
+  marbre: 1,
+  parquet: 2,
+  moquette: 3,
+  /** Mur de galerie : lambris bas, cimaise à quatre-vingt-dix, plâtre au-dessus. */
+  lambris: 4,
+  pierre: 5,
+  caissons: 6,
+  /** Béton banché, avec la trace des planches de coffrage et les trous de banche. */
+  beton: 7,
+  tole: 8,
+  platre: 9,
+} as const
+
+/** Une couleur et sa matière. */
+function made(colour: Color, matter: number): Color {
+  return [colour[0], colour[1], colour[2], matter]
+}
+
+/**
+ * **Les quatre cabinets de la salle basse.**
+ *
+ * Le musée s'est construit jusqu'ici sur des tricheries de géométrie, dans des salles
+ * volontairement nues : une salle qui a quelque chose à démontrer ne doit rien avoir d'autre
+ * à montrer. Ces quatre-là ne démontrent rien. Elles sont là pour la **direction
+ * artistique** — pour éprouver les matières, la lumière et l'échelle côte à côte, dans des
+ * pièces qu'on peut comparer d'un coup d'œil parce qu'on passe de l'une à l'autre par le
+ * même palier.
+ *
+ * Quatre partis pris, franchement distincts, et aucun compromis entre eux :
+ *
+ * - **la galerie**, celle de l'ancien portfolio : marbre, lambris, plafond à caissons,
+ *   colonnade. Chaude, cossue, rassurante ;
+ * - **le silo**, la direction artistique annoncée du musée : béton banché, échelle
+ *   écrasante, une seule lumière dure et un bloc monumental posé de travers ;
+ * - **l'atelier** : tôle rivetée, dalle de pierre, une poutre en travers. Utilitaire ;
+ * - **la chambre claire** : parquet, plâtre, presque rien. Le repos après les trois autres.
+ *
+ * Elles se rejoignent toutes par la salle basse, qui est elle-même une crypte de pierre :
+ * on descend l'escalier, et l'on tombe dans un endroit qui a enfin une matière.
+ */
+interface Cabinet {
+  id: string
+  box: Box
+  /** La paroi de la salle basse où sa porte est percée, et son abscisse. */
+  wall: Wall
+  lateral: number
+  tint: Colour
+  palette: RoomPalette
+  /** La structure propre de la salle : colonnes, blocs, poutres. */
+  build: (out: number[], box: Box) => Block[]
+  lighting: (box: Box, mouths: Mouth[]) => CellLighting
+}
+
+const CABINET_SIDE = 16
+const CABINET_HEIGHT = 7
+
+function cabinetBox(x: number): Box {
+  return {
+    min: { x, y: 0, z: 1000 },
+    max: { x: x + CABINET_SIDE, y: CABINET_HEIGHT, z: 1000 + CABINET_SIDE },
+  }
+}
+
+/** Un pilier plein, du sol au plafond, avec sa base et son chapiteau. */
+function column(out: number[], x: number, z: number, box: Box, shaft: Color, cap: Color): Block {
+  const half = 0.55
+  const solid = {
+    min: { x: x - half, y: box.min.y, z: z - half },
+    max: { x: x + half, y: box.max.y, z: z + half },
+  }
+  pushBlock(out, solid.min, solid.max, { side: shaft })
+  // Base et chapiteau : deux dés à peine plus larges. C'est peu, et c'est ce qui distingue
+  // une colonne d'un poteau.
+  for (const y of [box.min.y, box.max.y - 0.3]) {
+    pushBlock(
+      out,
+      { x: x - half - 0.12, y, z: z - half - 0.12 },
+      { x: x + half + 0.12, y: y + 0.3, z: z + half + 0.12 },
+      { side: cap, top: cap },
+    )
+  }
+  return solid
+}
+
+const CABINETS: Cabinet[] = [
+  {
+    id: 'galerie',
+    box: cabinetBox(1000),
+    wall: 'south',
+    lateral: 915,
+    tint: [1, 0.93, 0.8],
+    palette: {
+      floor: made([0.72, 0.7, 0.66], MATTER.marbre),
+      ceiling: made([0.6, 0.58, 0.54], MATTER.caissons),
+      wall: made([0.68, 0.64, 0.56], MATTER.lambris),
+    },
+    build: (out, box) => {
+      const shaft = made([0.6, 0.57, 0.51], MATTER.marbre)
+      const cap = made([0.66, 0.63, 0.57], MATTER.platre)
+      const blocks: Block[] = []
+      for (const x of [box.min.x + 4, box.max.x - 4]) {
+        for (const z of [box.min.z + 4, box.max.z - 4]) {
+          blocks.push(column(out, x, z, box, shaft, cap))
+        }
+      }
+      // Deux socles vides au centre : un musée se reconnaît à ce qu'il réserve une place
+      // à ce qu'il n'expose pas encore.
+      const centre = { x: (box.min.x + box.max.x) / 2, z: (box.min.z + box.max.z) / 2 }
+      for (const dz of [-2.5, 2.5]) {
+        const plinth = {
+          min: { x: centre.x - 0.6, y: box.min.y, z: centre.z + dz - 0.6 },
+          max: { x: centre.x + 0.6, y: box.min.y + 0.9, z: centre.z + dz + 0.6 },
+        }
+        pushBlock(out, plinth.min, plinth.max, {
+          side: made([0.5, 0.47, 0.42], MATTER.marbre),
+          top: made([0.62, 0.6, 0.55], MATTER.marbre),
+        })
+        blocks.push(plinth)
+      }
+      return blocks
+    },
+    lighting: (box, mouths) => lightingFor(box, [1, 0.93, 0.8], mouths),
+  },
+  {
+    id: 'silo',
+    box: cabinetBox(1100),
+    wall: 'east',
+    lateral: 915,
+    tint: [0.78, 0.82, 0.9],
+    palette: {
+      floor: made([0.4, 0.41, 0.44], MATTER.beton),
+      ceiling: made([0.33, 0.34, 0.37], MATTER.beton),
+      wall: made([0.46, 0.47, 0.5], MATTER.beton),
+    },
+    build: (out, box) => {
+      // Un bloc monumental, posé de travers et sans raison. C'est le parti pris : du béton,
+      // une échelle qui écrase, et rien qui explique.
+      const monolith = {
+        min: { x: box.min.x + 5, y: box.min.y, z: box.min.z + 5.5 },
+        max: { x: box.min.x + 9.5, y: box.min.y + 5.5, z: box.min.z + 8 },
+      }
+      pushBlock(out, monolith.min, monolith.max, {
+        side: made([0.36, 0.37, 0.4], MATTER.beton),
+        top: made([0.42, 0.43, 0.46], MATTER.beton),
+      })
+      return [monolith]
+    },
+    lighting: (box) => ({
+      // Une seule source, haute et froide, et beaucoup d'ombre. L'ambiance est presque
+      // nulle : dans une salle de béton, ce qui n'est pas éclairé doit être noir.
+      ambient: [0.02, 0.022, 0.028],
+      lights: [
+        {
+          position: { x: box.min.x + 4, y: box.max.y - 0.4, z: box.max.z - 4 },
+          colour: [0.82, 0.86, 1],
+          intensity: 16,
+          radius: 22,
+        },
+      ],
+    }),
+  },
+  {
+    id: 'atelier',
+    box: cabinetBox(1200),
+    wall: 'west',
+    lateral: 915,
+    tint: [0.8, 0.95, 0.85],
+    palette: {
+      floor: made([0.42, 0.44, 0.42], MATTER.pierre),
+      ceiling: made([0.3, 0.33, 0.32], MATTER.tole),
+      wall: made([0.44, 0.48, 0.46], MATTER.tole),
+    },
+    build: (out, box) => {
+      // Une poutre en travers, à hauteur d'homme et demi : elle donne l'échelle de la salle
+      // mieux que n'importe quel objet posé au sol.
+      const beam = {
+        min: { x: box.min.x + 1, y: box.min.y + 3.2, z: (box.min.z + box.max.z) / 2 - 0.35 },
+        max: { x: box.max.x - 1, y: box.min.y + 3.9, z: (box.min.z + box.max.z) / 2 + 0.35 },
+      }
+      pushBlock(out, beam.min, beam.max, {
+        side: made([0.38, 0.4, 0.39], MATTER.tole),
+        top: made([0.42, 0.45, 0.43], MATTER.tole),
+      })
+      // Et deux caisses, parce qu'un atelier sans rien qui traîne n'est pas un atelier.
+      const blocks: Block[] = [beam]
+      for (const [dx, dz, h] of [
+        [3, 3, 1.2],
+        [4.6, 3.4, 0.8],
+      ]) {
+        const crate = {
+          min: { x: box.min.x + dx, y: box.min.y, z: box.max.z - dz - h },
+          max: { x: box.min.x + dx + h, y: box.min.y + h, z: box.max.z - dz },
+        }
+        pushBlock(out, crate.min, crate.max, {
+          side: made([0.45, 0.4, 0.3], MATTER.tole),
+          top: made([0.5, 0.45, 0.34], MATTER.tole),
+        })
+        blocks.push(crate)
+      }
+      return blocks
+    },
+    lighting: (box, mouths) => lightingFor(box, [0.8, 0.95, 0.85], mouths),
+  },
+  {
+    id: 'chambre',
+    box: cabinetBox(1300),
+    wall: 'north',
+    lateral: 922.5,
+    tint: [1, 0.97, 0.94],
+    palette: {
+      floor: made([0.5, 0.38, 0.26], MATTER.parquet),
+      ceiling: made([0.86, 0.85, 0.83], MATTER.platre),
+      wall: made([0.88, 0.87, 0.85], MATTER.platre),
+    },
+    build: (out, box) => {
+      // Presque rien : un banc bas, et c'est tout. Après trois salles qui insistent, une
+      // qui se tait.
+      const bench = {
+        min: { x: (box.min.x + box.max.x) / 2 - 1.8, y: box.min.y, z: (box.min.z + box.max.z) / 2 - 0.35 },
+        max: { x: (box.min.x + box.max.x) / 2 + 1.8, y: box.min.y + 0.45, z: (box.min.z + box.max.z) / 2 + 0.35 },
+      }
+      pushBlock(out, bench.min, bench.max, {
+        side: made([0.46, 0.34, 0.22], MATTER.parquet),
+        top: made([0.54, 0.4, 0.26], MATTER.parquet),
+      })
+      return [bench]
+    },
+    lighting: (box, mouths) => lightingFor(box, [1, 0.97, 0.94], mouths),
+  },
+]
+
 const LOWER = 'salle-basse'
-const LOWER_BOX: Box = { min: { x: 900, y: 0, z: 900 }, max: { x: 924, y: 10, z: 924 } }
+// Trente mètres de côté : la salle basse n'est plus un cul-de-sac mais un palier, et il
+// lui faut quatre parois où percer quatre portes.
+const LOWER_BOX: Box = { min: { x: 900, y: 0, z: 900 }, max: { x: 930, y: 8, z: 930 } }
 const LOWER_TINT: Colour = [1, 0.72, 0.5]
 
 /**
@@ -1127,6 +1368,9 @@ export interface Landmarks {
   pavedCell: string
   pavedPos: Vec3
   pavedForward: Vec3
+  cryptCell: string
+  cryptPos: Vec3
+  cryptForward: Vec3
   /** La liste des ailes et de ce qu'elles accueilleront, pour l'affichage. */
   wings: { id: string; purpose: string }[]
 }
@@ -1278,7 +1522,7 @@ export function buildWorld(): World {
   // pièce d'en face ; quand la pièce d'en face est la même, cet éclairage est déjà compté
   // par ses propres lampes, et l'ajouter poserait une bande claire en travers de la volée.
   const penroseWing = wingData.find((entry) => entry.wing.id === PENROSE_WING)!
-  const lowerMouth = mouth(LOWER, 'salle-basse.porte', LOWER_BOX, 'north', (LOWER_BOX.min.x + LOWER_BOX.max.x) / 2)
+  const lowerMouth = mouth(LOWER, 'salle-basse.porte', LOWER_BOX, 'north', 907.5)
   const lowerLighting = lightingFor(LOWER_BOX, LOWER_TINT, [lowerMouth])
 
   const stairSeams: Passage[] = stair.seams.map((from, i) => ({
@@ -1498,19 +1742,66 @@ export function buildWorld(): World {
     })
   }
 
-  // --- La salle basse, au bout de la descente --------------------------------
+  // --- La salle basse et ses quatre cabinets ---------------------------------
+  //
+  // La salle basse cesse d'être un cul-de-sac : c'est un palier, et l'on y choisit une
+  // matière. Elle est elle-même de pierre — une crypte au pied de l'escalier — et ses quatre
+  // portes donnent sur quatre partis pris qui ne se ressemblent en rien.
   {
+    const holes: RoomHoles = { north: [holeOf(lowerMouth)] }
     const extra: number[] = []
-    pushReveal(extra, lowerMouth, tinted(LOWER_TINT, 0.55))
+    pushReveal(extra, lowerMouth, made(tinted(LOWER_TINT, 0.55), MATTER.pierre))
+
+    for (const cabinet of CABINETS) {
+      const here = mouth(LOWER, `salle-basse.vers-${cabinet.id}`, LOWER_BOX, cabinet.wall, cabinet.lateral)
+      // La porte du cabinet est au milieu de sa paroi nord : peu importe laquelle, une
+      // couture ne demande rien de plus qu'un rectangle de chaque côté.
+      const there = mouth(
+        cabinet.id,
+        `${cabinet.id}.porte`,
+        cabinet.box,
+        'north',
+        (cabinet.box.min.x + cabinet.box.max.x) / 2,
+      )
+
+      const inner: number[] = []
+      const blocks = cabinet.build(inner, cabinet.box)
+      const lighting = cabinet.lighting(cabinet.box, [there])
+      const [fromLower, fromCabinet] = makePassages(here, lowerLighting, there, lighting)
+
+      pushReveal(extra, here, made(tinted(LOWER_TINT, 0.55), MATTER.pierre))
+      pushReveal(inner, there, cabinet.palette.wall)
+      ;(holes[cabinet.wall] ??= []).push(holeOf(here))
+      lowerPassages.push(fromLower)
+
+      cells.push({
+        id: cabinet.id,
+        fogColour: haze(cabinet.tint),
+        min: cabinet.box.min,
+        max: cabinet.box.max,
+        verts: concat(
+          buildRoom(cabinet.box.min, cabinet.box.max, cabinet.palette, {
+            north: [holeOf(there)],
+          }),
+          inner,
+        ),
+        passages: [fromCabinet],
+        lighting,
+        ...(blocks.length ? { blocks } : {}),
+      })
+    }
+
     cells.push({
       id: LOWER,
       fogColour: haze(LOWER_TINT),
       min: LOWER_BOX.min,
       max: LOWER_BOX.max,
       verts: concat(
-        buildRoom(LOWER_BOX.min, LOWER_BOX.max, paletteFor(LOWER_TINT), {
-          north: [holeOf(lowerMouth)],
-        }),
+        buildRoom(LOWER_BOX.min, LOWER_BOX.max, {
+          floor: made([0.44, 0.42, 0.4], MATTER.pierre),
+          ceiling: made([0.36, 0.35, 0.34], MATTER.beton),
+          wall: made([0.5, 0.47, 0.44], MATTER.pierre),
+        }, holes),
         extra,
       ),
       passages: lowerPassages,
@@ -1595,6 +1886,12 @@ export function buildWorld(): World {
     // Le long d'un côté de la salle pavée, l'édicule à main droite : le regard file entre
     // deux rangées de copies jusqu'au brouillard, et c'est la seule image qui dise à la
     // fois « une salle » et « sans fin ».
+    // Le palier de la salle basse, ses quatre portes dans le champ : c'est l'image qui
+    // dit tout de la direction artistique, puisqu'on y voit les quatre partis pris côte à
+    // côte, chacun par son ouverture.
+    cryptCell: LOWER,
+    cryptPos: { x: 915, y: LOWER_BOX.min.y + 1.65, z: LOWER_BOX.max.z - 4 },
+    cryptForward: { x: 0, y: -0.05, z: -1 },
     pavedCell: PAVE_WING,
     pavedPos: { x: PAVE_BOX.min.x + 1.2, y: PAVE_BOX.min.y + 1.65, z: PAVE_BOX.max.z - 1 },
     pavedForward: { x: 0, y: 0, z: -1 },

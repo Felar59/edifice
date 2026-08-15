@@ -52,6 +52,9 @@ const VIEWS = [
   // La salle pavée. Ce qui doit se voir : des copies parfaitement alignées, et une
   // répétition qui s'éteint dans le brouillard plutôt que de s'arrêter sur un bord.
   { file: '18-sans-bord', label: 'La salle sans bord', preset: 16 },
+  // Le palier de la salle basse, ses quatre cabinets visibles par leurs portes. La seule
+  // capture du lot qui juge la matière et la lumière plutôt que la géométrie.
+  { file: '19-quatre-matieres', label: 'Les quatre matières', preset: 17 },
 ]
 
 /**

@@ -16,7 +16,9 @@ de deux mètres cinquante qui contient la salle de douze où il est posé ; la *
 face**, un cube dont les six parois sont des sols ; l'**escalier de Penrose**, deux étages
 qu'on monte indéfiniment sans jamais passer de l'un à l'autre — il faut descendre pour cela ;
 et l'**espace pavé**, une salle sans bord où l'on voit s'étendre le damier de ses propres
-copies. Deux ailes attendent encore leur mécanique.
+copies. Deux ailes attendent encore leur mécanique. Sous l'escalier, une crypte de pierre
+ouvre sur **quatre cabinets** qui ne démontrent rien : ils sont là pour la matière et la
+lumière.
 
 ## Démarrer
 
@@ -716,6 +718,59 @@ pas dire « qui touche quelque chose » : un cube ralenti qui frôle une paroi v
 pas posé, et le confondre avec un cube posé le fige **en l'air**, contre le mur. Le contact
 ne compte que si sa normale s'oppose à la chute. Le défaut s'est vu du premier coup, dans le
 tunnel-vrille, où trois cubes flottaient à mi-hauteur.
+
+### Les matières
+
+Jusqu'ici le musée était fait d'aplats et d'un quadrillage d'un mètre — un outil de mise au
+point, pas un décor. Il a maintenant des **matières** : marbre, parquet, moquette, lambris de
+galerie, pierre de taille, plafond à caissons, béton banché, tôle rivetée, plâtre.
+
+Toutes sont **calculées dans le nuanceur**, à partir des seules coordonnées de surface. Pas
+une image, pas un octet à charger. C'est ainsi que l'ancien moteur du portfolio faisait ses
+murs de galerie et ses sols de marbre, et la méthode vaut mieux que jamais : ce qui se calcule
+ne pèse rien au téléchargement, ne pixellise pas de près, et se décline à volonté.
+
+Les coordonnées sont **en mètres**, ce qui permet de raisonner en tailles réelles : une dalle
+de marbre fait un mètre, une lame de parquet douze centimètres, une planche de coffrage
+vingt-cinq. Une cimaise tombe donc toujours à quatre-vingt-dix centimètres du sol, quelle que
+soit la salle où on la pose, sans réglage.
+
+Le numéro de matière voyage **avec la couleur**, en quatrième composante. Ce n'est pas la
+solution la plus pure — mais la couleur traverse une trentaine de fonctions de construction,
+et lui faire de la place partout aurait coûté un fichier de modifications sans rien apporter.
+Une matière *est* un aspect de surface ; qu'elle voyage avec la teinte de cette surface se
+défend.
+
+**Les dérivées d'écran se prennent en tête de nuanceur, jamais dans une matière.** Une
+rainure s'adoucit à la largeur d'un pixel, ce qui demande `fwidth` — et WGSL interdit les
+dérivées sous une condition qui n'est pas uniforme, ce que sont toutes les conditions de ce
+fichier. Le nuanceur refusait de compiler et l'écran restait **entièrement noir**, sans autre
+message que dans la console. On les calcule donc une fois, là où le flot est uniforme, et on
+les fait descendre en paramètre.
+
+### Les quatre cabinets
+
+Le musée s'est construit sur des tricheries de géométrie, dans des salles volontairement nues :
+une salle qui a quelque chose à démontrer ne doit rien avoir d'autre à montrer. Au pied de
+l'escalier de Penrose, la salle basse est devenue un **palier** de trente mètres, en pierre,
+et ses quatre portes donnent sur quatre salles qui ne démontrent rien.
+
+Elles sont là pour la direction artistique — pour éprouver les matières, la lumière et
+l'échelle côte à côte, dans des pièces qu'on compare d'un coup d'œil parce qu'on passe de
+l'une à l'autre par le même palier. Depuis le milieu de la crypte, les quatre s'aperçoivent
+en même temps, chacune par son ouverture : c'est le point de vue n° 17 du test de torture, et
+le seul du lot qui juge la matière plutôt que la géométrie.
+
+- **La galerie** — celle de l'ancien portfolio. Marbre veiné, lambris et cimaise, plafond à
+  caissons, quatre colonnes et deux socles vides. Un musée se reconnaît à ce qu'il réserve
+  une place à ce qu'il n'expose pas encore.
+- **Le silo** — la direction artistique annoncée du musée. Béton banché avec la trace des
+  planches et les trous de banche, une seule lumière dure et froide, presque pas d'ambiance,
+  et un bloc monumental posé de travers sans raison.
+- **L'atelier** — tôle rivetée, dalle de pierre, une poutre en travers à hauteur d'homme et
+  demi. Elle donne l'échelle de la salle mieux que n'importe quel objet posé au sol.
+- **La chambre claire** — parquet, plâtre, un banc bas, rien d'autre. Après trois salles qui
+  insistent, une qui se tait.
 
 ### La verticalité
 

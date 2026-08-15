@@ -943,6 +943,7 @@ export class Renderer {
                 { shaderLocation: 1, offset: 12, format: 'float32x3' },
                 { shaderLocation: 2, offset: 24, format: 'float32x2' },
                 { shaderLocation: 3, offset: 32, format: 'float32x3' },
+                { shaderLocation: 4, offset: 44, format: 'float32' },
               ],
             },
           ],
