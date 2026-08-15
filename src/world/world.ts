@@ -1039,7 +1039,9 @@ function pushVignette(
   const cell = 0.075
   pushDigits(
     out,
-    { x: plate.x + 0.42 - (label.length * 4 - 1) * cell * 0.5, y: plate.y + 0.14, z: plate.z + 0.145 },
+    // Deux centimètres devant la plaque, et non cinq millimètres : plus deux surfaces sont
+    // proches, plus tôt elles se disputent les pixels quand on s'éloigne.
+    { x: plate.x + 0.42 - (label.length * 4 - 1) * cell * 0.5, y: plate.y + 0.14, z: plate.z + 0.16 },
     { x: cell, y: 0, z: 0 },
     { x: 0, y: cell, z: 0 },
     label,

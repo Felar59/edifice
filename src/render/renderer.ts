@@ -107,7 +107,24 @@ function clearFor(cell: Cell): GPUColor {
  * n'a plus aucune surface coplanaire : l'encadrement peint des ouvertures, seul
  * candidat au conflit, a été remplacé par le relief des embrasures.
  */
-const NEAR = 0.004
+/**
+ * Distance du plan proche.
+ *
+ * **C'est le réglage qui décide de toute la précision de profondeur**, et il était bien trop
+ * petit. Un tampon de profondeur dépense sa précision près de l'œil : à quatre millimètres,
+ * le pas de profondeur atteint trois millimètres et demi à quinze mètres — plus que
+ * l'épaisseur qui sépare un chiffre de sa plaque. Deux surfaces si voisines se mettent alors
+ * à se disputer les pixels **à partir d'une certaine distance et sous certains angles**, ce
+ * qui est exactement le défaut qu'on observait : un tableau, un numéro, un sol qui clignotent
+ * de loin et se tiennent tranquilles de près.
+ *
+ * Cinq centimètres divisent ce pas par douze. Le musée le supporte : la collision tient le
+ * corps à trente-cinq centimètres des parois, et rien ne s'approche plus près de l'œil qu'un
+ * jambage d'embrasure — dont on passe toujours à quarante centimètres au moins. Le seul cas
+ * limite, le nez collé à une couture, est traité autrement depuis longtemps : le quad du
+ * portail borne sa profondeur à zéro plutôt que de compter sur le plan proche.
+ */
+const NEAR = 0.05
 /**
  * Épaisseur devant l'œil en deçà de laquelle un sommet compte comme derrière.
  *

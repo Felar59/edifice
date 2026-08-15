@@ -60,8 +60,13 @@ fn vs(@builtin(vertex_index) i : u32) -> @builtin(position) vec4<f32> {
 
 @fragment
 fn fs(@builtin(position) at : vec4<f32>) -> @location(0) vec4<f32> {
-  let size = vec2<f32>(textureDimensions(src, 0));
-  return textureSampleLevel(src, samp, (floor(at.xy) + 0.5) / (size * 0.5), 0.0);
+  // La taille de la destination se déduit de la source par une **division entière**, comme le
+  // fait WebGPU. La moitié exacte s'en écarte dès qu'une dimension est impaire — 9 devient 4
+  // et non 4,5 — et le niveau suivant se retrouve décalé, ce qui saute à l'œil quand la
+  // distance fait basculer d'un niveau à l'autre.
+  let src_size = vec2<f32>(textureDimensions(src, 0));
+  let dst_size = max(floor(src_size * 0.5), vec2<f32>(1.0));
+  return textureSampleLevel(src, samp, (floor(at.xy) + 0.5) / dst_size, 0.0);
 }
 `
 

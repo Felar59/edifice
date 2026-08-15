@@ -124,8 +124,21 @@ Une embrasure de vingt-cinq centimètres, avec la couture posée en son fond,
 garantit qu'aucune surface n'entre dans le plan proche pendant la traversée. Le
 relief des jambages remplace du même coup l'encadrement peint qui décorait les
 ouvertures, ce qui supprime la seule géométrie coplanaire de la scène — et permet
-donc de rapprocher le plan proche à quatre millimètres sans craindre le conflit de
-profondeur.
+donc de rapprocher le plan proche sans craindre le conflit de profondeur entre deux
+surfaces confondues.
+
+**Mais un plan proche trop près coûte tout le reste.** Il a été à quatre millimètres, et
+c'était une erreur qu'aucun test n'attrapait : un tampon de profondeur dépense sa précision
+près de l'œil, si bien qu'à cette distance le pas atteint trois millimètres et demi **à quinze
+mètres** — plus que l'épaisseur qui sépare un chiffre gravé de sa plaque. Deux surfaces si
+voisines se mettent alors à se disputer les pixels à partir d'une certaine distance et sous
+certains angles seulement : un tableau, un numéro, un sol qui clignotent de loin et se tiennent
+tranquilles de près. C'est le genre de défaut qu'on cherche longtemps du côté des textures.
+
+Cinq centimètres divisent ce pas par douze, et le musée le supporte : la collision tient le
+corps à trente-cinq centimètres des parois, et le seul cas limite — le nez collé à une
+couture — était déjà traité autrement, le quad du portail bornant sa profondeur à zéro plutôt
+que de compter sur le plan proche.
 
 **Deux pièges à l'instant du franchissement.** Ils se cumulent, et donnaient tous
 deux une image entièrement vide au pire moment.

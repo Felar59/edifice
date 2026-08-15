@@ -533,16 +533,18 @@ export function pushFrame(
   bar(add(corner, scale(up, thick)), scale(up, height - thick * 2), scale(right, thick))
   bar(add(add(corner, scale(right, width - thick)), scale(up, thick)), scale(up, height - thick * 2), scale(right, thick))
 
-  // La toile, en retrait de deux centimètres : c'est cette ombre-là qui fait le cadre.
+  // La toile, en retrait de trois centimètres : c'est cette ombre-là qui fait le cadre, et
+  // c'est aussi ce qui la tient à distance du mur — deux surfaces trop voisines finissent par
+  // se disputer les pixels dès qu'on s'éloigne.
   const inner = add(add(centre, scale(right, -half.x + thick)), scale(up, -half.y + thick))
   const w = width - thick * 2
   const h = height - thick * 2
   pushQuad(
     out,
-    add(inner, scale(normal, 0.02)),
-    add(add(inner, scale(right, w)), scale(normal, 0.02)),
-    add(add(add(inner, scale(right, w)), scale(up, h)), scale(normal, 0.02)),
-    add(add(inner, scale(up, h)), scale(normal, 0.02)),
+    add(inner, scale(normal, 0.03)),
+    add(add(inner, scale(right, w)), scale(normal, 0.03)),
+    add(add(add(inner, scale(right, w)), scale(up, h)), scale(normal, 0.03)),
+    add(add(inner, scale(up, h)), scale(normal, 0.03)),
     canvas,
     // **La toile est mesurée de zéro à un**, et non en mètres comme le reste du musée : une
     // image se plaque sur ce qu'elle couvre, quelle que soit sa taille. C'est la seule
