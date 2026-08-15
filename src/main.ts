@@ -185,6 +185,9 @@ async function main(): Promise<void> {
       case 'KeyP':
         settings.toggle()
         break
+      case 'KeyT':
+        renderer.flat = !renderer.flat
+        break
       case 'BracketLeft':
         renderer.maxDepth = Math.max(0, renderer.maxDepth - 1)
         break

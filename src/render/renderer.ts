@@ -170,6 +170,14 @@ export class Renderer {
   maxPasses = 24
   fovY = (72 * Math.PI) / 180
   /**
+   * Coupe les matières : tout devient aplat, sans motif ni image.
+   *
+   * C'est un outil de diagnostic, et le seul moyen honnête de trancher une question qu'on ne
+   * peut pas trancher à l'œil — un scintillement qui survit à l'aplat vient de la géométrie
+   * ou de la profondeur, jamais de la texture.
+   */
+  flat = false
+  /**
    * Facteur appliqué à la lumière que les ouvertures transmettent.
    *
    * Existe pour être **mesurable**. Rien ne casse visiblement quand la transmission
@@ -807,7 +815,7 @@ export class Renderer {
 
     const lightCount = Math.min(lights.length, MAX_LIGHTS)
     const mouthCount = Math.min(cell.passages.length, MAX_MOUTH_LIGHTS)
-    s[44] = lightCount; s[45] = mouthCount; s[46] = 0; s[47] = 0
+    s[44] = lightCount; s[45] = mouthCount; s[46] = this.flat ? 1 : 0; s[47] = 0
     s[48] = shift.x; s[49] = shift.y; s[50] = shift.z; s[51] = 0
     s[52] = cell.min.y; s[53] = cell.max.y; s[54] = 0; s[55] = 0
 

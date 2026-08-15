@@ -50,6 +50,14 @@ const NUDGE = 1e-3
  * Un millimètre suffit à le régler et ne coûte rien : il ne rend franchissable que ce qui
  * l'était déjà à un millimètre près.
  */
+/**
+ * Hauteur qu'un corps enjambe sans y penser.
+ *
+ * Quarante centimètres : une marche d'escalier généreuse, une estrade, un socle. Au-delà, un
+ * bloc est un obstacle et se contourne.
+ */
+const STEP_UP = 0.4
+
 const JAMB = 1e-3
 
 /**
@@ -490,6 +498,21 @@ function resolveAgainstBlock(block: Block, p: Vec3, body: Body): { pos: Vec3; fl
     // dans la matière. Un défaut visible vaut mieux qu'un défaut silencieux.
     const depth = dot(door.normal, sub(p, door.center))
     if (depth >= -0.6) return { pos: p, floor: false }
+  }
+
+  // **Une marche basse se monte.**
+  //
+  // Sans cette règle, tout ce qui traîne au sol est un mur : une estrade de six centimètres
+  // arrête net, un socle de banc aussi, et le corps qui longe un tel bord se fait repousser
+  // d'un côté puis de l'autre à chaque image — la caméra tremble, et l'on croit que le sol
+  // bouge. C'est le genre de défaut qu'on attribue au rendu alors qu'il est dans la
+  // collision, parce qu'il se **voit** dans l'image.
+  //
+  // Quarante centimètres, soit la hauteur d'une marche confortable : au-delà, un bloc reste
+  // un obstacle et se contourne.
+  const rise = block.max.y - feet
+  if (rise > 0 && rise <= STEP_UP) {
+    return { pos: { ...p, y: block.max.y + body.eyeHeight }, floor: true }
   }
 
   // Les quatre issues latérales, plus le dessus. La plus courte gagne.

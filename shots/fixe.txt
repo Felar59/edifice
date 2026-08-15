@@ -1,0 +1,3 @@
+planche            0.000 % de pixels changent d'une image à l'autre, caméra immobile
+crypte, allée      0.000 % de pixels changent d'une image à l'autre, caméra immobile
+rotonde            0.000 % de pixels changent d'une image à l'autre, caméra immobile

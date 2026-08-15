@@ -37,7 +37,7 @@ export class Hud {
       'ZQSD / WASD  se déplacer      Maj  courir      Espace  sauter',
       'F  lancer un cube             R  tout retirer',
       '[  ]  profondeur de récursion H  masquer les panneaux',
-      'P  paramètres',
+      'P  paramètres                 T  couper les matières (diagnostic)',
       `1 – ${presets().length}  points de vue du test`,
     ].join('\n')
 

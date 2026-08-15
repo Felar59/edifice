@@ -18,7 +18,7 @@ struct Uniforms {
   camPos   : vec4<f32>,
   fog      : vec4<f32>,   // rgb = couleur du fond, a = densité
   ambient  : vec4<f32>,   // plancher de luminosité de la cellule
-  params   : vec4<f32>,   // x : nombre de lampes ; y : nombre d'ouvertures
+  params   : vec4<f32>,   // x : lampes ; y : ouvertures ; z : matières coupées
   lattice  : vec4<f32>,   // xyz : décalage de la copie, pour que l'éclairage se répète
   fogBand  : vec4<f32>,   // x : sol de la cellule ; y : plafond, pour la brume basse
   lights   : array<Light, 16>,
@@ -566,8 +566,16 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
   let dy = dpdy(in.uv);
   let matter = i32(in.matter + 0.5);
 
-  var albedo = surface(in.matter, in.uv, in.color, abs(dx) + abs(dy));
-  if (matter >= 100) {
+  // **Le témoin des matières.** Mis à un, tout devient aplat : ni motif, ni image. C'est
+  // l'outil qui manquait pour trancher entre un défaut de matière et un défaut de géométrie —
+  // si un scintillement survit à l'aplat, il ne vient pas de la texture.
+  let flat = u.params.z > 0.5;
+  var albedo = select(
+    surface(in.matter, in.uv, in.color, abs(dx) + abs(dy)),
+    in.color,
+    flat,
+  );
+  if (matter >= 100 && !flat) {
     albedo = textureSampleGrad(pictures, pictureSampler, in.uv, matter - 100, dx, dy).rgb
       * in.color;
   }
