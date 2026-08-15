@@ -339,14 +339,20 @@ export class Player {
           this.vertical = 0
         }
       }
-    } else if (this.stance.y < 0.999 && this.grounded) {
-      // **Hors de la salle aux six sols, une verticale de travers est un état de vol.**
+    } else if (!cell?.carries && this.stance.y < 0.999 && this.grounded) {
+      // **Dans une pièce ordinaire, une verticale de travers est un état de vol.**
       //
       // On l'emporte en tombant par la porte du sol : elle traverse la rotonde, entre dans
       // l'aile d'en face, et c'est elle qui donne à la chute sa trajectoire. Mais une pièce
       // ordinaire n'a qu'un sol, et rien n'y permettrait de se remettre d'aplomb. Le premier
       // contact rend donc la verticale au monde ; l'image, elle, prend son temps comme
       // ailleurs, et l'on voit la salle se remettre droite autour de soi.
+      //
+      // **Sauf là où la salle est faite pour ça.** Une salle qui `carries` garde au visiteur
+      // la gravité qu'il apporte : il atterrit sur la paroi qu'il visait et y marche. C'est
+      // à cette condition qu'une trémie percée au plafond contre le mur du fond a un sens —
+      // elle est à hauteur de marche pour qui se tient sur ce mur, et inatteignable pour qui
+      // se tient debout. On ne va pas dans l'autre salle par hasard.
       this.stance = v3(0, 1, 0)
       this.vertical = 0
     }

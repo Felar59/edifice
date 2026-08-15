@@ -1216,7 +1216,82 @@ const LOWER_TINT: Colour = [1, 0.72, 0.5]
 const GRAVITY_WING = 'gravite'
 /** Largeur de la bande d'accroche. Égale à la hauteur d'œil du visiteur, obligatoirement. */
 const GRIP = 1.65
-/** La bordure, franchement plus claire que les six faces : c'est un mode d'emploi. */
+
+/**
+ * **L'aile rouge, le conduit, et la grande salle.**
+ *
+ * L'aile rouge est celle où l'on tombe. On y arrive par la trappe de la salle aux six sols :
+ * on traverse la rotonde en vol, on entre par sa porte et l'on va s'écraser sur son mur du
+ * fond — qui devient un sol, puisque cette salle garde au visiteur la gravité qu'il apporte.
+ *
+ * De là, et de là seulement, le conduit est accessible. Il est percé **dans un coin** du
+ * plafond, contre le mur du fond : debout sur ce mur, on longe la paroi jusqu'au coin, puis
+ * on monte dedans en marchant. Debout sur le plancher, il est à trois mètres soixante
+ * au-dessus de la tête et rien ne permet d'y monter. C'est ce qui fait de la grande salle une
+ * récompense plutôt qu'un couloir : on n'y va pas par hasard, on y va parce qu'on a compris
+ * comment garder une gravité de travers, puis comment s'en servir pour marcher jusqu'au coin.
+ *
+ * Le conduit et l'aile rouge partagent la même paroi — le plan z = 510 court de l'un à
+ * l'autre sans rupture — de sorte qu'on ne change jamais de sol en montant. C'est la seule
+ * façon de faire un tunnel qu'on emprunte debout sur un mur : il faut que le mur continue.
+ *
+ * La grande salle, au bout, a ses six faces habitables. Sans quoi on y arriverait couché sur
+ * une paroi sans aucun moyen de se relever, et elle serait un piège au lieu d'un terrain.
+ */
+const MOBILE_WING = 'mobiles'
+const CONDUIT = 'conduit'
+const GREAT = 'grande-salle'
+
+/** Le conduit : une gaine verticale de six mètres, dans le coin de l'aile rouge. */
+const CONDUIT_BOX: Box = { min: { x: 514.6, y: 3.6, z: 506.2 }, max: { x: 518, y: 9.6, z: 510 } }
+const CONDUIT_TINT: Colour = [0.9, 0.72, 0.55]
+
+/** La grande salle, tout en haut. Vide pour l'instant : c'est un terrain, pas une pièce. */
+const GREAT_BOX: Box = { min: { x: 498, y: 9.6, z: 492 }, max: { x: 526, y: 21.6, z: 510 } }
+const GREAT_TINT: Colour = [0.72, 0.86, 1]
+
+/**
+ * Une trémie et son vis-à-vis : deux plans qui se répondent par **translation pure**.
+ *
+ * Le rectangle est collé au mur du fond, et il le faut : le corps qui s'y tient debout a les
+ * pieds contre ce mur et son gabarit se mesure alors *le long* de la trémie. Elle doit donc
+ * l'englober en entier, du mur jusqu'à un peu au-delà de la tête — d'où une trémie plus
+ * profonde que large, alors qu'une trappe ordinaire serait carrée.
+ */
+function hatchMouths(
+  below: { cell: string; y: number },
+  above: { cell: string; y: number },
+  centre: { x: number; z: number },
+): { under: Mouth; over: Mouth } {
+  const common = { halfWidth: 1.4, halfHeight: 1.6 }
+  return {
+    under: {
+      ...common,
+      id: `${below.cell}.tremie`,
+      cell: below.cell,
+      center: { x: centre.x, y: below.y + REVEAL, z: centre.z },
+      right: { x: 1, y: 0, z: 0 },
+      up: { x: 0, y: 0, z: 1 },
+      normal: { x: 0, y: -1, z: 0 },
+    },
+    over: {
+      ...common,
+      id: `${above.cell}.tremie`,
+      cell: above.cell,
+      center: { x: centre.x, y: above.y - REVEAL, z: centre.z },
+      // L'orientation est celle qui rend la couture purement translatoire : côté renversé,
+      // haut conservé, normale opposée. Rien ne pivote entre deux boîtes empilées, ce qui
+      // est la seule façon honnête de les recoller.
+      right: { x: -1, y: 0, z: 0 },
+      up: { x: 0, y: 0, z: 1 },
+      normal: { x: 0, y: 1, z: 0 },
+    },
+  }
+}
+
+/** L'axe des deux trémies : le coin du fond à droite, celui qu'on va chercher en marchant. */
+const HATCH_AT = { x: CONDUIT_BOX.max.x - 1.8, z: CONDUIT_BOX.max.z - 1.6 }
+
 const GRIP_COLOUR: Color = [0.86, 0.88, 0.92]
 /**
  * Six teintes, une par face, et assez éloignées les unes des autres pour qu'un coup d'œil
@@ -1863,6 +1938,63 @@ export function buildWorld(): World {
   )
   wingPassages.get(PAVE_WING)!.push(northSouth, southNorth, westEast, eastWest)
 
+  // **Les deux trémies.** Aucune ne perce un mur : elles percent un plafond, et leur
+  // vis-à-vis perce le sol d'au-dessus. Les deux plans d'une même trémie sont distants de la
+  // seule épaisseur des deux embrasures, si bien que la couture est une translation de
+  // cinquante centimètres et que le conduit se traverse sans que rien ne tourne.
+  const mobileWing = wingData.find((entry) => entry.wing.id === MOBILE_WING)!
+  const conduitLighting: CellLighting = {
+    ambient: [CONDUIT_TINT[0] * 0.07, CONDUIT_TINT[1] * 0.07, CONDUIT_TINT[2] * 0.07],
+    lights: [3.2, 6.4, 9.0].map((y) => ({
+      position: { x: (CONDUIT_BOX.min.x + CONDUIT_BOX.max.x) / 2, y, z: CONDUIT_BOX.min.z + 1 },
+      colour: CONDUIT_TINT,
+      intensity: 5,
+      radius: 6,
+    })),
+  }
+  const greatLighting: CellLighting = {
+    ambient: [GREAT_TINT[0] * 0.05, GREAT_TINT[1] * 0.05, GREAT_TINT[2] * 0.05],
+    // Une grande salle demande plusieurs foyers : une lampe unique au centre laisse ses
+    // coins dans le noir, et ce sont justement les coins qu'on ira parcourir.
+    lights: [-8, 0, 8].flatMap((dx) =>
+      [-5, 5].map((dz) => ({
+        position: {
+          x: (GREAT_BOX.min.x + GREAT_BOX.max.x) / 2 + dx,
+          y: (GREAT_BOX.min.y + GREAT_BOX.max.y) / 2,
+          z: (GREAT_BOX.min.z + GREAT_BOX.max.z) / 2 + dz,
+        },
+        colour: GREAT_TINT,
+        intensity: 16,
+        radius: 15,
+      })),
+    ),
+  }
+
+  const lower = hatchMouths(
+    { cell: MOBILE_WING, y: mobileWing.wing.box.max.y },
+    { cell: CONDUIT, y: CONDUIT_BOX.min.y },
+    HATCH_AT,
+  )
+  const upper = hatchMouths(
+    { cell: CONDUIT, y: CONDUIT_BOX.max.y },
+    { cell: GREAT, y: GREAT_BOX.min.y },
+    HATCH_AT,
+  )
+  const [intoConduit, outOfConduit] = makePassages(
+    lower.under,
+    mobileWing.lighting,
+    lower.over,
+    conduitLighting,
+  )
+  const [intoGreat, outOfGreat] = makePassages(
+    upper.under,
+    conduitLighting,
+    upper.over,
+    greatLighting,
+  )
+  wingPassages.get(MOBILE_WING)!.push(intoConduit)
+  mobileWing.holes.ceiling = [holeOf(lower.under)]
+
   const chestWing = wingData.find((entry) => entry.wing.id === RELIQUARY_WING)!
   const [intoChest, outOfChest] = makePassages(
     chestWing.mouths[1]!,
@@ -2027,6 +2159,11 @@ export function buildWorld(): World {
           }
         : {}),
       ...(sixSided ? { gravity: { grip: GRIP } } : {}),
+      // L'aile rouge garde au visiteur la gravité qu'il apporte : c'est ce qui fait qu'on y
+      // atterrit sur le mur du fond au lieu de se relever, et donc que la trémie du plafond
+      // est atteignable. Elle n'a pas pour autant six sols : depuis le plancher, ses murs
+      // restent des murs, et la trémie hors de portée.
+      ...(entry.wing.id === MOBILE_WING ? { carries: true } : {}),
       ...(stairs
         ? {
             spiral: STAIR,
@@ -2066,6 +2203,64 @@ export function buildWorld(): World {
       passages: lowerPassages,
       lighting: lowerLighting,
       blocks: crypt.blocks,
+    })
+  }
+
+  {
+    const jambs = (m: Mouth, tint: Colour): number[] => {
+      const out: number[] = []
+      pushReveal(out, m, made(tinted(tint, 0.5), MATTER.beton), true)
+      return out
+    }
+
+    cells.push({
+      id: CONDUIT,
+      fogColour: haze(CONDUIT_TINT),
+      min: CONDUIT_BOX.min,
+      max: CONDUIT_BOX.max,
+      verts: concat(
+        buildRoom(
+          CONDUIT_BOX.min,
+          CONDUIT_BOX.max,
+          {
+            floor: made(tinted(CONDUIT_TINT, 0.3), MATTER.beton),
+            ceiling: made(tinted(CONDUIT_TINT, 0.3), MATTER.beton),
+            wall: made(tinted(CONDUIT_TINT, 0.42), MATTER.tole),
+          },
+          { floor: [holeOf(lower.over)], ceiling: [holeOf(upper.under)] },
+        ),
+        jambs(lower.over, CONDUIT_TINT).concat(jambs(upper.under, CONDUIT_TINT)),
+      ),
+      passages: [outOfConduit, intoGreat],
+      lighting: conduitLighting,
+      // Le conduit garde lui aussi la gravité qu'on lui apporte : on le monte debout sur sa
+      // paroi, et se relever à mi-hauteur ferait retomber tout droit dans l'aile rouge.
+      carries: true,
+    })
+
+    cells.push({
+      id: GREAT,
+      fogColour: haze(GREAT_TINT),
+      min: GREAT_BOX.min,
+      max: GREAT_BOX.max,
+      verts: concat(
+        buildRoom(
+          GREAT_BOX.min,
+          GREAT_BOX.max,
+          {
+            floor: made(tinted(GREAT_TINT, 0.34), MATTER.beton),
+            ceiling: made(tinted(GREAT_TINT, 0.28), MATTER.beton),
+            wall: made(tinted(GREAT_TINT, 0.4), MATTER.beton),
+          },
+          { floor: [holeOf(upper.over)] },
+        ),
+        jambs(upper.over, GREAT_TINT),
+      ),
+      passages: [outOfGreat],
+      lighting: greatLighting,
+      // Les six faces sont habitables : on y arrive couché sur une paroi, et sans cela rien
+      // ne permettrait de se relever. La salle serait un piège au lieu d'un terrain.
+      gravity: { grip: GRIP },
     })
   }
 

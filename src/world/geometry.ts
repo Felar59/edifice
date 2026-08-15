@@ -207,6 +207,10 @@ export function pushPanelled(out: number[], spec: WallSpec, border: number, edge
 }
 
 export interface RoomHoles {
+  /** Ouverture dans le sol (normale intérieure +Y) : une trémie. */
+  floor?: Hole[]
+  /** Ouverture dans le plafond (normale intérieure -Y). */
+  ceiling?: Hole[]
   /** Ouvertures sur la paroi z = min.z (normale intérieure +Z). */
   north?: Hole[]
   /** Ouvertures sur la paroi z = max.z (normale intérieure -Z). */
@@ -263,11 +267,16 @@ export function buildRoom(
   const dz = max.z - min.z
 
   // Sol : normale +Y, donc right × up = +Y avec right = +X et up = -Z.
+  //
+  // Il se perce comme un mur, et pour la même raison : une porte peut être sous les pieds.
+  // C'est ce qui permet à une trémie de relier deux salles empilées — et à qui marche sur une
+  // paroi de tomber dedans, puisque de son point de vue elle est dans un mur.
   emit({
     origin: { x: min.x, y: min.y, z: max.z },
     right: { x: dx, y: 0, z: 0 },
     up: { x: 0, y: 0, z: -dz },
     color: pal.floor,
+    ...(holes.floor ? { holes: holes.floor } : {}),
   })
   // Plafond : normale -Y.
   emit({
@@ -275,6 +284,7 @@ export function buildRoom(
     right: { x: dx, y: 0, z: 0 },
     up: { x: 0, y: 0, z: dz },
     color: pal.ceiling,
+    ...(holes.ceiling ? { holes: holes.ceiling } : {}),
   })
   if (openWalls) return new Float32Array(out)
 

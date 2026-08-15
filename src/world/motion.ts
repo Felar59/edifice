@@ -61,6 +61,16 @@ const STEP_UP = 0.4
 const JAMB = 1e-3
 
 /**
+ * Les abords d'une trappe, où la bande d'accroche se tait.
+ *
+ * Un mètre et demi : la moitié d'une porte de plus tout autour, soit à peu près le pas qu'on
+ * fait dans la dernière seconde avant de tomber. Moins, et l'accroche reprend le dessus dès
+ * qu'on marche vite ; beaucoup plus, et l'on ne pourrait plus escalader la paroi voisine
+ * n'importe où sur ce mur-là.
+ */
+const APPROACH = 1.5
+
+/**
  * Cette bouche couvre-t-elle sa paroi tout entière ?
  *
  * Alors il n'y a pas de paroi, et rien à rater : le corps ne peut pas se cogner à ce qui
@@ -363,13 +373,25 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, body: Body): Resolved {
   // Le plafond d'un escalier tournant suit ses marches : la hauteur libre est partout la
   // même, sans quoi on sentirait le plafond s'éloigner d'un tour au passage du raccord.
   const highest = (cell.spiral ? ceilingHeight(cell.spiral, p) : cell.max.y) - body.headroom
+
+  // **Une trémie est une porte, et le sol se lève devant elle comme un mur.** Sans quoi la
+  // salle du dessus serait un cul-de-sac : on y monte par le trou en marchant sur une paroi,
+  // et l'on n'en redescendrait jamais une fois remis d'aplomb. Le filet de sécurité est le
+  // même que pour les portes des murs — on s'engage, on ne s'échappe pas.
+  const shaft = 1.2
   if (y <= lowest) {
-    y = lowest
-    floor = true
+    if (throughADoor(cell, p, 1, 1, body)) y = Math.max(y, cell.min.y - shaft)
+    else {
+      y = lowest
+      floor = true
+    }
   }
   if (y >= highest) {
-    y = highest
-    ceiling = true
+    if (throughADoor(cell, p, 1, -1, body)) y = Math.min(y, cell.max.y + shaft)
+    else {
+      y = highest
+      ceiling = true
+    }
   }
 
   const feet = y - body.eyeHeight
@@ -683,14 +705,36 @@ function resolveOnFace(cell: Cell, p: Vec3, body: Body): Resolved {
  * décide qu'on *peut* passer et celui qui décide qu'on *passe* doivent être le même, sans
  * quoi les deux se contredisent — et l'endroit où ils se contredisent est le chambranle.
  */
-function throughADoor(cell: Cell, at: Vec3, axis: number, sign: number, body: Body): boolean {
+function throughADoor(
+  cell: Cell,
+  at: Vec3,
+  axis: number,
+  sign: number,
+  body: Body,
+  /**
+   * Marge autour de l'ouverture. À zéro, on mesure le passage. Au-delà, on mesure les
+   * **abords** : c'est le rayon d'action de la trappe, la zone où la bande d'accroche doit
+   * se taire pour laisser tomber celui qui vise le trou.
+   */
+  margin = 0,
+): boolean {
   for (const passage of cell.passages) {
     const m = passage.from
     if (!onTheWall(cell, m)) continue
     const n = [m.normal.x, m.normal.y, m.normal.z]
     if (Math.abs(n[axis]!) < 0.5 || Math.sign(n[axis]!) !== sign) continue
     if (fillsTheWall(cell, m)) return true
-    if (fitsMouth(m, sub(at, m.center), body)) return true
+    const rel = sub(at, m.center)
+    if (margin > 0) {
+      if (
+        Math.abs(dot(rel, m.right)) <= m.halfWidth + margin &&
+        Math.abs(dot(rel, m.up)) <= m.halfHeight + margin
+      ) {
+        return true
+      }
+      continue
+    }
+    if (fitsMouth(m, rel, body)) return true
   }
   return false
 }
@@ -713,12 +757,18 @@ export function faceChange(cell: Cell, p: Vec3, up: Vec3, wish: Vec3, body: Body
 
   const { axis, sign } = dominant(up)
 
-  // **On ne rattrape pas quelqu'un qui tombe.** Le corps posté au-dessus de l'ouverture
-  // percée dans la paroi qui lui sert de sol n'a plus de sol : il est déjà dans la trappe.
-  // Sans cette clause, la bande d'accroche de la face voisine — large d'une hauteur d'homme,
-  // donc omniprésente — le happait à l'instant précis où il basculait dans le trou, et la
-  // porte du sol devenait impossible à emprunter autrement que par accident.
-  if (throughADoor(cell, p, axis, sign, body)) return null
+  // **On ne rattrape pas quelqu'un qui vise la trappe.**
+  //
+  // Le corps posté au-dessus de l'ouverture percée dans la paroi qui lui sert de sol n'a plus
+  // de sol : il est déjà dans le trou. Sans cette clause, la bande d'accroche de la face
+  // voisine — large d'une hauteur d'homme, donc omniprésente — le happait à l'instant précis
+  // où il basculait, et la porte du sol ne s'empruntait que par accident.
+  //
+  // La zone franche déborde l'ouverture d'un mètre et demi, et ce n'est pas de la générosité.
+  // Marcher vers une trappe, c'est marcher vers le vide, donc vers le bas dès qu'on la
+  // regarde : l'accroche du sol se déclenchait dans les derniers pas, juste avant le trou.
+  // Plus on allait vite, plus elle gagnait. On dégage donc ses abords, pas seulement elle.
+  if (throughADoor(cell, p, axis, sign, body, APPROACH)) return null
 
   const min = [cell.min.x, cell.min.y, cell.min.z]
   const max = [cell.max.x, cell.max.y, cell.max.z]

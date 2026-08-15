@@ -170,6 +170,16 @@ export interface Cell {
   blocks?: Block[]
   /** Si les six faces sont habitables, la façon d'en changer. */
   gravity?: FaceGravity
+  /**
+   * Cette salle laisse au visiteur la gravité qu'il **apporte**.
+   *
+   * Partout ailleurs, une verticale de travers est un état de vol : le premier contact la
+   * rend au monde, et l'on se relève. Ici non — on garde la sienne, et l'on marche sur la
+   * paroi où l'on a atterri. C'est ce qui rend atteignable ce qui ne l'est pas autrement :
+   * une trémie percée au plafond, contre le mur du fond, est à hauteur de marche pour qui
+   * se tient sur ce mur, et hors de portée pour qui se tient debout.
+   */
+  carries?: boolean
   /** Si le sol est un escalier tournant, sa description. */
   spiral?: Spiral
   /** Sommets entrelacés, voir `FLOATS_PER_VERTEX`. */

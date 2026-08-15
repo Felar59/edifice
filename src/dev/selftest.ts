@@ -909,7 +909,7 @@ export function runSelfTest(world: World, physics: Physics): Check[] {
         // porte d'en face. C'est ce que mesure l'invariant — la chute, pas le pilotage.
         faller.update(1 / 60, world, new Set(faller.grounded ? ['KeyW'] : []))
         if (faller.cell !== room.id) dropped = true
-        if (dropped && faller.grounded && dot(faller.stance, v3(0, 1, 0)) > 0.999) break
+        if (dropped && faller.grounded) break
       }
       // La rotonde n'est qu'un passage : la chute la traverse de part en part et finit dans
       // l'aile qui fait face à celle qu'on vient de quitter.
@@ -918,11 +918,86 @@ export function runSelfTest(world: World, physics: Physics): Check[] {
         dropped && faller.cell !== room.id && faller.cell !== HUB,
         dropped ? `tombé jusqu’à ${faller.cell}` : 'jamais sorti par le trou',
       )
+      // **La chute garde sa gravité.** L'aile où l'on tombe est faite pour ça : on y atterrit
+      // sur le mur du fond, debout dessus, et non relevé d'office. C'est cette gravité-là qui
+      // met la trémie du plafond à hauteur de marche.
       add_(
-        'six sols · la chute finit d’aplomb',
-        dot(faller.stance, v3(0, 1, 0)) > 0.999 && faller.grounded,
+        'six sols · la chute garde sa gravité',
+        faller.grounded && Math.abs(dot(faller.stance, v3(0, 1, 0))) < 0.01,
         `verticale ${fmt(dot(faller.stance, v3(0, 1, 0)))} · ${faller.grounded ? 'posé' : 'en l’air'}`,
       )
+
+      // La trémie. Elle est dans un coin : debout sur le mur du fond, il faut d'abord longer
+      // la paroi jusqu'à son aplomb, et seulement ensuite monter dedans. C'est exactement le
+      // trajet qu'on demande au visiteur, et c'est pour cela qu'on le mesure en deux temps
+      // plutôt qu'en visant le coin en diagonale — en biais, on rencontre le plafond avant.
+      const landed = faller.cell
+      const shaft = world.cells
+        .get(landed)!
+        .passages.map((p) => p.from)
+        .find((m) => m.normal.y < -0.5)
+      if (!shaft) {
+        add_('aile rouge · la trémie existe', false, `aucune ouverture au plafond de ${landed}`)
+      }
+      for (let i = 0; i < 900 && faller.cell === landed && shaft; i++) {
+        const sideways = shaft.center.x - faller.pos.x
+        faller.face(Math.abs(sideways) > 0.3 ? v3(sideways, 0, 0) : v3(0, 1, 0))
+        faller.update(1 / 60, world, new Set(['KeyW']))
+      }
+      add_(
+        'aile rouge · la trémie s’atteint depuis le mur du fond',
+        faller.cell !== landed,
+        faller.cell !== landed ? `monté jusqu’à ${faller.cell}` : `resté dans ${landed}`,
+      )
+
+      // Le conduit débouche. On continue de monter le long de la même paroi — elle court
+      // d'une cellule à l'autre sans rupture, et c'est ce qui permet de monter un tunnel
+      // debout sur un mur.
+      const inside = faller.cell
+      faller.face(v3(0, 1, 0))
+      for (let i = 0; i < 900 && faller.cell === inside; i++) {
+        faller.face(v3(0, 1, 0))
+        faller.update(1 / 60, world, new Set(['KeyW']))
+      }
+      add_(
+        'le conduit débouche sur la grande salle',
+        faller.cell !== inside && faller.cell !== landed,
+        faller.cell !== inside ? `${inside} → ${faller.cell}` : `bloqué dans ${inside}`,
+      )
+
+      // Et le contrôle qui donne son sens au précédent : d'aplomb, sur le plancher, la même
+      // trémie est hors de portée. Sans quoi la trappe ne servirait à rien — il suffirait de
+      // marcher jusqu'au fond de l'aile rouge pour monter, et la gravité de travers ne serait
+      // qu'une décoration.
+      const red = world.cells.get(landed)
+      if (!red) {
+        add_('aile rouge · la salle existe', false, `cellule inconnue : ${landed}`)
+      } else {
+        const upright_ = new Player()
+        upright_.goTo(
+          {
+            name: 'aile rouge',
+            cell: landed,
+            pos: {
+              x: (red.min.x + red.max.x) / 2,
+              y: red.min.y + PROBE_BODY.eyeHeight,
+              z: red.min.z + 2,
+            },
+            forward: v3(0, 0, 1),
+          },
+          world,
+        )
+        for (let i = 0; i < 600 && upright_.cell === landed; i++) {
+          upright_.update(1 / 60, world, new Set(['KeyW']))
+        }
+        add_(
+          'aile rouge · la trémie est hors de portée d’aplomb',
+          upright_.cell === landed && dot(upright_.stance, v3(0, 1, 0)) > 0.999,
+          upright_.cell === landed
+            ? 'le mur du fond reste un mur'
+            : `sorti vers ${upright_.cell} en marchant simplement`,
+        )
+      }
     }
   }
 
