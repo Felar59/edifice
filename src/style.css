@@ -162,18 +162,6 @@ kbd {
   color: var(--dim);
 }
 
-#torture {
-  bottom: 0.75rem;
-  right: 0.75rem;
-  color: var(--dim);
-  max-width: 24rem;
-}
-
-#torture b {
-  color: var(--accent);
-  font-weight: 400;
-}
-
 .panel[hidden] {
   display: none;
 }

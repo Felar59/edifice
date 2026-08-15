@@ -15,19 +15,18 @@ export interface HudData {
 /**
  * Panneaux de mise au point.
  *
- * Le panneau de droite n'est pas décoratif : c'est la liste du test de torture,
- * affichée en permanence pour qu'on ne s'autorise pas à l'oublier. Tant que les
- * six points ne sont pas irréprochables, l'étape 1 n'est pas terminée.
+ * Il y en avait un troisième, à droite : la liste du test de torture, affichée en permanence
+ * pour qu'on ne s'autorise pas à l'oublier tant que l'étape 1 n'était pas irréprochable. Elle
+ * l'est, `npm run torture` la déroule seul à chaque modification, et un rappel qu'on ne lit
+ * plus n'est plus un rappel — c'est un quart d'écran en moins.
  */
 export class Hud {
   private readonly stats: HTMLElement
   private readonly keys: HTMLElement
-  private readonly torture: HTMLElement
 
   constructor() {
     this.stats = panel('stats')
     this.keys = panel('keys')
-    this.torture = panel('torture')
 
     const reticle = document.createElement('div')
     reticle.id = 'reticle'
@@ -40,13 +39,6 @@ export class Hud {
       'P  paramètres                 T  couper les matières (diagnostic)',
       `1 – ${presets().length}  points de vue du test`,
     ].join('\n')
-
-    this.torture.innerHTML =
-      '<b>Test de torture — l’étape 1 n’est finie que si tout tient</b>\n' +
-      presets().map((p, i) => `${i + 1}. ${p.name}`).join('\n') +
-      '\n· Cube lancé à travers, en cloche, en biais' +
-      '\n· Cube immobilisé à moitié dans l’ouverture' +
-      '\n· Traversée en marche arrière, à pleine vitesse'
   }
 
   toggle(): void {
@@ -56,7 +48,6 @@ export class Hud {
   setVisible(visible: boolean): void {
     this.stats.hidden = !visible
     this.keys.hidden = !visible
-    this.torture.hidden = !visible
   }
 
   update(d: HudData): void {
