@@ -327,3 +327,72 @@ export function pushPlant(
     )
   }
 }
+
+/**
+ * Une police de chiffres, en cinq lignes de trois.
+ *
+ * Le musée n'a pas de texte : ni police chargée, ni atlas, ni rendu de glyphes. Il en faut
+ * pourtant, ne serait-ce que pour numéroter des essais — on ne peut pas dire « le troisième
+ * en partant de la gauche » vingt fois de suite sans se tromper. Trois colonnes sur cinq
+ * lignes suffisent à dix chiffres, chaque case allumée devenant un quadrilatère. C'est la
+ * plus petite police lisible, et elle a l'avantage d'avoir l'air de ce qu'elle est : une
+ * inscription d'atelier, pas une enseigne.
+ */
+const GLYPHS: Record<string, string> = {
+  '0': '111101101101111',
+  '1': '010110010010111',
+  '2': '111001111100111',
+  '3': '111001111001111',
+  '4': '101101111001001',
+  '5': '111100111001111',
+  '6': '111100111101111',
+  '7': '111001001001001',
+  '8': '111101111101111',
+  '9': '111101111001111',
+}
+
+/**
+ * Écrit un nombre, à plat sur une surface.
+ *
+ * `right` et `up` donnent le plan et l'échelle : leur longueur est celle d'une case, de sorte
+ * qu'un chiffre fait trois cases de large et cinq de haut. On dessine depuis le coin
+ * inférieur gauche, comme on lit.
+ */
+export function pushDigits(
+  out: number[],
+  origin: Vec3,
+  right: Vec3,
+  up: Vec3,
+  text: string,
+  colour: Color,
+): void {
+  let column = 0
+  for (const character of text) {
+    const glyph = GLYPHS[character]
+    if (!glyph) {
+      column += 2
+      continue
+    }
+    for (let row = 0; row < 5; row++) {
+      for (let x = 0; x < 3; x++) {
+        if (glyph[row * 3 + x] !== '1') continue
+        const cx = column + x
+        const cy = 4 - row
+        const a = add(add(origin, scale(right, cx)), scale(up, cy))
+        // L'ordre des coins met la normale du côté de `right × up` : à l'envers, le chiffre
+        // existe mais le tri des faces arrière l'efface, et l'on cherche longtemps une
+        // plaque qu'on croit vide.
+        pushQuad(
+          out,
+          a,
+          add(a, right),
+          add(add(a, right), up),
+          add(a, up),
+          colour,
+          [[0, 0], [1, 0], [1, 1], [0, 1]],
+        )
+      }
+    }
+    column += 4
+  }
+}

@@ -780,71 +780,28 @@ sorties de l'exercice :
   et la salle pavée sont là pour une tricherie de géométrie ; leur donner une matière riche
   reviendrait à disputer l'attention à ce qu'ils ont à montrer.
 
-### L'atelier des matières
+### La planche d'essais
 
-Toutes les matières du musée sont posées côte à côte, sur des panneaux debout, au milieu de
-la crypte — et tout le mobilier devant. C'est un lieu de travail avant d'être un lieu de
-visite : on y juge une matière **contre sa voisine**, dans la même lumière et au même angle,
-ce qu'aucune salle meublée ne permet. Dans une galerie, on compare du marbre éclairé
-chaudement à du béton éclairé froidement, et l'on ne compare plus rien. La crypte s'éclaire
-donc à plat, d'une file de sources égales : une source unique au plafond en aurait éclairé
-trois et laissé sept dans l'ombre, et l'on aurait jugé l'éclairage au lieu de la matière.
+Toutes les matières et tout le mobilier sont réunis dans la salle basse, en douze petites
+scènes **en L**, alignées en trois rangées de quatre et numérotées.
 
-Les salles du musée n'en portent donc pas encore, de mobilier : elles reçoivent une **allure**,
-et ce qui se pose dessus s'essaie d'abord ici. Le rangement viendra quand il y aura de quoi
-ranger.
+Un L, c'est deux parois qui se rencontrent : le minimum pour qu'un sol, un mur et un objet se
+regardent ensemble. Moins, on juge un échantillon ; plus, on juge une salle et l'on ne sait
+plus ce qu'on juge. Toutes s'ouvrent du même côté et sont posées au cordeau, parce que ce
+qu'on compare doit différer par **une** chose à la fois — une planche d'essais mal rangée
+mesure surtout la fantaisie de qui l'a rangée. Et la crypte s'éclaire à plat, d'une lampe par
+rangée : une source unique en aurait éclairé trois et laissé neuf dans l'ombre, et l'on aurait
+jugé l'éclairage au lieu de la matière.
 
-### Le mobilier
+Le numéro est là pour qu'on puisse en parler. « Le troisième en partant de la gauche » se
+trompe une fois sur deux ; « le sept » ne se trompe jamais. Il a fallu pour cela une police :
+le musée n'en avait aucune, ni fichier, ni atlas, ni rendu de glyphes. Trois colonnes sur cinq
+lignes suffisent à dix chiffres, chaque case allumée devenant un quadrilatère — la plus petite
+police lisible, et elle a l'avantage d'avoir l'air de ce qu'elle est, une inscription
+d'atelier plutôt qu'une enseigne.
 
-Un cordon de séparation, un banc, une plante en pot. Aucun ne joue de rôle dans la géométrie
-impossible, et c'est justement pour cela qu'ils comptent : **une salle vide se lit comme une
-maquette.** Ce qui la fait basculer en lieu, ce n'est pas une paroi de plus, c'est un objet
-dont on connaît la taille — un banc dit à quelle hauteur on s'assoit, un cordon dit où l'on
-n'a pas le droit d'aller, une plante dit que quelqu'un s'en occupe.
-
-Tout est construit à partir de deux primitives, le quadrilatère quelconque et le cylindre. Il
-n'y a ni maillage importé, ni image, ni transparence : une feuille de plante est donc une
-vraie feuille de géométrie, effilée par ses quatre coins et cassée en deux tronçons pour
-qu'elle retombe. C'est la cassure qui fait la plante ; une feuille droite fait un plumeau.
-
-Deux pièges, tous deux attrapés par l'invariant des surfaces qui se recouvrent — celui qui ne
-regarde pas une salle en particulier mais toute la géométrie du monde.
-
-**Une boîte décrite par « le long, la largeur, l'épaisseur » n'est pas toujours dans un repère
-direct.** Une face à l'envers ne disparaît pas pour autant : le tri des faces arrière la garde
-et fait disparaître *l'autre*, celle qui était juste. Deux surfaces se retrouvent alors dans le
-même plan à se disputer les pixels. Le mobilier calcule donc la normale de chaque face et
-retourne celles qui rentrent.
-
-**Une corde faite de tronçons de boîte se chevauche à chaque coude**, et deux spires cousues
-au même poteau se recouvrent. Le cordon est donc balayé d'un seul tenant, en partageant ses
-anneaux d'un tronçon au suivant — un tube, pas une file de caisses. La flèche fait le reste :
-une corde tendue droite ressemble à une barre, une corde qui pend d'un sixième de sa portée
-ressemble à une corde.
-
-### Les quatre cabinets
-
-Le musée s'est construit sur des tricheries de géométrie, dans des salles volontairement nues :
-une salle qui a quelque chose à démontrer ne doit rien avoir d'autre à montrer. Au pied de
-l'escalier de Penrose, la salle basse est devenue un **palier** de trente mètres, en pierre,
-et ses quatre portes donnent sur quatre salles qui ne démontrent rien.
-
-Elles sont là pour la direction artistique — pour éprouver les matières, la lumière et
-l'échelle côte à côte, dans des pièces qu'on compare d'un coup d'œil parce qu'on passe de
-l'une à l'autre par le même palier. Depuis le milieu de la crypte, les quatre s'aperçoivent
-en même temps, chacune par son ouverture : c'est le point de vue n° 17 du test de torture, et
-le seul du lot qui juge la matière plutôt que la géométrie.
-
-- **La galerie** — celle de l'ancien portfolio. Marbre veiné, lambris et cimaise, plafond à
-  caissons, quatre colonnes et deux socles vides. Un musée se reconnaît à ce qu'il réserve
-  une place à ce qu'il n'expose pas encore.
-- **Le silo** — la direction artistique annoncée du musée. Béton banché avec la trace des
-  planches et les trous de banche, une seule lumière dure et froide, presque pas d'ambiance,
-  et un bloc monumental posé de travers sans raison.
-- **L'atelier** — tôle rivetée, dalle de pierre, une poutre en travers à hauteur d'homme et
-  demi. Elle donne l'échelle de la salle mieux que n'importe quel objet posé au sol.
-- **La chambre claire** — parquet, plâtre, un banc bas, rien d'autre. Après trois salles qui
-  insistent, une qui se tait.
+**Le musée, lui, reste nu.** Les matières ne sont pas encore distribuées : on essaie d'abord,
+on range ensuite, et une salle habillée trop tôt fige un choix qu'on n'a pas fait.
 
 ### La verticalité
 

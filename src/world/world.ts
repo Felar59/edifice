@@ -42,7 +42,7 @@ import {
 } from './geometry'
 import { mouthRadiance, type CellLighting, type Colour } from './light'
 import { heightAtTurn, onSquare, stepAngle, stepHeight } from './spiral'
-import { pushBench, pushCordon, pushPlant } from './props'
+import { pushBench, pushCordon, pushDigits, pushPlant } from './props'
 import { frameAt, makeTwist, toWorld } from './twist'
 import type { Block, Cell, Mouth, Passage, Spiral, World } from './types'
 
@@ -286,58 +286,14 @@ function tinted(tint: Colour, level: number): Color {
 }
 
 /**
- * **Les allures** : la matière que porte une salle, selon ce qu'elle est.
+ * La palette d'une salle : trois nuances d'une même teinte, sans matière.
  *
- * Une allure n'est pas un thème plaqué mais un accord de trois matières — sol, plafond,
- * parois — choisi pour tenir ensemble. Les décliner par aile plutôt que de tout unifier
- * évite le patchwork sans imposer un musée d'une seule couleur : chaque aile garde sa
- * température de lumière, et reçoit la matière qui convient à ce qu'on y fait.
- *
- * Deux règles apprises en les posant :
- *
- * - **une salle qui tourne ne supporte pas de motif directionnel.** Dans le tunnel-vrille,
- *   les coordonnées de surface suivent le tube, et une pierre appareillée y dessinerait des
- *   assises en spirale. Il lui faut de la moquette et du plâtre, qui n'ont pas de sens de
- *   lecture ;
- * - **une salle qui démontre quelque chose doit rester sobre.** L'escalier de Penrose, le
- *   cube aux six sols et la salle pavée sont là pour une tricherie de géométrie : leur donner
- *   une matière riche reviendrait à disputer l'attention à ce qu'ils ont à montrer.
+ * **Le musée reste nu.** Les matières existent — voir la salle basse, qui les porte toutes —
+ * mais elles n'ont pas encore été distribuées : on essaie d'abord, on range ensuite. Une
+ * salle habillée trop tôt fige un choix qu'on n'a pas fait.
  */
-type Look = 'galerie' | 'pierre' | 'beton' | 'tapis' | 'lisse'
-
-function paletteFor(tint: Colour, look: Look = 'beton'): RoomPalette {
-  switch (look) {
-    case 'galerie':
-      return {
-        floor: made(tinted(tint, 0.44), MATTER.marbre),
-        ceiling: made(tinted(tint, 0.5), MATTER.caissons),
-        wall: made(tinted(tint, 0.62), MATTER.lambris),
-      }
-    case 'pierre':
-      return {
-        floor: made(tinted(tint, 0.46), MATTER.pierre),
-        ceiling: made(tinted(tint, 0.5), MATTER.platre),
-        wall: made(tinted(tint, 0.6), MATTER.pierre),
-      }
-    case 'tapis':
-      return {
-        floor: made(tinted(tint, 0.4), MATTER.moquette),
-        ceiling: made(tinted(tint, 0.55), MATTER.platre),
-        wall: made(tinted(tint, 0.66), MATTER.platre),
-      }
-    case 'lisse':
-      return {
-        floor: made(tinted(tint, 0.46), MATTER.platre),
-        ceiling: made(tinted(tint, 0.55), MATTER.platre),
-        wall: made(tinted(tint, 0.66), MATTER.platre),
-      }
-    default:
-      return {
-        floor: made(tinted(tint, 0.44), MATTER.beton),
-        ceiling: made(tinted(tint, 0.5), MATTER.beton),
-        wall: made(tinted(tint, 0.6), MATTER.beton),
-      }
-  }
+function paletteFor(tint: Colour): RoomPalette {
+  return { floor: tinted(tint, 0.5), ceiling: tinted(tint, 0.62), wall: tinted(tint, 0.8) }
 }
 
 /**
@@ -587,8 +543,6 @@ function cubeLighting(box: Box, tint: Colour, mouths: Mouth[]): CellLighting {
 interface Wing {
   id: string
   box: Box
-  /** La matière de la salle. Voir paletteFor. */
-  look?: Look
   /** La paroi de l'aile où s'ouvre sa porte vers la rotonde. */
   wall: Wall
   lateral: number
@@ -790,362 +744,274 @@ function made(colour: Color, matter: number): Color {
 }
 
 /**
- * **Les quatre cabinets de la salle basse.**
+ * **La planche d'essais**, dans la salle basse.
  *
- * Le musée s'est construit jusqu'ici sur des tricheries de géométrie, dans des salles
- * volontairement nues : une salle qui a quelque chose à démontrer ne doit rien avoir d'autre
- * à montrer. Ces quatre-là ne démontrent rien. Elles sont là pour la **direction
- * artistique** — pour éprouver les matières, la lumière et l'échelle côte à côte, dans des
- * pièces qu'on peut comparer d'un coup d'œil parce qu'on passe de l'une à l'autre par le
- * même palier.
+ * Douze petites scènes en L, alignées en trois rangées de quatre, chacune numérotée. Un L,
+ * c'est deux parois qui se rencontrent : le minimum pour qu'un sol, un mur et un objet se
+ * regardent ensemble. Moins, on juge un échantillon ; plus, on juge une salle et l'on ne sait
+ * plus ce qu'on juge.
  *
- * Quatre partis pris, franchement distincts, et aucun compromis entre eux :
+ * Le numéro est là pour qu'on puisse parler des essais. « Le troisième en partant de la
+ * gauche » se trompe une fois sur deux ; « le sept » ne se trompe jamais. Il est gravé en
+ * chiffres de trois cases sur cinq, la seule police du musée — voir `pushDigits`.
  *
- * - **la galerie**, celle de l'ancien portfolio : marbre, lambris, plafond à caissons,
- *   colonnade. Chaude, cossue, rassurante ;
- * - **le silo**, la direction artistique annoncée du musée : béton banché, échelle
- *   écrasante, une seule lumière dure et un bloc monumental posé de travers ;
- * - **l'atelier** : tôle rivetée, dalle de pierre, une poutre en travers. Utilitaire ;
- * - **la chambre claire** : parquet, plâtre, presque rien. Le repos après les trois autres.
- *
- * Elles se rejoignent toutes par la salle basse, qui est elle-même une crypte de pierre :
- * on descend l'escalier, et l'on tombe dans un endroit qui a enfin une matière.
+ * **Rien de tout cela n'est du level design.** C'est un atelier : on essaie une matière contre
+ * une autre, un meuble contre un vide, et l'on garde ce qui tient. Le musée, lui, reste nu
+ * jusqu'à ce qu'on ait choisi.
  */
-interface Cabinet {
-  id: string
-  box: Box
-  /** La paroi de la salle basse où sa porte est percée, et son abscisse. */
-  wall: Wall
-  lateral: number
-  tint: Colour
-  palette: RoomPalette
-  /** La structure propre de la salle : colonnes, blocs, poutres. */
-  build: (out: number[], box: Box) => Block[]
-  lighting: (box: Box, mouths: Mouth[]) => CellLighting
+interface Vignette {
+  /** Ce qu'on essaie, en une ligne. Pour la documentation, pas pour l'affichage. */
+  about: string
+  floor: Color
+  wall: Color
+  /** Le mobilier, posé dans le repère du coin — x vers la droite, z vers l'avant. */
+  build: (out: number[], corner: Vec3, side: number) => void
 }
 
-/**
- * L'éclairage d'un cabinet : quatre sources douces plutôt qu'une forte.
- *
- * Une lampe unique au centre du plafond fait une tache brûlée sur le mur d'en face et laisse
- * les angles noirs — ce qui va pour une salle technique, pas pour une salle qu'on regarde.
- * Quatre sources aux quarts, moitié moins fortes chacune, donnent une lumière d'exposition :
- * les matières s'y lisent partout, et plus rien ne brûle.
- */
-function cabinetLighting(box: Box, tint: Colour, intensity = 5): CellLighting {
-  const lights = []
-  for (const fx of [0.28, 0.72]) {
-    for (const fz of [0.28, 0.72]) {
-      lights.push({
-        position: {
-          x: box.min.x + (box.max.x - box.min.x) * fx,
-          y: box.max.y - 0.6,
-          z: box.min.z + (box.max.z - box.min.z) * fz,
-        },
-        colour: tint,
-        intensity,
-        radius: (box.max.x - box.min.x) * 0.9,
-      })
-    }
-  }
-  return { ambient: [tint[0] * 0.09, tint[1] * 0.09, tint[2] * 0.09], lights }
-}
+const VIGNETTE_SIDE = 4.4
+const VIGNETTE_HEIGHT = 2.7
+const VIGNETTE_THICK = 0.24
 
-/** Le centre d'une boîte, au sol. */
-function centreOf(box: Box): Vec3 {
-  return { x: (box.min.x + box.max.x) / 2, y: box.min.y, z: (box.min.z + box.max.z) / 2 }
-}
-
-const CABINET_SIDE = 16
-const CABINET_HEIGHT = 7
-
-function cabinetBox(x: number): Box {
-  return {
-    min: { x, y: 0, z: 1000 },
-    max: { x: x + CABINET_SIDE, y: CABINET_HEIGHT, z: 1000 + CABINET_SIDE },
-  }
-}
-
-/** Un pilier plein, du sol au plafond, avec sa base et son chapiteau. */
-function column(out: number[], x: number, z: number, box: Box, shaft: Color, cap: Color): Block {
-  const half = 0.55
-  const solid = {
-    min: { x: x - half, y: box.min.y, z: z - half },
-    max: { x: x + half, y: box.max.y, z: z + half },
-  }
-  pushBlock(out, solid.min, solid.max, { side: shaft })
-  // Base et chapiteau : deux dés à peine plus larges. C'est peu, et c'est ce qui distingue
-  // une colonne d'un poteau.
-  for (const y of [box.min.y, box.max.y - 0.3]) {
-    pushBlock(
-      out,
-      { x: x - half - 0.12, y, z: z - half - 0.12 },
-      { x: x + half + 0.12, y: y + 0.3, z: z + half + 0.12 },
-      { side: cap, top: cap },
-    )
-  }
-  return solid
-}
-
-const CABINETS: Cabinet[] = [
+const VIGNETTES: Vignette[] = [
   {
-    id: 'galerie',
-    box: cabinetBox(1000),
-    wall: 'south',
-    lateral: 915,
-    tint: [1, 0.93, 0.8],
-    palette: {
-      floor: made([0.56, 0.545, 0.51], MATTER.marbre),
-      ceiling: made([0.5, 0.48, 0.44], MATTER.caissons),
-      wall: made([0.56, 0.53, 0.47], MATTER.lambris),
+    about: 'marbre et lambris — la galerie de l’ancien portfolio',
+    floor: made([0.6, 0.58, 0.55], MATTER.marbre),
+    wall: made([0.58, 0.55, 0.48], MATTER.lambris),
+    build: (out, c) => {
+      pushBench(out, { x: c.x + 2.2, y: c.y, z: c.z + 3.0 }, 2.2, { x: 1, y: 0, z: 0 }, FURNITURE.chene, FURNITURE.fonte)
     },
-    build: (out, box) => {
-      const shaft = made([0.52, 0.5, 0.45], MATTER.marbre)
-      const cap = made([0.58, 0.56, 0.51], MATTER.platre)
-      const blocks: Block[] = []
-      for (const x of [box.min.x + 4, box.max.x - 4]) {
-        for (const z of [box.min.z + 4, box.max.z - 4]) {
-          blocks.push(column(out, x, z, box, shaft, cap))
-        }
-      }
-      // Le cordon de séparation devant les socles, un banc pour regarder, deux plantes aux
-      // angles. C'est ce mobilier-là, et pas la matière des murs, qui fait dire « musée » :
-      // il n'a aucune fonction dans le bâtiment, et c'est bien pour cela qu'il en dit long.
-      const front = box.min.z + 5.2
+  },
+  {
+    about: 'marbre et lambris, avec le cordon devant un socle',
+    floor: made([0.6, 0.58, 0.55], MATTER.marbre),
+    wall: made([0.58, 0.55, 0.48], MATTER.lambris),
+    build: (out, c) => {
+      pushBlock(
+        out,
+        { x: c.x + 1.6, y: c.y, z: c.z + 1.4 },
+        { x: c.x + 2.8, y: c.y + 0.95, z: c.z + 2.6 },
+        { side: made([0.5, 0.48, 0.44], MATTER.marbre), top: made([0.62, 0.6, 0.56], MATTER.marbre) },
+      )
       pushCordon(
         out,
-        { x: centreOf(box).x - 3, y: box.min.y, z: front },
-        { x: centreOf(box).x + 3, y: box.min.y, z: front },
-        4,
+        { x: c.x + 0.9, y: c.y, z: c.z + 3.3 },
+        { x: c.x + 3.5, y: c.y, z: c.z + 3.3 },
+        3,
         FURNITURE.laiton,
         FURNITURE.fonte,
         FURNITURE.cordage,
       )
-      pushBench(
+    },
+  },
+  {
+    about: 'parquet et plâtre — la chambre claire',
+    floor: made([0.5, 0.36, 0.22], MATTER.parquet),
+    wall: made([0.7, 0.69, 0.66], MATTER.platre),
+    build: (out, c) => {
+      pushBench(out, { x: c.x + 2.2, y: c.y, z: c.z + 2.6 }, 2.4, { x: 1, y: 0, z: 0 }, FURNITURE.chene, FURNITURE.fonte)
+      pushPlant(out, { x: c.x + 0.9, y: c.y, z: c.z + 1.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 3)
+    },
+  },
+  {
+    about: 'moquette rouge et lambris — le cabinet feutré',
+    floor: made([0.34, 0.11, 0.12], MATTER.moquette),
+    wall: made([0.5, 0.46, 0.4], MATTER.lambris),
+    build: (out, c) => {
+      pushBench(out, { x: c.x + 2.2, y: c.y, z: c.z + 2.8 }, 2.4, { x: 1, y: 0, z: 0 }, FURNITURE.chene, FURNITURE.fonte)
+      pushPlant(out, { x: c.x + 3.5, y: c.y, z: c.z + 1.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 5)
+    },
+  },
+  {
+    about: 'pierre et pierre — la crypte',
+    floor: made([0.5, 0.48, 0.45], MATTER.pierre),
+    wall: made([0.56, 0.53, 0.48], MATTER.pierre),
+    build: (out, c) => {
+      pushBlock(
         out,
-        { x: centreOf(box).x, y: box.min.y, z: box.max.z - 4 },
-        2.6,
-        { x: 1, y: 0, z: 0 },
-        FURNITURE.chene,
-        FURNITURE.fonte,
+        { x: c.x + 1.4, y: c.y, z: c.z + 1.6 },
+        { x: c.x + 3.0, y: c.y + 0.55, z: c.z + 2.6 },
+        { side: made([0.46, 0.44, 0.41], MATTER.pierre), top: made([0.54, 0.52, 0.48], MATTER.pierre) },
       )
-      for (const [dx, dz, seed] of [[2.2, 2.2, 3], [-2.2, 2.2, 7]]) {
-        pushPlant(
+    },
+  },
+  {
+    about: 'béton banché — le silo',
+    floor: made([0.42, 0.43, 0.45], MATTER.beton),
+    wall: made([0.46, 0.47, 0.5], MATTER.beton),
+    build: (out, c) => {
+      pushBlock(
+        out,
+        { x: c.x + 1.2, y: c.y, z: c.z + 1.2 },
+        { x: c.x + 2.4, y: c.y + 2.2, z: c.z + 2.0 },
+        { side: made([0.38, 0.39, 0.42], MATTER.beton), top: made([0.44, 0.45, 0.48], MATTER.beton) },
+      )
+    },
+  },
+  {
+    about: 'tôle et pierre — l’atelier',
+    floor: made([0.46, 0.47, 0.45], MATTER.pierre),
+    wall: made([0.44, 0.48, 0.46], MATTER.tole),
+    build: (out, c) => {
+      for (const [dx, dz, h] of [[1.2, 1.2, 0.9], [2.3, 1.5, 0.6]]) {
+        pushBlock(
           out,
-          { x: box.max.x - 2.2 + (dx - 2.2), y: box.min.y, z: box.max.z - dz },
-          FURNITURE.terre,
-          FURNITURE.humus,
-          FURNITURE.feuille,
-          seed,
+          { x: c.x + dx, y: c.y, z: c.z + dz },
+          { x: c.x + dx + h, y: c.y + h, z: c.z + dz + h },
+          { side: made([0.45, 0.4, 0.3], MATTER.tole), top: made([0.5, 0.45, 0.34], MATTER.tole) },
         )
       }
-
-      // Deux socles vides au centre : un musée se reconnaît à ce qu'il réserve une place
-      // à ce qu'il n'expose pas encore.
-      const centre = { x: (box.min.x + box.max.x) / 2, z: (box.min.z + box.max.z) / 2 }
-      for (const dz of [-2.5, 2.5]) {
-        const plinth = {
-          min: { x: centre.x - 0.6, y: box.min.y, z: centre.z + dz - 0.6 },
-          max: { x: centre.x + 0.6, y: box.min.y + 0.9, z: centre.z + dz + 0.6 },
-        }
-        pushBlock(out, plinth.min, plinth.max, {
-          side: made([0.5, 0.47, 0.42], MATTER.marbre),
-          top: made([0.62, 0.6, 0.55], MATTER.marbre),
-        })
-        blocks.push(plinth)
-      }
-      return blocks
     },
-    lighting: (box) => cabinetLighting(box, [1, 0.93, 0.8], 4.5),
   },
   {
-    id: 'silo',
-    box: cabinetBox(1100),
-    wall: 'east',
-    lateral: 915,
-    tint: [0.78, 0.82, 0.9],
-    palette: {
-      floor: made([0.4, 0.41, 0.44], MATTER.beton),
-      ceiling: made([0.33, 0.34, 0.37], MATTER.beton),
-      wall: made([0.46, 0.47, 0.5], MATTER.beton),
-    },
-    build: (out, box) => {
-      // Un bloc monumental, posé de travers et sans raison. C'est le parti pris : du béton,
-      // une échelle qui écrase, et rien qui explique.
-      const monolith = {
-        min: { x: box.min.x + 5, y: box.min.y, z: box.min.z + 5.5 },
-        max: { x: box.min.x + 9.5, y: box.min.y + 5.5, z: box.min.z + 8 },
-      }
-      pushBlock(out, monolith.min, monolith.max, {
-        side: made([0.36, 0.37, 0.4], MATTER.beton),
-        top: made([0.42, 0.43, 0.46], MATTER.beton),
-      })
-      return [monolith]
-    },
-    lighting: (box) => ({
-      // Une seule source, haute et froide, et beaucoup d'ombre. L'ambiance est presque
-      // nulle : dans une salle de béton, ce qui n'est pas éclairé doit être noir.
-      ambient: [0.02, 0.022, 0.028],
-      lights: [
-        {
-          position: { x: box.min.x + 4, y: box.max.y - 0.4, z: box.max.z - 4 },
-          colour: [0.82, 0.86, 1],
-          intensity: 16,
-          radius: 22,
-        },
-      ],
-    }),
+    about: 'plâtre nu — le cube blanc, pour voir ce que vaut le vide',
+    floor: made([0.62, 0.61, 0.59], MATTER.platre),
+    wall: made([0.74, 0.73, 0.71], MATTER.platre),
+    build: () => {},
   },
   {
-    id: 'atelier',
-    box: cabinetBox(1200),
-    wall: 'west',
-    lateral: 915,
-    tint: [0.8, 0.95, 0.85],
-    palette: {
-      floor: made([0.42, 0.44, 0.42], MATTER.pierre),
-      ceiling: made([0.3, 0.33, 0.32], MATTER.tole),
-      wall: made([0.44, 0.48, 0.46], MATTER.tole),
+    about: 'marbre et pierre — le hall',
+    floor: made([0.58, 0.56, 0.53], MATTER.marbre),
+    wall: made([0.56, 0.53, 0.48], MATTER.pierre),
+    build: (out, c) => {
+      pushPlant(out, { x: c.x + 1.1, y: c.y, z: c.z + 1.1 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 7)
+      pushBench(out, { x: c.x + 2.4, y: c.y, z: c.z + 3.0 }, 2.2, { x: 1, y: 0, z: 0 }, FURNITURE.chene, FURNITURE.fonte)
     },
-    build: (out, box) => {
-      // Une poutre en travers, à hauteur d'homme et demi : elle donne l'échelle de la salle
-      // mieux que n'importe quel objet posé au sol.
-      const beam = {
-        min: { x: box.min.x + 1, y: box.min.y + 3.2, z: (box.min.z + box.max.z) / 2 - 0.35 },
-        max: { x: box.max.x - 1, y: box.min.y + 3.9, z: (box.min.z + box.max.z) / 2 + 0.35 },
-      }
-      pushBlock(out, beam.min, beam.max, {
-        side: made([0.38, 0.4, 0.39], MATTER.tole),
-        top: made([0.42, 0.45, 0.43], MATTER.tole),
-      })
-      // Et deux caisses, parce qu'un atelier sans rien qui traîne n'est pas un atelier.
-      const blocks: Block[] = [beam]
-      for (const [dx, dz, h] of [
-        [3, 3, 1.2],
-        [4.6, 3.4, 0.8],
-      ]) {
-        const crate = {
-          min: { x: box.min.x + dx, y: box.min.y, z: box.max.z - dz - h },
-          max: { x: box.min.x + dx + h, y: box.min.y + h, z: box.max.z - dz },
-        }
-        pushBlock(out, crate.min, crate.max, {
-          side: made([0.45, 0.4, 0.3], MATTER.tole),
-          top: made([0.5, 0.45, 0.34], MATTER.tole),
-        })
-        blocks.push(crate)
-      }
-      return blocks
-    },
-    lighting: (box) => cabinetLighting(box, [0.78, 0.9, 0.82], 4),
   },
   {
-    id: 'chambre',
-    box: cabinetBox(1300),
-    wall: 'north',
-    lateral: 922.5,
-    tint: [1, 0.97, 0.94],
-    palette: {
-      floor: made([0.5, 0.38, 0.26], MATTER.parquet),
-      ceiling: made([0.72, 0.71, 0.69], MATTER.platre),
-      wall: made([0.7, 0.69, 0.67], MATTER.platre),
-    },
-    build: (out, box) => {
-      // Presque rien : un banc, une plante. Après trois salles qui insistent, une qui se
-      // tait — et deux objets suffisent à ce qu'elle ne soit pas vide pour autant.
-      const centre = centreOf(box)
-      pushBench(out, { ...centre, y: box.min.y }, 3.2, { x: 1, y: 0, z: 0 }, FURNITURE.chene, FURNITURE.fonte)
-      pushPlant(
+    about: 'parquet et lambris — la salle d’époque',
+    floor: made([0.46, 0.32, 0.2], MATTER.parquet),
+    wall: made([0.54, 0.5, 0.44], MATTER.lambris),
+    build: (out, c) => {
+      pushCordon(
         out,
-        { x: box.max.x - 2.4, y: box.min.y, z: box.max.z - 2.4 },
-        FURNITURE.terre,
-        FURNITURE.humus,
-        FURNITURE.feuille,
-        11,
+        { x: c.x + 0.9, y: c.y, z: c.z + 2.4 },
+        { x: c.x + 3.5, y: c.y, z: c.z + 2.4 },
+        3,
+        FURNITURE.laiton,
+        FURNITURE.fonte,
+        FURNITURE.cordage,
       )
-      return [
-        {
-          min: { x: centre.x - 1.6, y: box.min.y, z: centre.z - 0.25 },
-          max: { x: centre.x + 1.6, y: box.min.y + 0.45, z: centre.z + 0.25 },
-        },
-      ]
+      pushPlant(out, { x: c.x + 3.4, y: c.y, z: c.z + 1.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 13)
     },
-    lighting: (box) => cabinetLighting(box, [1, 0.97, 0.94], 4),
+  },
+  {
+    about: 'moquette et plâtre — la salle de projection',
+    floor: made([0.26, 0.2, 0.22], MATTER.moquette),
+    wall: made([0.5, 0.49, 0.48], MATTER.platre),
+    build: (out, c) => {
+      for (const dz of [2.2, 3.2]) {
+        pushBench(out, { x: c.x + 2.2, y: c.y, z: c.z + dz }, 2.6, { x: 1, y: 0, z: 0 }, FURNITURE.chene, FURNITURE.fonte)
+      }
+    },
+  },
+  {
+    about: 'béton et tôle — la soute',
+    floor: made([0.4, 0.41, 0.43], MATTER.beton),
+    wall: made([0.42, 0.45, 0.44], MATTER.tole),
+    build: (out, c) => {
+      pushBlock(
+        out,
+        { x: c.x + 0.9, y: c.y + 2.0, z: c.z + 0.9 },
+        { x: c.x + 3.6, y: c.y + 2.4, z: c.z + 1.4 },
+        { side: made([0.38, 0.4, 0.39], MATTER.tole), top: made([0.42, 0.45, 0.43], MATTER.tole) },
+      )
+      pushPlant(out, { x: c.x + 3.4, y: c.y, z: c.z + 2.6 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 17)
+    },
   },
 ]
 
 /**
- * **L'atelier des matières**, au milieu de la crypte.
+ * Une scène en L, avec son numéro.
  *
- * Toutes les matières du musée y sont posées côte à côte sur des panneaux debout, et tout le
- * mobilier devant. C'est un lieu de travail avant d'être un lieu de visite : on y juge une
- * matière contre sa voisine, dans la même lumière et au même angle, ce qu'aucune salle
- * meublée ne permet — dans une galerie, on compare du marbre éclairé chaudement à du béton
- * éclairé froidement, et l'on ne compare plus rien.
- *
- * Les salles du musée n'en portent donc pas encore : elles reçoivent une allure, et ce qui se
- * pose dessus s'essaie d'abord ici. Le rangement viendra quand il y aura de quoi ranger.
+ * Le sol est une dalle surélevée de six centimètres : posée à ras, elle serait rigoureusement
+ * coplanaire avec le sol de la salle, et deux surfaces dans le même plan se disputent les
+ * pixels. Six centimètres, c'est aussi la hauteur d'une estrade — l'essai a l'air présenté
+ * plutôt que posé.
  */
-function furnishTheCrypt(out: number[]): void {
-  const centre = centreOf(LOWER_BOX)
-  const samples: { matter: number; tint: Color }[] = [
-    { matter: MATTER.marbre, tint: [0.6, 0.58, 0.55] },
-    { matter: MATTER.parquet, tint: [0.5, 0.34, 0.2] },
-    { matter: MATTER.moquette, tint: [0.4, 0.12, 0.13] },
-    { matter: MATTER.lambris, tint: [0.62, 0.58, 0.5] },
-    { matter: MATTER.pierre, tint: [0.6, 0.57, 0.5] },
-    { matter: MATTER.caissons, tint: [0.55, 0.53, 0.48] },
-    { matter: MATTER.beton, tint: [0.48, 0.49, 0.5] },
-    { matter: MATTER.tole, tint: [0.45, 0.48, 0.47] },
-    { matter: MATTER.platre, tint: [0.7, 0.69, 0.66] },
-    { matter: MATTER.verriere, tint: [0.8, 0.79, 0.74] },
-  ]
+function pushVignette(out: number[], vignette: Vignette, corner: Vec3, number: number): void {
+  const side = VIGNETTE_SIDE
+  const base = corner.y + 0.06
 
-  // Les panneaux, en ligne, tournés vers l'entrée. Deux mètres cinquante de haut : la hauteur
-  // d'une paroi, pour que les motifs dont la taille compte — un lambris, un béton banché — se
-  // lisent à leur échelle réelle et non en réduction.
-  const wide = 1.6
-  const gap = 0.5
-  const span = samples.length * wide + (samples.length - 1) * gap
-  samples.forEach((sample, i) => {
-    const x = centre.x - span / 2 + i * (wide + gap)
-    pushBlock(
-      out,
-      { x, y: LOWER_BOX.min.y, z: centre.z - 0.15 },
-      { x: x + wide, y: LOWER_BOX.min.y + 2.5, z: centre.z + 0.15 },
-      { side: made(sample.tint, sample.matter), top: made(sample.tint, sample.matter) },
-    )
+  pushBlock(
+    out,
+    corner,
+    { x: corner.x + side, y: base, z: corner.z + side },
+    { side: made([0.3, 0.29, 0.28], MATTER.beton), top: vignette.floor },
+  )
+
+  // Les deux parois du L : celle du fond, celle de gauche. L'ouverture regarde donc vers
+  // l'avant-droite, et toutes les scènes s'abordent du même côté — sans quoi on comparerait
+  // des angles de vue au lieu de comparer des matières.
+  pushBlock(
+    out,
+    { x: corner.x, y: base, z: corner.z },
+    { x: corner.x + side, y: base + VIGNETTE_HEIGHT, z: corner.z + VIGNETTE_THICK },
+    { side: vignette.wall, top: made([0.34, 0.33, 0.32], MATTER.beton) },
+  )
+  pushBlock(
+    out,
+    { x: corner.x, y: base, z: corner.z + VIGNETTE_THICK },
+    { x: corner.x + VIGNETTE_THICK, y: base + VIGNETTE_HEIGHT, z: corner.z + side },
+    { side: vignette.wall, top: made([0.34, 0.33, 0.32], MATTER.beton) },
+  )
+
+  vignette.build(out, { x: corner.x + VIGNETTE_THICK, y: base, z: corner.z + VIGNETTE_THICK }, side)
+
+  // Le numéro, sur une plaque debout au coin avant de l'estrade. Il regarde l'allée.
+  const plate = { x: corner.x + side - 0.9, y: corner.y, z: corner.z + side + 0.02 }
+  pushBlock(
+    out,
+    plate,
+    { x: plate.x + 0.85, y: plate.y + 0.62, z: plate.z + 0.14 },
+    { side: made([0.1, 0.1, 0.11], MATTER.tole), top: made([0.14, 0.14, 0.15], MATTER.tole) },
+  )
+  const label = String(number)
+  const cell = 0.075
+  pushDigits(
+    out,
+    { x: plate.x + 0.42 - (label.length * 4 - 1) * cell * 0.5, y: plate.y + 0.14, z: plate.z + 0.145 },
+    { x: cell, y: 0, z: 0 },
+    { x: 0, y: cell, z: 0 },
+    label,
+    made([0.85, 0.72, 0.3], MATTER.tole),
+  )
+}
+
+/**
+ * La planche d'essais entière : trois rangées de quatre, face à l'escalier.
+ *
+ * Les scènes sont posées au cordeau et toutes dans le même sens. C'est délibéré : ce qu'on
+ * compare doit différer par **une** chose à la fois, et une planche d'essais mal rangée
+ * mesure surtout la fantaisie de qui l'a rangée.
+ */
+function furnishTheCrypt(out: number[]): Block[] {
+  const blocks: Block[] = []
+  const pitch = 6.6
+  const columns = 4
+  const rows = 3
+  const originX = LOWER_BOX.min.x + (LOWER_BOX.max.x - LOWER_BOX.min.x - (columns - 1) * pitch - VIGNETTE_SIDE) / 2
+  const originZ = LOWER_BOX.min.z + 4.5
+
+  VIGNETTES.forEach((vignette, i) => {
+    const column = i % columns
+    const row = Math.floor(i / columns)
+    if (row >= rows) return
+    const corner = {
+      x: originX + column * pitch,
+      y: LOWER_BOX.min.y,
+      z: originZ + row * pitch,
+    }
+    pushVignette(out, vignette, corner, i + 1)
+    blocks.push({
+      min: { x: corner.x, y: corner.y, z: corner.z },
+      max: { x: corner.x + VIGNETTE_SIDE, y: corner.y + 0.06 + VIGNETTE_HEIGHT, z: corner.z + VIGNETTE_THICK },
+    })
+    blocks.push({
+      min: { x: corner.x, y: corner.y, z: corner.z },
+      max: { x: corner.x + VIGNETTE_THICK, y: corner.y + 0.06 + VIGNETTE_HEIGHT, z: corner.z + VIGNETTE_SIDE },
+    })
   })
-
-  // Et le mobilier devant, en vitrine : le cordon qui tient le visiteur à distance de la
-  // ligne de panneaux, un banc pour s'asseoir en face, deux plantes aux bouts.
-  const front = centre.z + 3.2
-  pushCordon(
-    out,
-    { x: centre.x - span / 2, y: LOWER_BOX.min.y, z: front },
-    { x: centre.x + span / 2, y: LOWER_BOX.min.y, z: front },
-    6,
-    FURNITURE.laiton,
-    FURNITURE.fonte,
-    FURNITURE.cordage,
-  )
-  pushBench(
-    out,
-    { x: centre.x, y: LOWER_BOX.min.y, z: front + 2.4 },
-    3.0,
-    { x: 1, y: 0, z: 0 },
-    FURNITURE.chene,
-    FURNITURE.fonte,
-  )
-  for (const [dx, seed] of [[-span / 2 - 1.4, 4], [span / 2 + 1.4, 9]]) {
-    pushPlant(
-      out,
-      { x: centre.x + dx, y: LOWER_BOX.min.y, z: front },
-      FURNITURE.terre,
-      FURNITURE.humus,
-      FURNITURE.feuille,
-      seed,
-    )
-  }
+  return blocks
 }
 
 const LOWER = 'salle-basse'
@@ -1188,18 +1054,14 @@ const GRIP_COLOUR: Color = [0.86, 0.88, 0.92]
  * moins, ayant marché sur l'une avant d'atteindre l'autre.
  */
 const SIX_FLOORS: RoomPalette = {
-  // **Du béton sur les six faces, et six teintes.** La matière doit être la même partout —
-  // ce sont six sols, et il faut qu'ils se ressemblent — mais la teinte doit changer, sans
-  // quoi on ne saurait plus sur laquelle on se tient. Un motif orienté serait pire que rien :
-  // il se lirait de travers dès qu'on bascule.
-  floor: made([0.30, 0.38, 0.52], MATTER.beton),
-  ceiling: made([0.24, 0.30, 0.42], MATTER.beton),
-  wall: made([0.4, 0.4, 0.4], MATTER.beton),
+  floor: [0.30, 0.38, 0.52],
+  ceiling: [0.24, 0.30, 0.42],
+  wall: [0.4, 0.4, 0.4],
   walls: {
-    north: made([0.52, 0.34, 0.30], MATTER.beton),
-    south: made([0.30, 0.46, 0.36], MATTER.beton),
-    west: made([0.50, 0.44, 0.28], MATTER.beton),
-    east: made([0.42, 0.32, 0.48], MATTER.beton),
+    north: [0.52, 0.34, 0.30],
+    south: [0.30, 0.46, 0.36],
+    west: [0.50, 0.44, 0.28],
+    east: [0.42, 0.32, 0.48],
   },
 }
 
@@ -1469,7 +1331,6 @@ function tubeMouth(id: string, atStart: boolean): Mouth {
 const WINGS: Wing[] = [
   {
     id: 'vrille',
-    look: 'tapis',
     // Boîte englobante seulement : la collision d'un tube vrillé se fait dans son
     // repère redressé, pas contre ces bornes. Elles restent justes, une section carrée
     // pivotée débordant de son demi-côté fois racine de deux.
@@ -1483,7 +1344,6 @@ const WINGS: Wing[] = [
   },
   {
     id: 'gravite',
-    look: 'beton',
     box: { min: { x: 200, y: 0, z: 200 }, max: { x: 210, y: 10, z: 210 } },
     wall: 'west',
     lateral: 205,
@@ -1495,7 +1355,6 @@ const WINGS: Wing[] = [
   {
     id: PENROSE_WING,
     box: PENROSE_BOX,
-    look: 'pierre',
     // La paroi et la cote de la porte, qui doivent s'accorder avec la bouche construite par
     // `stairMouths`. Elles ne le faisaient plus : la porte a déménagé sur un palier d'angle
     // et l'aile déclarait toujours le milieu de la paroi nord. Le trou était donc percé dans
@@ -1512,7 +1371,6 @@ const WINGS: Wing[] = [
   {
     id: PAVE_WING,
     box: PAVE_BOX,
-    look: 'lisse',
     // La salle pavée n'a pas de paroi où percer sa porte : celle-ci est portée par
     // l'édicule du centre, et ces deux champs ne servent alors à rien.
     wall: 'east',
@@ -1524,7 +1382,6 @@ const WINGS: Wing[] = [
   },
   {
     id: 'mobiles',
-    look: 'beton',
     box: { min: { x: 500, y: 0, z: 500 }, max: { x: 518, y: 3.6, z: 510 } },
     wall: 'north',
     lateral: 509,
@@ -1535,7 +1392,6 @@ const WINGS: Wing[] = [
   },
   {
     id: 'recursive',
-    look: 'galerie',
     box: { min: { x: 600, y: 0, z: 600 }, max: { x: 612, y: 6, z: 612 } },
     wall: 'west',
     lateral: 606,
@@ -1546,7 +1402,6 @@ const WINGS: Wing[] = [
   },
   {
     id: 'regard',
-    look: 'galerie',
     box: { min: { x: 700, y: 0, z: 700 }, max: { x: 708, y: 4, z: 720 } },
     wall: 'south',
     lateral: 704,
@@ -1758,15 +1613,23 @@ export function buildWorld(): World {
   // l'ombre, et l'on aurait jugé l'éclairage au lieu de la matière.
   const lowerLighting: CellLighting = {
     ambient: [LOWER_TINT[0] * 0.1, LOWER_TINT[1] * 0.1, LOWER_TINT[2] * 0.1],
-    lights: [-9, -3, 3, 9].map((dx) => ({
+    // Une lampe par rangée d'essais, alignée sur elles : ce qu'on compare doit l'être dans
+    // la même lumière, et une planche d'essais mal éclairée mesure surtout l'éclairage.
+    lights: [
+      { dx: -6.6, dz: -3.5 },
+      { dx: 6.6, dz: -3.5 },
+      { dx: -6.6, dz: 3.5 },
+      { dx: 6.6, dz: 3.5 },
+      { dx: 0, dz: 10 },
+    ].map(({ dx, dz }) => ({
       position: {
         x: (LOWER_BOX.min.x + LOWER_BOX.max.x) / 2 + dx,
-        y: LOWER_BOX.max.y - 0.6,
-        z: (LOWER_BOX.min.z + LOWER_BOX.max.z) / 2 + 1.6,
+        y: LOWER_BOX.max.y - 0.9,
+        z: (LOWER_BOX.min.z + LOWER_BOX.max.z) / 2 + dz,
       },
       colour: LOWER_TINT,
-      intensity: 7,
-      radius: 16,
+      intensity: 8,
+      radius: 15,
     })),
   }
 
@@ -1825,7 +1688,7 @@ export function buildWorld(): World {
     ;(hubHoles[wall] ??= []).push(holeOf(m))
   }
 
-  const accent: Color = made([0.62, 0.36, 0.2], MATTER.pierre)
+  const accent: Color = [0.62, 0.36, 0.2]
   const hubExtra: number[] = []
   for (const { mouth: m } of hubMouths) pushReveal(hubExtra, m, accent)
 
@@ -1835,22 +1698,7 @@ export function buildWorld(): World {
       fogColour: haze(hubTint),
       min: HUB_BOX.min,
       max: HUB_BOX.max,
-      verts: concat(
-        buildRoom(
-          HUB_BOX.min,
-          HUB_BOX.max,
-          {
-            // La rotonde est le seul endroit du musée qui doive avoir l'air **normal** : tout
-            // l'effet du reste en dépend. Marbre au sol, pierre appareillée aux parois,
-            // plâtre au plafond — un hall, rien de plus.
-            floor: made(tinted(hubTint, 0.46), MATTER.marbre),
-            ceiling: made(tinted(hubTint, 0.55), MATTER.platre),
-            wall: made(tinted(hubTint, 0.62), MATTER.pierre),
-          },
-          hubHoles,
-        ),
-        hubExtra,
-      ),
+      verts: concat(buildRoom(HUB_BOX.min, HUB_BOX.max, paletteFor(hubTint), hubHoles), hubExtra),
       passages: hubPassages,
       lighting: hubLighting,
     },
@@ -1891,12 +1739,10 @@ export function buildWorld(): World {
     // L'escalier : le ruban de marches, le pilier, et la cloison du raccord.
     if (stairs) {
       pushSpiral(extra, STAIR, {
-        // Les marches sont de la même pierre que les parois : un escalier taillé dans la
-        // masse, et non posé dedans.
-        tread: made(tinted(entry.wing.tint, 0.62), MATTER.pierre),
-        riser: made(tinted(entry.wing.tint, 0.44), MATTER.pierre),
-        under: made(tinted(entry.wing.tint, 0.3), MATTER.beton),
-        ceiling: made(tinted(entry.wing.tint, 0.38), MATTER.beton),
+        tread: tinted(entry.wing.tint, 0.62),
+        riser: tinted(entry.wing.tint, 0.44),
+        under: tinted(entry.wing.tint, 0.3),
+        ceiling: tinted(entry.wing.tint, 0.38),
       })
     }
 
@@ -1927,12 +1773,7 @@ export function buildWorld(): World {
         extra,
         entry.chest.min,
         entry.chest.max,
-        // Le coffre est d'une matière franchement autre que la salle : un objet posé là, pas
-        // un morceau d'architecture.
-        {
-          side: made([0.46, 0.42, 0.36], MATTER.marbre),
-          top: made([0.54, 0.5, 0.43], MATTER.marbre),
-        },
+        { side: [0.46, 0.42, 0.36], top: [0.54, 0.5, 0.43] },
         { face: RELIQUARY_FACE, hole: holeOf(entry.mouths[1]!) },
       )
     }
@@ -1940,9 +1781,7 @@ export function buildWorld(): World {
     // Le pilier de l'escalier, du sol au plafond. Sans chapeau : il touche le plafond, et
     // deux surfaces dans le même plan se disputeraient les pixels.
     if (stairs) {
-      pushBlock(extra, pillarBox().min, pillarBox().max, {
-        side: made(tinted(entry.wing.tint, 0.34), MATTER.pierre),
-      })
+      pushBlock(extra, pillarBox().min, pillarBox().max, { side: tinted(entry.wing.tint, 0.34) })
     }
 
     cells.push({
@@ -1958,10 +1797,10 @@ export function buildWorld(): World {
               // Quatre faces franchement distinctes : une section carrée qui tourne
               // d'un quart de tour se superpose à elle-même, et sans ces couleurs la
               // vrille serait parfaitement invisible.
-                floor: made([0.4, 0.26, 0.16], MATTER.moquette),
-                ceiling: made([0.3, 0.36, 0.34], MATTER.platre),
-                left: made([0.4, 0.52, 0.48], MATTER.platre),
-                right: made([0.5, 0.64, 0.6], MATTER.platre),
+                floor: [0.58, 0.36, 0.2],
+                ceiling: [0.2, 0.26, 0.24],
+                left: [0.33, 0.47, 0.42],
+                right: [0.47, 0.63, 0.57],
               },
               // Un anneau tous les quinze centimètres : la vrille est plus rapide en son
               // milieu qu'un profil linéaire, et des facettes s'y verraient.
@@ -1970,7 +1809,7 @@ export function buildWorld(): World {
           : buildRoom(
               entry.wing.box.min,
               entry.wing.box.max,
-              sixSided ? SIX_FLOORS : paletteFor(entry.wing.tint, entry.wing.look),
+              sixSided ? SIX_FLOORS : paletteFor(entry.wing.tint),
               entry.holes,
               sixSided ? { border: GRIP, edge: GRIP_COLOUR } : undefined,
               paved,
@@ -2021,46 +1860,7 @@ export function buildWorld(): World {
     const extra: number[] = []
     pushReveal(extra, lowerMouth, made(tinted(LOWER_TINT, 0.55), MATTER.pierre))
 
-    for (const cabinet of CABINETS) {
-      const here = mouth(LOWER, `salle-basse.vers-${cabinet.id}`, LOWER_BOX, cabinet.wall, cabinet.lateral)
-      // La porte du cabinet est au milieu de sa paroi nord : peu importe laquelle, une
-      // couture ne demande rien de plus qu'un rectangle de chaque côté.
-      const there = mouth(
-        cabinet.id,
-        `${cabinet.id}.porte`,
-        cabinet.box,
-        'north',
-        (cabinet.box.min.x + cabinet.box.max.x) / 2,
-      )
-
-      const inner: number[] = []
-      const blocks = cabinet.build(inner, cabinet.box)
-      const lighting = cabinet.lighting(cabinet.box, [there])
-      const [fromLower, fromCabinet] = makePassages(here, lowerLighting, there, lighting)
-
-      pushReveal(extra, here, made(tinted(LOWER_TINT, 0.55), MATTER.pierre))
-      pushReveal(inner, there, cabinet.palette.wall)
-      ;(holes[cabinet.wall] ??= []).push(holeOf(here))
-      lowerPassages.push(fromLower)
-
-      cells.push({
-        id: cabinet.id,
-        fogColour: haze(cabinet.tint),
-        min: cabinet.box.min,
-        max: cabinet.box.max,
-        verts: concat(
-          buildRoom(cabinet.box.min, cabinet.box.max, cabinet.palette, {
-            north: [holeOf(there)],
-          }),
-          inner,
-        ),
-        passages: [fromCabinet],
-        lighting,
-        ...(blocks.length ? { blocks } : {}),
-      })
-    }
-
-    furnishTheCrypt(extra)
+    const stands = furnishTheCrypt(extra)
 
     cells.push({
       id: LOWER,
@@ -2077,6 +1877,7 @@ export function buildWorld(): World {
       ),
       passages: lowerPassages,
       lighting: lowerLighting,
+      blocks: stands,
     })
   }
 
@@ -2157,12 +1958,11 @@ export function buildWorld(): World {
     // Le long d'un côté de la salle pavée, l'édicule à main droite : le regard file entre
     // deux rangées de copies jusqu'au brouillard, et c'est la seule image qui dise à la
     // fois « une salle » et « sans fin ».
-    // Le palier de la salle basse, ses quatre portes dans le champ : c'est l'image qui
-    // dit tout de la direction artistique, puisqu'on y voit les quatre partis pris côte à
-    // côte, chacun par son ouverture.
+    // La planche d'essais, vue de l'allée. On y juge la matière et le mobilier, jamais la
+    // géométrie : c'est la seule image du lot dont le sujet est le goût.
     cryptCell: LOWER,
-    cryptPos: { x: 915, y: LOWER_BOX.min.y + 1.65, z: LOWER_BOX.max.z - 4 },
-    cryptForward: { x: 0, y: -0.05, z: -1 },
+    cryptPos: { x: 915, y: LOWER_BOX.min.y + 1.65, z: LOWER_BOX.max.z - 3 },
+    cryptForward: { x: 0, y: -0.1, z: -1 },
     pavedCell: PAVE_WING,
     pavedPos: { x: PAVE_BOX.min.x + 1.2, y: PAVE_BOX.min.y + 1.65, z: PAVE_BOX.max.z - 1 },
     pavedForward: { x: 0, y: 0, z: -1 },
