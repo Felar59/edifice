@@ -20,6 +20,7 @@ struct Uniforms {
   ambient  : vec4<f32>,   // plancher de luminosité de la cellule
   params   : vec4<f32>,   // x : nombre de lampes ; y : nombre d'ouvertures
   lattice  : vec4<f32>,   // xyz : décalage de la copie, pour que l'éclairage se répète
+  fogBand  : vec4<f32>,   // x : sol de la cellule ; y : plafond, pour la brume basse
   lights   : array<Light, 12>,
   mouths   : array<MouthLight, 8>,
 };
@@ -162,7 +163,23 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
   let line = 1.0 - min(min(g.x, g.y), 1.0);
   rgb = rgb * (1.0 - 0.34 * line);
 
-  let fogAmount = clamp(1.0 - exp(-dist * u.fog.w), 0.0, 1.0);
+  // **Le brouillard, en exponentielle carrée et plus dense au ras du sol.**
+  //
+  // L'exponentielle simple part de zéro avec une pente immédiate : tout s'estompe un peu,
+  // dès le premier mètre, et l'image entière prend un voile. Son carré démarre à plat, donc
+  // ce qui est proche reste franc, puis se referme d'un coup — c'est ce qui fait un horizon
+  // plutôt qu'un voile.
+  //
+  // La brume basse ajoute ce qu'aucune densité uniforme ne donne : une salle a un sol, et
+  // l'air y est toujours plus épais qu'au plafond. Une demi-densité de plus en bas, une
+  // demi-densité de moins en haut, et la profondeur se lit dans l'image sans qu'on ait rien
+  // ajouté à la géométrie.
+  let ground = u.fogBand.x;
+  let ceiling = max(u.fogBand.y, ground + 0.001);
+  let height = clamp((in.world.y - ground) / (ceiling - ground), 0.0, 1.0);
+  let thickness = u.fog.w * mix(1.5, 0.6, height);
+  let reach = dist * thickness;
+  let fogAmount = clamp(1.0 - exp(-reach * reach), 0.0, 1.0);
   rgb = mix(rgb, u.fog.rgb, fogAmount);
 
   // Le format du canevas n'est pas sRGB : c'est à nous d'encoder. Tout le calcul

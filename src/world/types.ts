@@ -195,6 +195,16 @@ export interface Cell {
   fog?: number
 
   /**
+   * Couleur du brouillard propre à la cellule, si elle en demande une.
+   *
+   * Chaque aile a sa température de lumière ; son lointain doit avoir la même. Un gris
+   * unique pour tout le musée fait de chaque horizon un mur d'une autre matière que la
+   * salle qu'il termine — et c'est justement au bout d'une enfilade de copies que cela se
+   * remarque le plus.
+   */
+  fogColour?: readonly [number, number, number]
+
+  /**
    * **Le réseau : la cellule se répète, et on la dessine répétée.**
    *
    * Une salle dont les parois opposées sont cousues est un tore, et l'on y voit une infinité

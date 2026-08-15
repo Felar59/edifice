@@ -260,6 +260,18 @@ function holeOf(m: Mouth): Hole {
 }
 
 /** Une teinte assombrie, pour composer une palette de parois à partir d'une couleur. */
+/**
+ * La couleur du lointain d'une salle : sa propre teinte, très assombrie.
+ *
+ * Chaque aile a sa température de lumière, et son horizon doit avoir la même. Un gris unique
+ * pour tout le musée fait de chaque fond un mur d'une autre matière que la salle qu'il
+ * termine — ce qui se remarque surtout au bout d'une enfilade, là où il n'y a plus rien
+ * d'autre à regarder.
+ */
+function haze(tint: Colour): readonly [number, number, number] {
+  return [0.02 + tint[0] * 0.045, 0.02 + tint[1] * 0.045, 0.02 + tint[2] * 0.045]
+}
+
 function tinted(tint: Colour, level: number): Color {
   return [
     level * (0.5 + tint[0] * 0.5),
@@ -1327,6 +1339,7 @@ export function buildWorld(): World {
   const cells: Cell[] = [
     {
       id: HUB,
+      fogColour: haze(hubTint),
       min: HUB_BOX.min,
       max: HUB_BOX.max,
       verts: concat(buildRoom(HUB_BOX.min, HUB_BOX.max, paletteFor(hubTint), hubHoles), hubExtra),
@@ -1417,6 +1430,7 @@ export function buildWorld(): World {
 
     cells.push({
       id: entry.wing.id,
+      fogColour: haze(entry.wing.tint),
       min: entry.wing.box.min,
       max: entry.wing.box.max,
       verts: concat(
@@ -1484,6 +1498,7 @@ export function buildWorld(): World {
     pushReveal(extra, lowerMouth, tinted(LOWER_TINT, 0.55))
     cells.push({
       id: LOWER,
+      fogColour: haze(LOWER_TINT),
       min: LOWER_BOX.min,
       max: LOWER_BOX.max,
       verts: concat(

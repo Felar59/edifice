@@ -98,6 +98,22 @@ alors une matrice de vue fausse, sans le moindre message d'erreur. L'image
 cisaille, et les coutures, dont la caméra virtuelle hérite du défaut, se
 remplissent de zones vides. La verticale de gravité ne sert qu'à fixer le roulis.
 
+**Le brouillard a la couleur de la salle.** Il ne sert pas qu'à l'ambiance : c'est lui qui
+rend invisible la coupure de récursion, et il ne peut le faire que si le fond d'une salle et
+son lointain sont de la même matière. Un gris unique pour tout le musée faisait de chaque
+horizon un mur d'une autre couleur que la pièce qu'il terminait — ce qui se remarque surtout
+au bout d'une enfilade, là où il n'y a plus rien d'autre à regarder. Chaque cellule porte donc
+sa propre teinte de lointain, dérivée de sa température de lumière, et le fond d'écran de sa
+passe est effacé avec.
+
+Sa chute est en **exponentielle carrée** et non simple. L'exponentielle simple part de zéro
+avec une pente immédiate : tout s'estompe un peu dès le premier mètre, et l'image entière
+prend un voile. Son carré démarre à plat, donc ce qui est proche reste franc, puis se referme
+d'un coup — c'est ce qui fait un horizon plutôt qu'un voile. S'y ajoute une **brume basse**,
+une demi-densité de plus au ras du sol et une demi-densité de moins au plafond : une salle a
+un sol, l'air y est plus épais, et la profondeur se lit dans l'image sans qu'on ait rien
+ajouté à la géométrie.
+
 **Les parois ont une épaisseur.** Ce n'est pas une coquetterie d'architecte. Avec
 des cloisons sans épaisseur, l'œil passe à quelques millimètres d'un mur, donc plus
 près que le plan proche : le mur est intégralement écrêté, et comme rien ne se

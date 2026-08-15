@@ -50,7 +50,7 @@ import { MAX_LIGHTS, MAX_MOUTH_LIGHTS } from '../world/light'
  * retrouvées lues six lampes trop tôt — et le nuanceur aurait éclairé la salle avec des
  * morceaux de position de lampe.
  */
-const HEADER_FLOATS = 52
+const HEADER_FLOATS = 56
 const MOUTH_BLOCK = HEADER_FLOATS + MAX_LIGHTS * 8
 const SCENE_FLOATS = MOUTH_BLOCK + MAX_MOUTH_LIGHTS * 16
 import type { Cell, Mouth, Passage, World } from '../world/types'
@@ -81,7 +81,17 @@ const FOG_DENSITY = 0.014
  * sombre — et toute zone non couverte tranchait violemment au lieu de se confondre
  * avec l'éloignement.
  */
-const FOG_CLEAR = FOG_COLOR.map((c) => c ** (1 / 2.2)) as unknown as [number, number, number]
+/**
+ * La couleur d'effacement d'une cellule, encodée comme le fait le nuanceur.
+ *
+ * Le format du canevas n'est pas sRGB : la scène encode elle-même, et le fond doit encoder
+ * pareil, sans quoi le lointain d'une salle trancherait sur le vide qui l'entoure au lieu
+ * de s'y fondre.
+ */
+function clearFor(cell: Cell): GPUColor {
+  const haze = cell.fogColour ?? FOG_COLOR
+  return { r: haze[0] ** (1 / 2.2), g: haze[1] ** (1 / 2.2), b: haze[2] ** (1 / 2.2), a: 1 }
+}
 
 /**
  * Distance du plan proche. Partagée : le rendu des coutures en dépend.
@@ -505,7 +515,9 @@ export class Renderer {
       colorAttachments: [
         {
           view: target.colorView,
-          clearValue: { r: FOG_CLEAR[0], g: FOG_CLEAR[1], b: FOG_CLEAR[2], a: 1 },
+          // Le fond prend la couleur du brouillard **de cette cellule** : c'est ce qui
+          // fait que le lointain d'une salle et son fond d'écran ne se distinguent pas.
+          clearValue: clearFor(cell),
           loadOp: 'clear',
           storeOp: 'store',
         },
@@ -759,7 +771,8 @@ export class Renderer {
     // La densité du brouillard peut être propre à la cellule. Une salle qui se répète sans
     // fin a besoin d'un horizon plus proche que les autres : c'est le brouillard, et lui
     // seul, qui rend la coupure de récursion invisible.
-    s[36] = FOG_COLOR[0]; s[37] = FOG_COLOR[1]; s[38] = FOG_COLOR[2]
+    const haze = cell.fogColour ?? FOG_COLOR
+    s[36] = haze[0]; s[37] = haze[1]; s[38] = haze[2]
     s[39] = cell.fog ?? FOG_DENSITY
 
     const { ambient, lights } = cell.lighting
@@ -769,6 +782,7 @@ export class Renderer {
     const mouthCount = Math.min(cell.passages.length, MAX_MOUTH_LIGHTS)
     s[44] = lightCount; s[45] = mouthCount; s[46] = 0; s[47] = 0
     s[48] = shift.x; s[49] = shift.y; s[50] = shift.z; s[51] = 0
+    s[52] = cell.min.y; s[53] = cell.max.y; s[54] = 0; s[55] = 0
 
     for (let i = 0; i < MAX_LIGHTS; i++) {
       const o = HEADER_FLOATS + i * 8
