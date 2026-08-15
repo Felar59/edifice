@@ -841,6 +841,30 @@ pièce ferait une ampoule sombre dans une pièce sombre.
 **Le musée, lui, reste nu.** Les matières ne sont pas encore distribuées : on essaie d'abord,
 on range ensuite, et une salle habillée trop tôt fige un choix qu'on n'a pas fait.
 
+### Les tableaux
+
+Le musée n'avait jamais chargé la moindre texture : ses matières sont calculées, et c'est un
+parti pris qui tient. Mais **un tableau n'est pas une matière** — un cadre qui ne montre qu'un
+aplat est un cadre, pas un tableau, et ce musée est fait pour montrer des projets, qui sont des
+images. Les captures de l'ancien portfolio y sont donc accrochées, ce qui est un test de rendu
+d'image en même temps qu'une plaisanterie : l'ancien musée pend au mur du nouveau.
+
+Elles vivent dans un **tableau de textures**, une couche par image, et la matière d'une surface
+désigne sa couche — au-delà de cent, c'est une image. Un tableau plutôt que des textures
+séparées, pour une raison de fond : le nuanceur ne peut pas choisir une texture d'après une
+donnée par sommet, une texture étant une ressource et non une valeur, alors qu'une couche est
+un indice ordinaire.
+
+**Les mip-maps sont construites à la main**, WebGPU n'en fabriquant pas : une passe de rendu
+par niveau, chacune lisant le précédent. Sans elles, une image vue de loin ou de biais
+scintille — exactement le défaut qu'on venait de corriger dans les matières calculées, et il
+aurait été absurde de le réintroduire par la porte des images.
+
+Et pour la troisième fois, la règle d'uniformité de WGSL : `dpdx` et `dpdy` sont interdites
+sous une condition qui n'est pas uniforme, tout comme `fwidth`. L'écran est resté noir jusqu'à
+ce qu'elles remontent en tête de fragment ; l'image se lit ensuite avec `textureSampleGrad`,
+seule variante qui ne réclame pas de dérivée implicite et se laisse appeler n'importe où.
+
 ### La verticalité
 
 On saute et on tombe. Gravité à dix-huit mètres par seconde carrée — près du double du
