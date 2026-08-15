@@ -19,7 +19,7 @@ import { Projectiles } from '../player/projectiles'
 import { cameraToWorld } from '../render/camera'
 import { FLOATS_PER_VERTEX } from '../world/geometry'
 import { advance, resolveAgainstCell } from '../world/motion'
-import { heightAtTurn, stepHeight } from '../world/spiral'
+import { heightAtTurn, rampHeight, stepHeight } from '../world/spiral'
 import { angleAt, frameAt, toLocal } from '../world/twist'
 import { getLandmarks, HUB } from '../world/world'
 import type { World } from '../world/types'
@@ -895,8 +895,13 @@ export function runSelfTest(world: World): Check[] {
           {
             name: 'penrose',
             cell: stair.id,
-            pos: { ...door.center, y: door.center.y - 1.1 + PROBE_BODY.eyeHeight, z: door.center.z + 2.2 },
-            forward: { x: 1, y: 0, z: 0 },
+            // Deux mètres dans la salle, en partant de sa porte : jamais une coordonnée
+            // écrite en dur, la porte ayant déjà changé de paroi une fois.
+            pos: {
+              ...add(door.center, scale(door.normal, 2.2)),
+              y: door.center.y - 1.1 + PROBE_BODY.eyeHeight,
+            },
+            forward: scale(door.normal, -1),
           },
           world,
         )
@@ -912,6 +917,33 @@ export function runSelfTest(world: World): Check[] {
         }
         return { walker, lowest, highest }
       }
+
+      // **Chaque porte de l'escalier est sur la partie plate d'un palier.**
+      //
+      // L'invariant est né deux fois du même défaut, à deux endroits différents : une porte
+      // dont le seuil tombe sur une marche qui monte encore est **infranchissable**, et
+      // pour une raison qu'aucune image ne montre. Les pieds passent quelques centimètres
+      // sous le seuil, la collision juge que le corps ne tient pas dans l'ouverture, et le
+      // mur le repousse — on se cogne à une porte grande ouverte.
+      //
+      // Attention : un palier n'est pas plat sur toute sa longueur. La rampe est centrée
+      // sur les marches, donc elle monte déjà sur la dernière du palier. C'est exactement
+      // là que la porte était tombée.
+      let worstSlope = 0
+      for (const passage of stair.passages) {
+        const m = passage.from
+        if (Math.abs(m.up.y) < 0.9) continue // le raccord n'est pas une porte
+        const level = (side: number): number => {
+          const at = add(m.center, scale(m.right, side * (m.halfWidth + PROBE_BODY.radius)))
+          return rampHeight(spiral, add(at, scale(m.normal, PROBE_BODY.radius * 2)))
+        }
+        worstSlope = Math.max(worstSlope, Math.abs(level(1) - level(-1)))
+      }
+      add_(
+        'penrose · chaque porte est sur un palier',
+        worstSlope < 1e-9,
+        `dénivelé maximal ${fmt(worstSlope)} m sur la largeur d’une ouverture`,
+      )
 
       const up = follow(1, 60)
       add_(

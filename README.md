@@ -410,9 +410,14 @@ recommencer autant qu'on veut.
 
 Le tour de passe-passe tient en une phrase : **la hauteur ne dépend que de l'angle autour
 du pilier**. Un tour complet fait donc gagner exactement douze mètres, et une couture posée
-au raccord translate de cette hauteur. On la franchit sans rien sentir, parce qu'à l'endroit
-précis où elle se trouve, la marche suivante tombe là où l'œil l'attend — une marche plus
-haut que celle qu'on quitte, ni plus ni moins.
+au raccord translate de cette hauteur.
+
+**Cette couture est posée sur un palier**, et c'est ce qui la rend imperceptible. Tant
+qu'elle tombait en pleine volée, il fallait faire coïncider deux nez de marche au
+centimètre : la géométrie, la rampe de collision et l'éclairage devaient s'accorder au même
+endroit, et le moindre écart de l'un des trois s'y voyait. Sur un palier, il n'y a ni marche
+ni contremarche à raccorder — les deux côtés montrent le même sol horizontal, à la même
+hauteur d'œil, sous le même plafond. Il ne reste rien à faire coïncider.
 
 Le pilier n'est pas un ornement : c'est lui qui empêche d'embrasser la volée du regard. Le
 dessin de Penrose, lui, est un carré vide, et il ne tient que d'un seul point de vue.
@@ -425,11 +430,24 @@ un second ruban à trois mètres vingt au-dessus du premier, le couloir a partou
 section — et la bouche du raccord la couvre alors **entièrement**. Il n'y a plus rien à
 cacher.
 
-**Un palier à chaque angle du pilier.** On tourne sur du plat, comme dans un escalier réel,
-mais surtout : le sol d'un escalier tournant n'est de niveau que le long d'un rayon, or une
-porte est percée dans une paroi, donc en travers. Sans palier, le sol monterait de près d'un
-mètre sur la largeur de l'ouverture et l'on entrerait par le biais. Toutes les portes de
-l'escalier sont donc à un coin.
+**Un palier à chaque angle du pilier, et nulle part ailleurs.** On tourne sur du plat, comme
+dans un escalier réel, mais surtout : le sol d'un escalier tournant n'est de niveau que le
+long d'un rayon, or une porte est percée dans une paroi, donc en travers. Sans palier, le sol
+monterait de près d'un mètre sur la largeur de l'ouverture et l'on entrerait par le biais.
+Toutes les ouvertures de l'escalier — les deux portes et le raccord — sont donc à un coin.
+
+Quatre paliers, un par angle, et pas un de plus. Il y en a eu un cinquième, glissé en pleine
+volée pour y loger une porte : on voyait aussitôt des marches d'un côté et un plat de
+l'autre, et la volée cessait d'être régulière. Un escalier a le droit de souffler, mais pas
+une fois sur deux et d'un seul côté.
+
+Attention enfin : **un palier n'est pas plat sur toute sa longueur**. La rampe de collision
+est centrée sur les marches, elle monte donc déjà sur la dernière du palier. Une porte dont
+le seuil tombe là est **infranchissable**, et pour une raison qu'aucune image ne montre : les
+pieds passent quelques centimètres sous le seuil, la collision juge que le corps ne tient pas
+dans l'ouverture, et le mur le repousse — on se cogne à une porte grande ouverte. Le défaut
+est né deux fois, à deux endroits différents, avant de devenir un invariant qui mesure le
+dénivelé du sol sur la largeur de chaque ouverture et le veut rigoureusement nul.
 
 **Descendre ne boucle pas**, et c'est là que l'escalier devient impossible. La couture du
 raccord **n'a pas de jumelle** : elle se franchit en montant, pas en descendant. Le
@@ -438,15 +456,33 @@ sous la boucle, dans un quart de tour de marches que celle-ci ne parcourt jamais
 trouve la porte de la salle basse. **Celui qui monte ne la voit pas** — la couture le repose
 toujours au-dessus.
 
-Trois détails de fabrication méritent d'être notés.
+**La porte de la salle basse s'ouvre dans une paroi**, comme celle de l'entrée. Elle a
+d'abord été percée dans le mur qui ferme le bas de la volée, en travers du couloir : on
+tombait dessus sans transition, avec du vide autour d'elle et rien pour l'annoncer. Dans une
+paroi latérale, elle a ses deux jambages, son linteau et son embrasure, et l'on ne la
+rencontre qu'une fois descendu.
+
+Cinq détails de fabrication méritent d'être notés.
+
+**Les lampes sont périodiques d'un tour exactement**, une par quart de tour. À travers le
+raccord on voit la volée d'en dessous éclairée par les lampes d'en dessous, alors qu'on est
+éclairé par les siennes : si les deux séries ne se correspondent pas, la couture se signale
+par un changement de lumière, et aucune correction de géométrie ne le rattrape. Une couture
+invisible ne l'est qu'à condition que tout soit périodique — la forme, le volume **et**
+l'éclairage.
 
 La collision ne suit pas les marches mais une **rampe** qui passe en leur milieu. Un sol en
 escalier ferait monter le corps par bonds à chaque nez franchi ; la rampe le fait monter
 continûment, au prix d'un flottement d'une demi-marche que personne ne peut voir, faute de
-voir ses pieds. En revanche la **bouche** du raccord, elle, est calée sur la marche dessinée
-et non sur la rampe : les deux diffèrent d'une demi-marche, et l'erreur laissait treize
-centimètres d'ouverture non couverte — une bande sombre en travers de la volée, exactement à
-l'endroit qui ne doit rien montrer.
+voir ses pieds. Sur un palier, rampe et marche coïncident — raison de plus d'y poser les
+ouvertures : c'est le seul endroit où les deux descriptions du sol se rejoignent.
+
+Une couture qui ne fait que **translater** est écrite comme telle, et non composée à partir
+des deux repères. Les matrices sont en flottants 32 bits ; à trois cents mètres de l'origine,
+une bouche posée en diagonale traîne des facteurs en racine de deux dans chaque terme, et la
+composition rendait une translation fausse de vingt microns. C'est invisible, et indéfendable
+tout de même : l'escalier se franchit des centaines de fois et l'erreur s'accumule à chaque
+tour. Écrite directement, la translation est exacte quel que soit l'angle de la bouche.
 
 Les contremarches du plafond sont dessinées **des deux côtés**. Celle du sol n'est jamais vue
 que d'en dessous, le nez de la marche la masquant par-dessus ; celle du plafond est exposée
@@ -516,6 +552,11 @@ Ceux de l'escalier de Penrose portent sur ce qui rend la boucle invisible : **un
 exactement la montée** — égalité éprouvée en trente-deux points du profil, parce qu'un
 palier mal placé la casserait au milieu sans toucher aux bouts —, le plafond suit les
 marches, monter est sans fin, descendre ne boucle pas, et la descente mène ailleurs.
+
+S'y ajoute **chaque porte est sur un palier** : le sol ne doit pas varier d'un milliardième
+de mètre sur la largeur d'une ouverture. C'est le contrôle qui aurait fait gagner le plus de
+temps s'il avait existé plus tôt — le défaut qu'il attrape se présente comme un mur invisible
+devant une porte ouverte, et rien dans l'image ne dit qu'il s'agit d'une question de sol.
 
 Ceux de la salle aux six sols mesurent une chose et une seule à la fois, et le plus utile
 est le plus bête : **la salle a une sortie**. Il est né d'un défaut — la bande d'accroche

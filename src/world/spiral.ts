@@ -86,10 +86,17 @@ export function stepHeight(spiral: Spiral, k: number): number {
   return spiral.centre.y + risen + laps * spiral.rise
 }
 
-/** Cette marche fait-elle partie d'un palier ? */
+/**
+ * Cette marche fait-elle partie d'un palier ?
+ *
+ * Le compte se fait **modulo le tour**, et un palier a le droit d'enjamber le raccord :
+ * c'est même le cas du plus important d'entre eux, celui qui le porte.
+ */
 export function onTheLanding(spiral: Spiral, step: number): boolean {
   const wrapped = ((step % spiral.steps) + spiral.steps) % spiral.steps
-  return spiral.landings.some((l) => wrapped >= l.at && wrapped < l.at + l.count)
+  return spiral.landings.some(
+    (l) => (wrapped - l.at + spiral.steps) % spiral.steps < l.count,
+  )
 }
 
 /**
