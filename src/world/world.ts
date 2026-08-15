@@ -81,6 +81,203 @@ const REVEAL = 0.25
 /** Le nom de la pièce d'accueil, référencé par l'auto-test et les outils. */
 export const HUB = 'rotonde'
 
+/**
+ * **Le pont sur le vide.**
+ *
+ * On pousse une porte de la rotonde et l'on est dehors, sur une passerelle d'un mètre
+ * cinquante **sans garde-corps**, au-dessus d'un vide dont on ne voit pas le fond. Le musée
+ * est au-dessus, en dessous, à gauche, à droite : des masses de béton de deux cents mètres
+ * qui montent et descendent hors de vue. Aucune énigme, aucun objet, rien à faire — c'est le
+ * seul endroit du bâtiment dont la fonction soit de faire s'arrêter le visiteur.
+ *
+ * ## Le vide a un fond, et c'est le ciel
+ *
+ * Il fallait décider ce qui arrive à qui tombe. Mourir est exclu : le plan dit « aucun
+ * danger », et un vertige qui punit devient un obstacle. Poser un sol vingt mètres plus bas
+ * l'est tout autant — on verrait le fond, et il n'y aurait plus de vide.
+ *
+ * La réponse est une **couture horizontale d'un bout à l'autre de la cellule** : le plancher
+ * de la boîte est recollé à son plafond, deux cents mètres plus haut, par une translation
+ * pure. On tombe, on traverse le plan du bas, on réapparaît en haut, et l'on retombe. Six
+ * secondes par tour, à vingt-huit mètres par seconde, l'architecture qui défile. Et comme on
+ * garde la maîtrise de son déplacement en l'air, on peut se replacer au-dessus du belvédère
+ * et **atterrir dessus** : la chute n'est pas une punition, c'est un trajet.
+ *
+ * C'est pour cela que les masses sont **uniformes sur toute leur hauteur** et débordent la
+ * boîte de quarante mètres. Une frise, un bandeau, une corniche, et l'on verrait le raccord
+ * passer. Rien d'horizontal n'existe ici en dehors du niveau du pont — qui est à cent mètres
+ * du plan de couture, donc noyé de brume bien avant qu'on puisse le reconnaître d'en haut.
+ *
+ * Ces deux bouches sont aussi des ouvertures pour le rendu : on voit à travers, donc on voit
+ * la même scène répétée au-dessus et en dessous de soi. Le vide n'est pas peint, il est
+ * profond.
+ */
+const BRIDGE = 'pont'
+const BRIDGE_BOX: Box = {
+  min: { x: 1000, y: -80, z: 1000 },
+  max: { x: 1080, y: 80, z: 1080 },
+}
+/** L'axe de la passerelle, et le niveau de son tablier. */
+const BRIDGE_X = 1040
+const BRIDGE_DECK = 0
+const BRIDGE_TINT: Colour = [0.78, 0.82, 0.88]
+
+/** Les deux bouches de la boucle verticale : le sol de la boîte, et son plafond. */
+function bridgeLoop(): { under: Mouth; over: Mouth } {
+  const half = {
+    halfWidth: (BRIDGE_BOX.max.x - BRIDGE_BOX.min.x) / 2,
+    halfHeight: (BRIDGE_BOX.max.z - BRIDGE_BOX.min.z) / 2,
+  }
+  const centre = {
+    x: (BRIDGE_BOX.min.x + BRIDGE_BOX.max.x) / 2,
+    z: (BRIDGE_BOX.min.z + BRIDGE_BOX.max.z) / 2,
+  }
+  return {
+    // **Sans embrasure, contrairement à toutes les autres bouches du musée.** Une bouche de
+    // porte est posée au fond de son ébrasement, à vingt-cinq centimètres derrière la paroi ;
+    // ici cela décalerait la boucle d'un demi-mètre, et la répétition ne serait plus exacte.
+    // Il n'y a de toute façon aucune épaisseur à traverser : l'ouverture est le ciel.
+    under: {
+      id: 'pont.bas',
+      cell: BRIDGE,
+      center: { x: centre.x, y: BRIDGE_BOX.min.y, z: centre.z },
+      right: { x: 1, y: 0, z: 0 },
+      up: { x: 0, y: 0, z: -1 },
+      normal: { x: 0, y: 1, z: 0 },
+      ...half,
+    },
+    over: {
+      id: 'pont.haut',
+      cell: BRIDGE,
+      center: { x: centre.x, y: BRIDGE_BOX.max.y, z: centre.z },
+      right: { x: -1, y: 0, z: 0 },
+      up: { x: 0, y: 0, z: -1 },
+      normal: { x: 0, y: -1, z: 0 },
+      ...half,
+    },
+  }
+}
+
+/**
+ * La géométrie du dehors : une façade, un belvédère, une passerelle, et des masses.
+ *
+ * Tout ce qui est vertical déborde la boîte de quarante mètres en haut comme en bas, pour
+ * que le raccord de la boucle tombe au milieu d'une surface et non sur une arête.
+ */
+function buildTheBridge(door: Mouth): { verts: number[]; blocks: Block[] } {
+  const out: number[] = []
+  const blocks: Block[] = []
+
+  const concrete = made(tinted(BRIDGE_TINT, 0.38), MATTER.beton)
+  const dark = made(tinted(BRIDGE_TINT, 0.26), MATTER.beton)
+  const worn = made(tinted(BRIDGE_TINT, 0.44), MATTER.pierre)
+  const under = made(tinted(BRIDGE_TINT, 0.2), MATTER.beton)
+
+  const low = BRIDGE_BOX.min.y - 40
+  const high = BRIDGE_BOX.max.y + 40
+
+  // La façade, percée de la porte : c'est le bâtiment qu'on vient de quitter, et il monte
+  // et descend hors de vue comme tout le reste.
+  pushWall(out, {
+    origin: { x: BRIDGE_BOX.min.x, y: low, z: BRIDGE_BOX.min.z },
+    right: { x: BRIDGE_BOX.max.x - BRIDGE_BOX.min.x, y: 0, z: 0 },
+    up: { x: 0, y: high - low, z: 0 },
+    color: concrete,
+    holes: [holeOf(door)],
+  })
+  // Ses contreforts. Sans eux la façade est un aplat, et un aplat n'a pas d'échelle :
+  // c'est le rythme des refends qui dit qu'elle est immense, pas sa taille à l'écran.
+  //
+  // Chaque saillie mord de dix centimètres dans ce sur quoi elle s'applique. Sans cette
+  // morsure, sa face arrière et la surface qui la porte occupent le même plan, et deux
+  // surfaces coplanaires se disputent les pixels dès qu'on les regarde de biais.
+  const BITE = 0.1
+  for (const x of [1006, 1018, 1052, 1064, 1076]) {
+    pushBlock(out, { x, y: low, z: BRIDGE_BOX.min.z - BITE }, { x: x + 3, y: high, z: BRIDGE_BOX.min.z + 2.2 }, { side: dark })
+  }
+  // L'encadrement de la porte : deux jambages et un linteau saillants, pour que l'ouverture
+  // se lise de loin comme une porte et non comme un trou.
+  //
+  // Le linteau **repose** sur les jambages au lieu de les recouvrir, et il est un peu plus
+  // large et un peu moins saillant qu'eux. C'est la manière propre de faire buter deux
+  // volumes : deux faces qui se touchent dos à dos ne se voient jamais toutes les deux,
+  // tandis que deux faces qui se recouvrent en regardant du même côté se disputent les
+  // pixels.
+  const lintel = BRIDGE_DECK + 2.6
+  for (const side of [-1, 1]) {
+    pushBlock(
+      out,
+      { x: BRIDGE_X + side * 1.2, y: BRIDGE_DECK - 0.8, z: BRIDGE_BOX.min.z - BITE },
+      { x: BRIDGE_X + side * 2.1, y: lintel, z: BRIDGE_BOX.min.z + 1 },
+      { side: worn, top: worn },
+    )
+  }
+  pushBlock(
+    out,
+    { x: BRIDGE_X - 2.4, y: lintel, z: BRIDGE_BOX.min.z - BITE * 2 },
+    { x: BRIDGE_X + 2.4, y: lintel + 0.8, z: BRIDGE_BOX.min.z + 0.9 },
+    { side: worn, top: worn },
+  )
+
+  // Le belvédère : le seul endroit large du dehors, et la cible qu'on vise en tombant.
+  const terrace = {
+    min: { x: BRIDGE_X - 4, y: BRIDGE_DECK - 1.4, z: BRIDGE_BOX.min.z },
+    max: { x: BRIDGE_X + 4, y: BRIDGE_DECK, z: BRIDGE_BOX.min.z + 7 },
+  }
+  pushBlock(out, terrace.min, terrace.max, { side: under, top: worn })
+  blocks.push(terrace)
+
+  // La passerelle. Un mètre cinquante, sans garde-corps, et elle **s'arrête en l'air** :
+  // elle ne mène nulle part, et c'est le sujet. Un pont qui aboutit est un couloir.
+  const deck = {
+    min: { x: BRIDGE_X - 0.75, y: BRIDGE_DECK - 0.9, z: terrace.max.z },
+    max: { x: BRIDGE_X + 0.75, y: BRIDGE_DECK, z: 1046 },
+  }
+  pushBlock(out, deck.min, deck.max, { side: under, top: worn })
+  blocks.push(deck)
+  // Les consoles sous le tablier : on les voit en se penchant, et elles donnent le pas.
+  for (let z = terrace.max.z + 3; z < deck.max.z - 1; z += 6) {
+    pushBlock(out, { x: BRIDGE_X - 1.3, y: BRIDGE_DECK - 1.9, z }, { x: BRIDGE_X + 1.3, y: BRIDGE_DECK - 0.9 + BITE, z: z + 1.2 }, { side: dark, top: dark })
+  }
+
+  // Les masses. Elles n'ont ni sommet ni pied visibles ; leur seule fonction est de donner
+  // au vide trois dimensions, et à la chute quelque chose à faire défiler.
+  const masses: [number, number, number, number][] = [
+    [1008, 1014, 1022, 1032],
+    [1056, 1074, 1010, 1022],
+    [1002, 1013, 1042, 1058],
+    [1060, 1078, 1046, 1060],
+    [1022, 1058, 1066, 1080],
+    [1020, 1030, 1028, 1038],
+  ]
+  for (const [x0, x1, z0, z1] of masses) {
+    pushBlock(out, { x: x0, y: low, z: z0 }, { x: x1, y: high, z: z1 }, { side: concrete })
+    blocks.push({ min: { x: x0, y: low, z: z0 }, max: { x: x1, y: high, z: z1 } })
+    // Un refend vertical sur la face tournée vers le pont, pour la même raison qu'en façade.
+    const rib = (x0 + x1) / 2
+    pushBlock(out, { x: rib - 1.2, y: low, z: z0 - 0.9 }, { x: rib + 1.2, y: high, z: z0 + BITE }, { side: dark })
+  }
+
+  // Trois plateformes en encorbellement, tendues vers le pont sans jamais l'atteindre.
+  //
+  // Elles ne servent qu'à une chose : donner un **haut** et un **bas** au vide. Des masses
+  // verticales seules ne disent rien de la hauteur — c'est en voyant passer un plancher qu'on
+  // sait qu'on tombe. Elles restent près du niveau du pont, à soixante-dix mètres du plan de
+  // la boucle, donc noyées de brume bien avant qu'on puisse les reconnaître d'en haut et
+  // s'apercevoir que le vide se répète.
+  const ledges: [number, number, number, number, number][] = [
+    [1030, 1038, 1026, 1040, 9.5],
+    [1046, 1056, 1016, 1030, -7.5],
+    [1028, 1036, 1046, 1058, -18],
+  ]
+  for (const [x0, x1, z0, z1, y] of ledges) {
+    pushBlock(out, { x: x0, y, z: z0 }, { x: x1, y: y + 1.4, z: z1 }, { side: dark, top: worn })
+    blocks.push({ min: { x: x0, y, z: z0 }, max: { x: x1, y: y + 1.4, z: z1 } })
+  }
+
+  return { verts: out, blocks }
+}
+
 type Wall = 'north' | 'south' | 'east' | 'west'
 
 interface Box {
@@ -1699,6 +1896,10 @@ export interface Landmarks {
   pavedCell: string
   pavedPos: Vec3
   pavedForward: Vec3
+  /** Sur la passerelle, à mi-longueur, le regard vers le bout qui n'aboutit pas. */
+  bridgeCell: string
+  bridgePos: Vec3
+  bridgeForward: Vec3
   cryptCell: string
   cryptPos: Vec3
   cryptForward: Vec3
@@ -1789,6 +1990,12 @@ export function buildWorld(): World {
     LOOP_BACK.hubLateral,
   )
   hubMouths.push({ mouth: loopHubMouth, wall: LOOP_BACK.hubWall })
+
+  // **La neuvième porte, au milieu de la paroi nord.** Les huit autres vont par paires de
+  // part et d'autre de chaque mur ; celle-ci est seule et centrée, et c'est voulu — c'est la
+  // seule qui ne mène pas à une salle mais **dehors**.
+  const bridgeHubMouth = mouth(HUB, `${HUB}.vers-pont`, HUB_BOX, 'north', 0)
+  hubMouths.push({ mouth: bridgeHubMouth, wall: 'north' })
 
   const hubTint: Colour = [1, 0.88, 0.72]
   const hubLighting: CellLighting = {
@@ -1994,6 +2201,37 @@ export function buildWorld(): World {
   )
   wingPassages.get(MOBILE_WING)!.push(intoConduit)
   mobileWing.holes.ceiling = [holeOf(lower.under)]
+
+  // **Le pont.** Deux coutures : la porte, et la boucle verticale qui recolle le plancher de
+  // la cellule à son plafond. La seconde a ses deux bouches dans la même cellule — l'espace
+  // cousu relie des bouches, pas des pièces — et ne transmet donc aucune lumière.
+  const bridgeDoor = mouth(BRIDGE, 'pont.porte', BRIDGE_BOX, 'north', BRIDGE_X, BRIDGE_DECK)
+  const bridgeLighting: CellLighting = {
+    // **Dehors, la lumière vient de partout.** Un ambiant fort et froid plutôt que des
+    // lampes : il n'y a pas de plafonnier au-dessus d'un vide, et une source ponctuelle à
+    // deux cents mètres ne modèle rien. Les quatre foyers ci-dessous ne servent qu'à
+    // détacher le proche du lointain, au niveau du pont.
+    // Sombre de près, blanc de loin. C'est l'inverse d'un intérieur, et c'est ce qui donne
+    // les silhouettes : le béton proche reste mat, et la brume l'efface en l'éclaircissant.
+    ambient: [0.13, 0.14, 0.16],
+    lights: [-24, 24].flatMap((dz) =>
+      [-26, 26].map((dx) => ({
+        position: { x: BRIDGE_X + dx, y: BRIDGE_DECK + 26, z: BRIDGE_BOX.min.z + 30 + dz },
+        colour: BRIDGE_TINT,
+        intensity: 60,
+        radius: 70,
+      })),
+    ),
+  }
+  const loop = bridgeLoop()
+  const [hubToBridge, bridgeToHub] = makePassages(
+    bridgeHubMouth,
+    hubLighting,
+    bridgeDoor,
+    bridgeLighting,
+  )
+  const [fallOut, fallIn] = makePassages(loop.under, bridgeLighting, loop.over, bridgeLighting)
+  hubPassages.push(hubToBridge)
 
   const chestWing = wingData.find((entry) => entry.wing.id === RELIQUARY_WING)!
   const [intoChest, outOfChest] = makePassages(
@@ -2264,6 +2502,29 @@ export function buildWorld(): World {
     })
   }
 
+  {
+    const bridge = buildTheBridge(bridgeDoor)
+    pushReveal(bridge.verts, bridgeDoor, made(tinted(BRIDGE_TINT, 0.3), MATTER.pierre), false)
+
+    cells.push({
+      id: BRIDGE,
+      // Un lointain **plus clair** que tout ce qu'il termine, et c'est ce qui fait le vide :
+      // l'air éloigne les choses en les éclaircissant, et une brume plus sombre que le béton
+      // se lirait comme un fond peint.
+      fogColour: [0.74, 0.78, 0.84],
+      // Un horizon à une petite centaine de mètres. Plus loin, on verrait le sommet des
+      // masses et le plan de la boucle ; plus près, les masses cessent d'être des masses et
+      // le dehors n'est plus qu'un brouillard avec une planche dedans.
+      fog: 0.018,
+      min: BRIDGE_BOX.min,
+      max: BRIDGE_BOX.max,
+      verts: new Float32Array(bridge.verts),
+      passages: [bridgeToHub, fallOut, fallIn],
+      lighting: bridgeLighting,
+      blocks: bridge.blocks,
+    })
+  }
+
   // Vérification silencieuse mais utile : un repère de bouche doit être direct, sinon la
   // transformation retourne l'image sans que rien ne le signale.
   for (const cell of cells) {
@@ -2349,6 +2610,11 @@ export function buildWorld(): World {
     pavedCell: PAVE_WING,
     pavedPos: { x: PAVE_BOX.min.x + 1.2, y: PAVE_BOX.min.y + 1.65, z: PAVE_BOX.max.z - 1 },
     pavedForward: { x: 0, y: 0, z: -1 },
+    // Le dehors. Ce point de vue ne teste aucune couture : il teste une échelle, et c'est
+    // la seule image du lot dont le sujet soit le vide.
+    bridgeCell: BRIDGE,
+    bridgePos: { x: BRIDGE_X, y: BRIDGE_DECK + 1.65, z: 1022 },
+    bridgeForward: { x: 0.12, y: -0.08, z: 1 },
     wings: WINGS.map((w) => ({ id: w.id, purpose: w.purpose })),
   }
 

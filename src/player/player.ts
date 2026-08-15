@@ -174,6 +174,16 @@ export function presets(): Preset[] {
       pos: marks.pavedPos,
       forward: marks.pavedForward,
     },
+    // Le pont sur le vide. Ce point de vue ne teste aucune couture : il teste une échelle.
+    // Une passerelle d'un mètre cinquante sans garde-corps, des masses qui montent et
+    // descendent hors de vue, et rien en dessous — si l'image ne donne pas le vertige, c'est
+    // que le brouillard ou l'éclairage sont à revoir, pas la géométrie.
+    {
+      name: 'Le pont sur le vide',
+      cell: marks.bridgeCell,
+      pos: marks.bridgePos,
+      forward: marks.bridgeForward,
+    },
     // La planche d'essais de la salle basse. Ce point de vue ne teste aucune géométrie : il
     // montre les scènes en L, numérotées, où l'on essaie les matières et le mobilier avant
     // d'en habiller le musée.

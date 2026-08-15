@@ -1536,6 +1536,74 @@ export function runSelfTest(world: World, physics: Physics): Check[] {
     )
   }
 
+  // 18 bis. Le pont sur le vide.
+  //
+  //    **La passerelle porte.** Un mètre cinquante sans garde-corps : on doit pouvoir la
+  //    parcourir jusqu'au bout en marchant droit, et n'en tomber qu'en s'en écartant. Une
+  //    passerelle dont on tombe en marchant droit ne serait pas un vertige mais un défaut.
+  //
+  //    **On en tombe, et le vide reboucle.** C'est la réponse à « que se passe-t-il si je
+  //    saute ? », et elle ne peut être ni la mort — le plan dit « aucun danger » — ni un sol
+  //    vingt mètres plus bas, qui supprimerait le vide. Le plancher de la cellule est recollé
+  //    à son plafond : on tombe, on repasse par le haut, et l'on retombe.
+  //
+  //    **Et la chute n'est pas une punition.** On garde la maîtrise de son déplacement en
+  //    l'air : en se replaçant au-dessus du belvédère pendant la descente, on y atterrit. Un
+  //    tour suffit. C'est ce qui fait de la chute un trajet plutôt qu'un piège.
+  {
+    const marks = getLandmarks()
+    const outside = world.cells.get(marks.bridgeCell)
+
+    if (!outside) {
+      add_('pont · la cellule existe', false, `cellule inconnue : ${marks.bridgeCell}`)
+    } else {
+      // Le long de la passerelle, droit devant.
+      const walker = new Player()
+      walker.goTo({ name: 'pont', cell: outside.id, pos: { ...marks.bridgePos }, forward: v3(0, 0, 1) }, world)
+      let lowest = walker.pos.y
+      // Cinq secondes, soit dix-sept mètres : de quoi couvrir la portée restante sans
+      // atteindre le bout, qui est en l'air et dont on doit tomber.
+      for (let i = 0; i < 300; i++) {
+        walker.update(1 / 60, world, new Set(['KeyW']))
+        lowest = Math.min(lowest, walker.pos.y)
+      }
+      add_(
+        'pont · la passerelle porte',
+        walker.grounded && lowest > marks.bridgePos.y - 0.5,
+        `descendu à ${fmt(lowest)} m, ${walker.grounded ? 'posé' : 'en l’air'}`,
+      )
+
+      // Puis on s'en écarte, et l'on vise le belvédère en tombant.
+      const faller = new Player()
+      faller.goTo({ name: 'pont', cell: outside.id, pos: { ...marks.bridgePos }, forward: v3(1, 0, 0) }, world)
+      const landing = { x: marks.bridgePos.x, z: outside.min.z + 3 }
+      let loops = 0
+      let steps = 0
+      for (let i = 0; i < 3000; i++) {
+        if (faller.grounded && loops === 0 && faller.pos.y > 0) faller.face(v3(1, 0, 0))
+        else faller.face(v3(landing.x - faller.pos.x, 0, landing.z - faller.pos.z))
+        const before = faller.pos.y
+        faller.update(1 / 60, world, new Set(['KeyW']))
+        // Un bond de cent mètres vers le haut n'arrive que d'une façon : par la couture.
+        if (faller.pos.y > before + 100) loops++
+        steps = i
+        if (loops > 0 && faller.grounded) break
+      }
+      add_(
+        'pont · le vide reboucle',
+        loops >= 1,
+        loops >= 1 ? `${loops} tour(s) de chute` : 'jamais repassé par le haut',
+      )
+      add_(
+        'pont · la chute n’est pas une punition',
+        loops >= 1 && faller.grounded,
+        faller.grounded
+          ? `reposé après ${(steps / 60).toFixed(1)} s à ${fmt(faller.pos.y)} m`
+          : 'toujours en chute au bout de cinquante secondes',
+      )
+    }
+  }
+
   // 19. Aucune cellule ne dépasse le budget de lampes du nuanceur.
   //
   //    Le dépassement est **silencieux** : le rendu prend les premières et laisse tomber le
