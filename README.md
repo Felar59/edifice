@@ -841,6 +841,18 @@ pièce ferait une ampoule sombre dans une pièce sombre.
 **Le musée, lui, reste nu.** Les matières ne sont pas encore distribuées : on essaie d'abord,
 on range ensuite, et une salle habillée trop tôt fige un choix qu'on n'a pas fait.
 
+**Une marche basse se monte.** Sans cette règle, tout ce qui traîne au sol est un mur : une
+estrade de six centimètres arrête net, un socle de banc aussi, et le corps qui longe un tel
+bord se fait repousser d'un côté puis de l'autre à chaque image. La caméra tremble, et l'on
+croit que le sol bouge — un défaut de collision qu'on attribue au rendu, parce qu'il se *voit*
+dans l'image. Quarante centimètres s'enjambent donc sans y penser ; au-delà, un bloc reste un
+obstacle et se contourne.
+
+**Et une touche coupe les matières.** `T` met tout à plat : ni motif, ni image, rien que les
+couleurs. C'est un outil de diagnostic, et le seul moyen honnête de trancher une question qui
+ne se tranche pas à l'œil — un scintillement qui survit à l'aplat vient de la géométrie ou de
+la profondeur, jamais de la texture.
+
 ### Les tableaux
 
 Le musée n'avait jamais chargé la moindre texture : ses matières sont calculées, et c'est un

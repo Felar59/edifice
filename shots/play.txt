@@ -1,4 +1,0 @@
-crypte, rotation 2 px/image        0.23 %
-rotonde, rotation 2 px/image       0.14 %
-crypte, rotation 6 px/image        0.74 %
-rotonde, rotation 6 px/image       0.84 %
