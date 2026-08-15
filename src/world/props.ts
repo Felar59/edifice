@@ -58,16 +58,37 @@ export function pushCylinder(
   }
 
   if (!cap) return
-  // Le dessus en éventail depuis le centre. Les coordonnées de surface y sont planes, de
-  // sorte qu'un marbre ou un bois s'y lise comme sur une table.
-  const centre = { x: base.x, y: base.y + height, z: base.z }
+  pushDisc(out, { x: base.x, y: base.y + height, z: base.z }, radiusTop, sides, cap)
+}
+
+/**
+ * Un disque horizontal, en éventail depuis son centre.
+ *
+ * Sert à boucher ce qui doit l'être — la terre d'un pot, le fond d'une coupe — sans ajouter
+ * de flanc. Un cylindre très plat ferait le même effet et poserait un flanc vertical
+ * rigoureusement coplanaire avec celui qui l'entoure ; deux surfaces dans le même plan se
+ * disputent alors les pixels.
+ */
+export function pushDisc(out: number[], centre: Vec3, radius: number, sides: number, colour: Color): void {
   for (let i = 0; i < sides; i++) {
-    const j = (i + 1) % sides
-    pushQuad(out, centre, top[i]!, top[j]!, centre, cap, [
+    const a = (i / sides) * TAU
+    const b = ((i + 1) / sides) * TAU
+    const p = (angle: number): Vec3 => ({
+      x: centre.x + Math.cos(angle) * radius,
+      y: centre.y,
+      z: centre.z + Math.sin(angle) * radius,
+    })
+
+    // **Le quatrième coin ne peut pas être le centre.** La normale d'un quadrilatère se
+    // calcule sur deux de ses arêtes ; si la première et la dernière sont le même point,
+    // elle vaut zéro — la surface existe, mais sa lumière est absurde et le tri des faces
+    // ne sait plus de quel côté elle regarde. C'est pour cela qu'un pot restait un trou vu
+    // d'en haut : son couvercle était bien là, et invisible.
+    pushQuad(out, centre, p(b), p(a), p(a), colour, [
       [0, 0],
-      [top[i]!.x - centre.x, top[i]!.z - centre.z],
-      [top[j]!.x - centre.x, top[j]!.z - centre.z],
-      [0, 0],
+      [Math.cos(b) * radius, Math.sin(b) * radius],
+      [Math.cos(a) * radius, Math.sin(a) * radius],
+      [Math.cos(a) * radius, Math.sin(a) * radius],
     ])
   }
 }
@@ -126,10 +147,12 @@ export function pushBar(
  * regard une échelle humaine dans une salle qui n'en a aucune.
  */
 export function pushStanchion(out: number[], at: Vec3, brass: Color, dark: Color): void {
+  // Chaque tronçon est **bouché à son sommet**, et le suivant est plus étroit que ce
+  // couvercle. Sans cela, un poteau vu d'en haut est un tuyau ouvert : on voit à travers.
   pushCylinder(out, at, 0.16, 0.14, 0.03, 16, dark, dark)
-  pushCylinder(out, { ...at, y: at.y + 0.03 }, 0.05, 0.04, 0.82, 12, brass)
-  pushCylinder(out, { ...at, y: at.y + 0.85 }, 0.07, 0.07, 0.08, 12, brass, brass)
-  pushCylinder(out, { ...at, y: at.y + 0.93 }, 0.05, 0.02, 0.05, 12, brass, brass)
+  pushCylinder(out, { ...at, y: at.y + 0.03 }, 0.05, 0.045, 0.82, 12, brass, brass)
+  pushCylinder(out, { ...at, y: at.y + 0.85 }, 0.07, 0.06, 0.08, 12, brass, brass)
+  pushCylinder(out, { ...at, y: at.y + 0.93 }, 0.05, 0.015, 0.06, 12, brass, brass)
 }
 
 /**
@@ -276,12 +299,13 @@ export function pushPlant(
   leaf: Color,
   seed = 1,
 ): void {
-  // Le pot, sa collerette, et la terre en retrait. La collerette n'a **pas** de dessus :
-  // un disque plein à la bouche du pot recouvrirait la terre, et deux surfaces dans le même
-  // plan se disputeraient les pixels.
+  // **La terre ferme le pot.** Un cylindre n'a qu'une peau : vu de dessus, un pot dont la
+  // bouche n'est pas bouchée laisse voir à travers lui — le tri des faces arrière supprime
+  // sa paroi opposée, et il ne reste qu'un trou. La terre doit donc affleurer la collerette
+  // et faire exactement sa largeur, sans quoi il subsiste un anneau de vide.
   pushCylinder(out, at, 0.22, 0.28, 0.40, 14, pot)
-  pushCylinder(out, { ...at, y: at.y + 0.36 }, 0.30, 0.30, 0.06, 14, pot)
-  pushCylinder(out, { ...at, y: at.y + 0.34 }, 0.27, 0.27, 0.02, 14, soil, soil)
+  pushCylinder(out, { ...at, y: at.y + 0.36 }, 0.30, 0.30, 0.07, 14, pot)
+  pushDisc(out, { ...at, y: at.y + 0.40 }, 0.30, 14, soil)
 
   // Un haché maison plutôt qu'un tirage au sort : deux plantes doivent différer, mais la
   // même plante doit être la même d'une exécution à l'autre — sans quoi les captures de
@@ -395,4 +419,131 @@ export function pushDigits(
     }
     column += 4
   }
+}
+
+/**
+ * Une colonne : base, fût, chapiteau.
+ *
+ * Le fût est très légèrement conique — l'entasis des Grecs, deux pour cent suffisent. Une
+ * colonne parfaitement cylindrique paraît creusée en son milieu, et personne ne sait dire
+ * pourquoi ; c'est un défaut de l'œil, et la seule façon de le corriger est de mentir un peu
+ * dans l'autre sens.
+ */
+export function pushColumn(
+  out: number[],
+  at: Vec3,
+  radius: number,
+  height: number,
+  shaft: Color,
+  stone: Color,
+): void {
+  const plinth = 0.16
+  const capital = 0.22
+  const body = height - plinth - capital
+
+  pushCylinder(out, at, radius * 1.34, radius * 1.28, plinth, 16, stone, stone)
+  pushCylinder(out, { ...at, y: at.y + plinth }, radius, radius * 0.94, body, 16, shaft, shaft)
+  pushCylinder(out, { ...at, y: at.y + plinth + body }, radius * 1.1, radius * 1.3, capital * 0.7, 16, stone, stone)
+  pushCylinder(
+    out,
+    { ...at, y: at.y + height - capital * 0.3 },
+    radius * 1.36,
+    radius * 1.36,
+    capital * 0.3,
+    16,
+    stone,
+    stone,
+  )
+}
+
+/**
+ * Une applique murale : une potence et un abat-jour retourné.
+ *
+ * Elle ne fabrique pas de lumière — c'est la cellule qui porte ses lampes — mais elle lui
+ * donne une **cause**. Une salle éclairée par rien est une salle de moteur ; la même avec
+ * deux appliques devient une salle de musée, et l'on n'y pense plus.
+ */
+export function pushSconce(
+  out: number[],
+  at: Vec3,
+  outward: Vec3,
+  metal: Color,
+  glass: Color,
+): void {
+  const dir = normalize(outward)
+  const side = normalize(cross(dir, { x: 0, y: 1, z: 0 }))
+
+  // La platine contre le mur, puis le bras qui s'en écarte.
+  pushBar(out, add(add(at, scale(side, -0.09)), { x: 0, y: -0.14, z: 0 }), { x: 0, y: 0.28, z: 0 }, scale(side, 0.18), scale(dir, 0.05), metal)
+  pushBar(out, add(add(at, scale(side, -0.025)), scale(dir, 0.04)), scale(dir, 0.22), scale(side, 0.05), { x: 0, y: 0.05, z: 0 }, metal)
+
+  // La coupe, ouverte vers le haut : sa lumière rase le mur, ce qui est exactement ce qu'on
+  // demande à une applique.
+  const bowl = add(add(at, scale(dir, 0.26)), { x: 0, y: 0.02, z: 0 })
+  pushCylinder(out, bowl, 0.05, 0.15, 0.13, 14, metal, glass)
+}
+
+/**
+ * Une suspension : une tige, une coupole, une ampoule.
+ */
+export function pushPendant(
+  out: number[],
+  ceiling: Vec3,
+  drop: number,
+  metal: Color,
+  glass: Color,
+): void {
+  pushCylinder(out, { ...ceiling, y: ceiling.y - drop }, 0.02, 0.02, drop, 8, metal)
+  pushCylinder(out, { ...ceiling, y: ceiling.y - drop - 0.18 }, 0.28, 0.06, 0.18, 16, metal, metal)
+  pushCylinder(out, { ...ceiling, y: ceiling.y - drop - 0.26 }, 0.07, 0.07, 0.1, 10, glass, glass)
+}
+
+/**
+ * Un cadre, avec sa toile.
+ *
+ * C'est le meuble qui manquait le plus : un musée sans cadre est un couloir. La moulure est
+ * faite de quatre barres en onglet grossier — elles se recouvrent aux angles, ce qui ne se
+ * voit pas et évite quatre trapèzes —, et la toile est un panneau posé au fond, en retrait de
+ * la moulure pour qu'une ombre l'accroche.
+ *
+ * `right` et `up` sont unitaires et donnent le plan du mur ; le cadre s'y pose face à
+ * `right × up`.
+ */
+export function pushFrame(
+  out: number[],
+  centre: Vec3,
+  right: Vec3,
+  up: Vec3,
+  width: number,
+  height: number,
+  moulding: Color,
+  canvas: Color,
+): void {
+  const normal = normalize(cross(right, up))
+  const thick = 0.09
+  const depth = 0.07
+  const half = { x: width / 2, y: height / 2 }
+
+  const corner = add(add(centre, scale(right, -half.x)), scale(up, -half.y))
+  const bar = (from: Vec3, along: Vec3, across: Vec3): void =>
+    pushBar(out, from, along, across, scale(normal, depth), moulding)
+
+  bar(corner, scale(right, width), scale(up, thick))
+  bar(add(corner, scale(up, height - thick)), scale(right, width), scale(up, thick))
+  bar(add(corner, scale(up, thick)), scale(up, height - thick * 2), scale(right, thick))
+  bar(add(add(corner, scale(right, width - thick)), scale(up, thick)), scale(up, height - thick * 2), scale(right, thick))
+
+  // La toile, en retrait de deux centimètres : c'est cette ombre-là qui fait le cadre.
+  const inner = add(add(centre, scale(right, -half.x + thick)), scale(up, -half.y + thick))
+  const w = width - thick * 2
+  const h = height - thick * 2
+  pushQuad(
+    out,
+    add(inner, scale(normal, 0.02)),
+    add(add(inner, scale(right, w)), scale(normal, 0.02)),
+    add(add(add(inner, scale(right, w)), scale(up, h)), scale(normal, 0.02)),
+    add(add(inner, scale(up, h)), scale(normal, 0.02)),
+    canvas,
+    [[0, 0], [w, 0], [w, h], [0, h]],
+  )
 }

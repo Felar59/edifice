@@ -310,10 +310,12 @@ fn surface(matter : f32, uv : vec2<f32>, base : vec3<f32>, blur : vec2<f32>) -> 
   // deux mètres de haut.
   if (m == 4) {
     let h = uv.y;
-    // Le bois n'est pas le mur en plus sombre : c'est une autre matière, plus chaude.
-    // L'ancien moteur prenait les deux tons en paramètre ; ici on tire le second du premier,
-    // ce qui garde le lambris cohérent avec la salle sans qu'on ait à le déclarer.
-    let wood = base * vec3<f32>(0.52, 0.36, 0.24);
+    // **Le bois est du bois, pas le mur en plus sombre.** L'ancien moteur prenait les deux
+    // tons en paramètre, et il avait raison : un mur vert n'a pas un lambris vert. On garde
+    // donc une teinte de chêne fixe, seulement mise au diapason de la clarté de la pièce —
+    // un salon sombre a un lambris sombre, mais il reste brun.
+    let lit = dot(base, vec3<f32>(0.299, 0.587, 0.114));
+    let wood = vec3<f32>(0.30, 0.195, 0.125) * (0.55 + 1.15 * lit);
 
     if (h < 0.14) {
       // Plinthe : plus sombre, plus lisse.

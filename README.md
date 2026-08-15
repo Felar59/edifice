@@ -800,6 +800,26 @@ lignes suffisent à dix chiffres, chaque case allumée devenant un quadrilatère
 police lisible, et elle a l'avantage d'avoir l'air de ce qu'elle est, une inscription
 d'atelier plutôt qu'une enseigne.
 
+Le mobilier disponible : un cordon de séparation, un banc, une plante en pot, une colonne, une
+applique, une suspension, un cadre avec sa toile. Et la palette est celle de l'ancien
+portfolio, reprise telle quelle — crème, pierre claire, vert de galerie, bleu de nuit, rouge
+sourd, taupe, marbre clair et sombre, chêne, tapis rouge et vert. Ses salles n'étaient pas
+toutes crème, et c'est ce qui faisait qu'on savait toujours où l'on était sans avoir à lire un
+panneau : une pièce se reconnaissait à sa couleur avant sa forme.
+
+**Un lambris reste du bois sur un mur vert.** Le nuanceur ne reçoit qu'une couleur par
+surface, et la première version en tirait le ton du lambris — ce qui donnait un lambris vert
+dans une salle verte. Il garde donc une teinte de chêne fixe, seulement mise au diapason de la
+clarté de la pièce : un salon sombre a un lambris sombre, mais il reste brun.
+
+**Un cylindre n'a qu'une peau.** Vu de dessus, un pot dont la bouche n'est pas bouchée laisse
+voir à travers lui : le tri des faces arrière supprime sa paroi opposée, et il ne reste qu'un
+trou. Ce qui doit être fermé l'est donc par un disque — et un disque en éventail a son propre
+piège, celui qui a coûté le plus de temps : **le quatrième coin d'un quadrilatère ne peut pas
+être son centre.** La normale se calcule sur deux arêtes ; si la première et la dernière sont
+le même point, elle vaut zéro. La surface existe, sa lumière est absurde, et le tri des faces
+ne sait plus de quel côté elle regarde. Le couvercle du pot était bien là, et invisible.
+
 **Le musée, lui, reste nu.** Les matières ne sont pas encore distribuées : on essaie d'abord,
 on range ensuite, et une salle habillée trop tôt fige un choix qu'on n'a pas fait.
 

@@ -42,7 +42,16 @@ import {
 } from './geometry'
 import { mouthRadiance, type CellLighting, type Colour } from './light'
 import { heightAtTurn, onSquare, stepAngle, stepHeight } from './spiral'
-import { pushBench, pushCordon, pushDigits, pushPlant } from './props'
+import {
+  pushBench,
+  pushColumn,
+  pushCordon,
+  pushDigits,
+  pushFrame,
+  pushPendant,
+  pushPlant,
+  pushSconce,
+} from './props'
 import { frameAt, makeTwist, toWorld } from './twist'
 import type { Block, Cell, Mouth, Passage, Spiral, World } from './types'
 
@@ -744,6 +753,30 @@ function made(colour: Color, matter: number): Color {
 }
 
 /**
+ * **La palette de l'ancien portfolio**, reprise telle quelle.
+ *
+ * Ses salles n'étaient pas toutes crème : il y avait du vert de galerie, du bleu de nuit, du
+ * rouge sourd, du taupe. C'est ce qui faisait qu'on savait toujours où l'on était sans avoir
+ * à lire un panneau — une pièce se reconnaissait à sa couleur avant sa forme. Les valeurs
+ * sont celles du moteur d'alors, à peine assombries : son éclairage était moins généreux que
+ * celui-ci.
+ */
+const PAINT = {
+  creme: [0.62, 0.59, 0.54] as Colour,
+  pierreClaire: [0.58, 0.55, 0.49] as Colour,
+  vert: [0.20, 0.29, 0.26] as Colour,
+  bleu: [0.18, 0.22, 0.32] as Colour,
+  rouge: [0.30, 0.16, 0.17] as Colour,
+  taupe: [0.32, 0.29, 0.24] as Colour,
+  marbreClair: [0.62, 0.60, 0.57] as Colour,
+  marbreSombre: [0.17, 0.17, 0.19] as Colour,
+  chene: [0.42, 0.285, 0.17] as Colour,
+  tapisRouge: [0.28, 0.10, 0.11] as Colour,
+  tapisVert: [0.16, 0.22, 0.17] as Colour,
+  dalle: [0.54, 0.52, 0.47] as Colour,
+} as const
+
+/**
  * **La planche d'essais**, dans la salle basse.
  *
  * Douze petites scènes en L, alignées en trois rangées de quatre, chacune numérotée. Un L,
@@ -769,73 +802,143 @@ interface Vignette {
 }
 
 const VIGNETTE_SIDE = 4.4
-const VIGNETTE_HEIGHT = 2.7
+const VIGNETTE_HEIGHT = 2.9
 const VIGNETTE_THICK = 0.24
+
+/** Les teintes du mobilier, communes à toutes les scènes : on ne compare qu'une chose. */
+const OAK = FURNITURE.chene
+const IRON = FURNITURE.fonte
+
+/** Un cadre accroché au fond du L, à hauteur d'œil de musée — le milieu à 1,55 m. */
+function hang(out: number[], c: Vec3, x: number, width: number, height: number, canvas: Color): void {
+  pushFrame(
+    out,
+    { x: c.x + x, y: c.y + 1.55, z: c.z + 0.02 },
+    { x: 1, y: 0, z: 0 },
+    { x: 0, y: 1, z: 0 },
+    width,
+    height,
+    made([0.34, 0.24, 0.12], MATTER.parquet),
+    canvas,
+  )
+}
 
 const VIGNETTES: Vignette[] = [
   {
-    about: 'marbre et lambris — la galerie de l’ancien portfolio',
-    floor: made([0.6, 0.58, 0.55], MATTER.marbre),
-    wall: made([0.58, 0.55, 0.48], MATTER.lambris),
+    about: 'chêne et lambris crème, un cadre — la salle d’époque',
+    floor: made(PAINT.chene, MATTER.parquet),
+    wall: made(PAINT.creme, MATTER.lambris),
     build: (out, c) => {
-      pushBench(out, { x: c.x + 2.2, y: c.y, z: c.z + 3.0 }, 2.2, { x: 1, y: 0, z: 0 }, FURNITURE.chene, FURNITURE.fonte)
+      hang(out, c, 1.4, 1.5, 1.1, made([0.36, 0.42, 0.46], MATTER.platre))
+      pushCordon(out, { x: c.x + 0.6, y: c.y, z: c.z + 2.2 }, { x: c.x + 3.6, y: c.y, z: c.z + 2.2 }, 3, FURNITURE.laiton, IRON, FURNITURE.cordage)
     },
   },
   {
-    about: 'marbre et lambris, avec le cordon devant un socle',
-    floor: made([0.6, 0.58, 0.55], MATTER.marbre),
-    wall: made([0.58, 0.55, 0.48], MATTER.lambris),
+    about: 'chêne et lambris vert, deux cadres et une applique',
+    floor: made(PAINT.chene, MATTER.parquet),
+    wall: made(PAINT.vert, MATTER.lambris),
     build: (out, c) => {
-      pushBlock(
-        out,
-        { x: c.x + 1.6, y: c.y, z: c.z + 1.4 },
-        { x: c.x + 2.8, y: c.y + 0.95, z: c.z + 2.6 },
-        { side: made([0.5, 0.48, 0.44], MATTER.marbre), top: made([0.62, 0.6, 0.56], MATTER.marbre) },
-      )
-      pushCordon(
-        out,
-        { x: c.x + 0.9, y: c.y, z: c.z + 3.3 },
-        { x: c.x + 3.5, y: c.y, z: c.z + 3.3 },
-        3,
-        FURNITURE.laiton,
-        FURNITURE.fonte,
-        FURNITURE.cordage,
-      )
+      hang(out, c, 0.7, 1.2, 0.9, made([0.5, 0.44, 0.3], MATTER.platre))
+      hang(out, c, 2.4, 1.2, 0.9, made([0.34, 0.3, 0.36], MATTER.platre))
+      pushSconce(out, { x: c.x + 2.05, y: c.y + 2.35, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, IRON, made([1, 0.94, 0.8], MATTER.platre))
     },
   },
   {
-    about: 'parquet et plâtre — la chambre claire',
-    floor: made([0.5, 0.36, 0.22], MATTER.parquet),
-    wall: made([0.7, 0.69, 0.66], MATTER.platre),
+    about: 'chêne et plâtre — la chambre claire',
+    floor: made(PAINT.chene, MATTER.parquet),
+    wall: made([0.68, 0.67, 0.65], MATTER.platre),
     build: (out, c) => {
-      pushBench(out, { x: c.x + 2.2, y: c.y, z: c.z + 2.6 }, 2.4, { x: 1, y: 0, z: 0 }, FURNITURE.chene, FURNITURE.fonte)
+      pushBench(out, { x: c.x + 2.2, y: c.y, z: c.z + 2.6 }, 2.4, { x: 1, y: 0, z: 0 }, OAK, IRON)
       pushPlant(out, { x: c.x + 0.9, y: c.y, z: c.z + 1.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 3)
     },
   },
   {
-    about: 'moquette rouge et lambris — le cabinet feutré',
-    floor: made([0.34, 0.11, 0.12], MATTER.moquette),
-    wall: made([0.5, 0.46, 0.4], MATTER.lambris),
+    about: 'tapis rouge et lambris crème — le cabinet feutré',
+    floor: made(PAINT.tapisRouge, MATTER.moquette),
+    wall: made(PAINT.creme, MATTER.lambris),
     build: (out, c) => {
-      pushBench(out, { x: c.x + 2.2, y: c.y, z: c.z + 2.8 }, 2.4, { x: 1, y: 0, z: 0 }, FURNITURE.chene, FURNITURE.fonte)
+      pushBench(out, { x: c.x + 2.2, y: c.y, z: c.z + 2.8 }, 2.4, { x: 1, y: 0, z: 0 }, OAK, IRON)
       pushPlant(out, { x: c.x + 3.5, y: c.y, z: c.z + 1.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 5)
     },
   },
   {
-    about: 'pierre et pierre — la crypte',
-    floor: made([0.5, 0.48, 0.45], MATTER.pierre),
-    wall: made([0.56, 0.53, 0.48], MATTER.pierre),
+    about: 'marbre clair et lambris bleu, une colonne',
+    floor: made(PAINT.marbreClair, MATTER.marbre),
+    wall: made(PAINT.bleu, MATTER.lambris),
     build: (out, c) => {
-      pushBlock(
-        out,
-        { x: c.x + 1.4, y: c.y, z: c.z + 1.6 },
-        { x: c.x + 3.0, y: c.y + 0.55, z: c.z + 2.6 },
-        { side: made([0.46, 0.44, 0.41], MATTER.pierre), top: made([0.54, 0.52, 0.48], MATTER.pierre) },
-      )
+      pushColumn(out, { x: c.x + 3.3, y: c.y, z: c.z + 1.1 }, 0.34, VIGNETTE_HEIGHT, made(PAINT.marbreClair, MATTER.marbre), made([0.56, 0.54, 0.5], MATTER.platre))
+      hang(out, c, 0.8, 1.4, 1.0, made([0.42, 0.3, 0.22], MATTER.platre))
     },
   },
   {
-    about: 'béton banché — le silo',
+    about: 'marbre sombre et mur crème — le contraste inverse',
+    floor: made(PAINT.marbreSombre, MATTER.marbre),
+    wall: made([0.66, 0.63, 0.58], MATTER.platre),
+    build: (out, c) => {
+      hang(out, c, 1.5, 1.6, 1.2, made([0.5, 0.46, 0.4], MATTER.platre))
+      pushCordon(out, { x: c.x + 0.6, y: c.y, z: c.z + 2.0 }, { x: c.x + 3.6, y: c.y, z: c.z + 2.0 }, 3, FURNITURE.laiton, IRON, FURNITURE.cordage)
+    },
+  },
+  {
+    about: 'tapis rouge et lambris rouge — la salle sourde',
+    floor: made(PAINT.tapisRouge, MATTER.moquette),
+    wall: made(PAINT.rouge, MATTER.lambris),
+    build: (out, c) => {
+      hang(out, c, 1.6, 1.3, 1.6, made([0.46, 0.42, 0.34], MATTER.platre))
+      pushSconce(out, { x: c.x + 0.7, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.platre))
+      pushSconce(out, { x: c.x + 3.5, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.platre))
+    },
+  },
+  {
+    about: 'dalle et lambris taupe, une suspension',
+    floor: made(PAINT.dalle, MATTER.pierre),
+    wall: made(PAINT.taupe, MATTER.lambris),
+    build: (out, c) => {
+      pushPendant(out, { x: c.x + 2.1, y: c.y + VIGNETTE_HEIGHT, z: c.z + 2.1 }, 0.9, IRON, made([1, 0.95, 0.85], MATTER.platre))
+      pushBench(out, { x: c.x + 2.1, y: c.y, z: c.z + 3.2 }, 2.2, { x: 1, y: 0, z: 0 }, OAK, IRON)
+    },
+  },
+  {
+    about: 'chêne et lambris taupe, trois petits cadres',
+    floor: made(PAINT.chene, MATTER.parquet),
+    wall: made(PAINT.taupe, MATTER.lambris),
+    build: (out, c) => {
+      hang(out, c, 0.6, 0.9, 0.7, made([0.44, 0.4, 0.3], MATTER.platre))
+      hang(out, c, 1.75, 0.9, 0.7, made([0.3, 0.36, 0.4], MATTER.platre))
+      hang(out, c, 2.9, 0.9, 0.7, made([0.4, 0.32, 0.34], MATTER.platre))
+    },
+  },
+  {
+    about: 'chêne et lambris crème, le cordon et la plante — la scène qui plaisait',
+    floor: made(PAINT.chene, MATTER.parquet),
+    wall: made(PAINT.creme, MATTER.lambris),
+    build: (out, c) => {
+      pushCordon(out, { x: c.x + 0.6, y: c.y, z: c.z + 2.4 }, { x: c.x + 3.6, y: c.y, z: c.z + 2.4 }, 3, FURNITURE.laiton, IRON, FURNITURE.cordage)
+      pushPlant(out, { x: c.x + 3.4, y: c.y, z: c.z + 1.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 13)
+      hang(out, c, 1.1, 1.4, 1.0, made([0.38, 0.34, 0.44], MATTER.platre))
+    },
+  },
+  {
+    about: 'tapis vert et pierre claire — la salle d’étude',
+    floor: made(PAINT.tapisVert, MATTER.moquette),
+    wall: made(PAINT.pierreClaire, MATTER.pierre),
+    build: (out, c) => {
+      pushBench(out, { x: c.x + 2.1, y: c.y, z: c.z + 2.6 }, 2.4, { x: 1, y: 0, z: 0 }, OAK, IRON)
+      pushSconce(out, { x: c.x + 2.1, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, IRON, made([1, 0.94, 0.8], MATTER.platre))
+    },
+  },
+  {
+    about: 'marbre clair et pierre — le hall',
+    floor: made(PAINT.marbreClair, MATTER.marbre),
+    wall: made(PAINT.pierreClaire, MATTER.pierre),
+    build: (out, c) => {
+      pushColumn(out, { x: c.x + 1.1, y: c.y, z: c.z + 1.1 }, 0.34, VIGNETTE_HEIGHT, made(PAINT.marbreClair, MATTER.marbre), made([0.56, 0.54, 0.5], MATTER.platre))
+      pushColumn(out, { x: c.x + 3.3, y: c.y, z: c.z + 1.1 }, 0.34, VIGNETTE_HEIGHT, made(PAINT.marbreClair, MATTER.marbre), made([0.56, 0.54, 0.5], MATTER.platre))
+      pushPlant(out, { x: c.x + 2.2, y: c.y, z: c.z + 3.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 7)
+    },
+  },
+  {
+    about: 'béton banché et dalle — le silo',
     floor: made([0.42, 0.43, 0.45], MATTER.beton),
     wall: made([0.46, 0.47, 0.5], MATTER.beton),
     build: (out, c) => {
@@ -848,8 +951,8 @@ const VIGNETTES: Vignette[] = [
     },
   },
   {
-    about: 'tôle et pierre — l’atelier',
-    floor: made([0.46, 0.47, 0.45], MATTER.pierre),
+    about: 'tôle et dalle — l’atelier',
+    floor: made(PAINT.dalle, MATTER.pierre),
     wall: made([0.44, 0.48, 0.46], MATTER.tole),
     build: (out, c) => {
       for (const [dx, dz, h] of [[1.2, 1.2, 0.9], [2.3, 1.5, 0.6]]) {
@@ -860,62 +963,23 @@ const VIGNETTES: Vignette[] = [
           { side: made([0.45, 0.4, 0.3], MATTER.tole), top: made([0.5, 0.45, 0.34], MATTER.tole) },
         )
       }
+      pushPendant(out, { x: c.x + 2.6, y: c.y + VIGNETTE_HEIGHT, z: c.z + 2.4 }, 0.7, IRON, made([1, 0.95, 0.85], MATTER.platre))
     },
   },
   {
-    about: 'plâtre nu — le cube blanc, pour voir ce que vaut le vide',
-    floor: made([0.62, 0.61, 0.59], MATTER.platre),
-    wall: made([0.74, 0.73, 0.71], MATTER.platre),
+    about: 'plâtre nu — pour voir ce que vaut le vide',
+    floor: made([0.6, 0.59, 0.57], MATTER.platre),
+    wall: made([0.72, 0.71, 0.69], MATTER.platre),
     build: () => {},
   },
   {
-    about: 'marbre et pierre — le hall',
-    floor: made([0.58, 0.56, 0.53], MATTER.marbre),
-    wall: made([0.56, 0.53, 0.48], MATTER.pierre),
+    about: 'marbre sombre et lambris bleu, cadre et colonne — la salle du soir',
+    floor: made(PAINT.marbreSombre, MATTER.marbre),
+    wall: made(PAINT.bleu, MATTER.lambris),
     build: (out, c) => {
-      pushPlant(out, { x: c.x + 1.1, y: c.y, z: c.z + 1.1 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 7)
-      pushBench(out, { x: c.x + 2.4, y: c.y, z: c.z + 3.0 }, 2.2, { x: 1, y: 0, z: 0 }, FURNITURE.chene, FURNITURE.fonte)
-    },
-  },
-  {
-    about: 'parquet et lambris — la salle d’époque',
-    floor: made([0.46, 0.32, 0.2], MATTER.parquet),
-    wall: made([0.54, 0.5, 0.44], MATTER.lambris),
-    build: (out, c) => {
-      pushCordon(
-        out,
-        { x: c.x + 0.9, y: c.y, z: c.z + 2.4 },
-        { x: c.x + 3.5, y: c.y, z: c.z + 2.4 },
-        3,
-        FURNITURE.laiton,
-        FURNITURE.fonte,
-        FURNITURE.cordage,
-      )
-      pushPlant(out, { x: c.x + 3.4, y: c.y, z: c.z + 1.0 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 13)
-    },
-  },
-  {
-    about: 'moquette et plâtre — la salle de projection',
-    floor: made([0.26, 0.2, 0.22], MATTER.moquette),
-    wall: made([0.5, 0.49, 0.48], MATTER.platre),
-    build: (out, c) => {
-      for (const dz of [2.2, 3.2]) {
-        pushBench(out, { x: c.x + 2.2, y: c.y, z: c.z + dz }, 2.6, { x: 1, y: 0, z: 0 }, FURNITURE.chene, FURNITURE.fonte)
-      }
-    },
-  },
-  {
-    about: 'béton et tôle — la soute',
-    floor: made([0.4, 0.41, 0.43], MATTER.beton),
-    wall: made([0.42, 0.45, 0.44], MATTER.tole),
-    build: (out, c) => {
-      pushBlock(
-        out,
-        { x: c.x + 0.9, y: c.y + 2.0, z: c.z + 0.9 },
-        { x: c.x + 3.6, y: c.y + 2.4, z: c.z + 1.4 },
-        { side: made([0.38, 0.4, 0.39], MATTER.tole), top: made([0.42, 0.45, 0.43], MATTER.tole) },
-      )
-      pushPlant(out, { x: c.x + 3.4, y: c.y, z: c.z + 2.6 }, FURNITURE.terre, FURNITURE.humus, FURNITURE.feuille, 17)
+      hang(out, c, 1.2, 1.7, 1.2, made([0.5, 0.42, 0.28], MATTER.platre))
+      pushColumn(out, { x: c.x + 3.4, y: c.y, z: c.z + 3.0 }, 0.3, VIGNETTE_HEIGHT, made([0.3, 0.29, 0.3], MATTER.marbre), made([0.4, 0.39, 0.38], MATTER.platre))
+      pushSconce(out, { x: c.x + 3.2, y: c.y + 2.3, z: c.z + 0.06 }, { x: 0, y: 0, z: 1 }, FURNITURE.laiton, made([1, 0.92, 0.76], MATTER.platre))
     },
   },
 ]
@@ -986,11 +1050,11 @@ function pushVignette(out: number[], vignette: Vignette, corner: Vec3, number: n
  */
 function furnishTheCrypt(out: number[]): Block[] {
   const blocks: Block[] = []
-  const pitch = 6.6
+  const pitch = 6.0
   const columns = 4
-  const rows = 3
-  const originX = LOWER_BOX.min.x + (LOWER_BOX.max.x - LOWER_BOX.min.x - (columns - 1) * pitch - VIGNETTE_SIDE) / 2
-  const originZ = LOWER_BOX.min.z + 4.5
+  const rows = 4
+  const originX = LOWER_BOX.min.x + 3
+  const originZ = LOWER_BOX.min.z + 5.5
 
   VIGNETTES.forEach((vignette, i) => {
     const column = i % columns
