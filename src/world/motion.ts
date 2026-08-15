@@ -61,6 +61,14 @@ export interface Body {
   eyeHeight: number
   /** Distance du point de référence au sommet du crâne. */
   headroom: number
+  /**
+   * La verticale du corps — celle qui va de ses pieds vers son crâne.
+   *
+   * Un corps n'a plus de haut absolu depuis qu'une salle peut avoir six sols. Elle vaut
+   * (0, 1, 0) partout ailleurs, et le chemin de collision ordinaire n'en tient donc aucun
+   * compte : c'est la salle qui décide si la question se pose.
+   */
+  up: Vec3
 }
 
 /** Ce que la résolution de collision a rencontré, en plus de la position corrigée. */
@@ -229,6 +237,10 @@ export function advance(
  */
 export function resolveAgainstCell(cell: Cell, p: Vec3, body: Body): Resolved {
   if (cell.twist) return resolveInsideTube(cell, p, body)
+  // Une salle aux six sols se résout autrement — sauf quand on s'y tient d'aplomb, où
+  // elle est une pièce comme une autre. C'est ce qui fait que sa porte ne s'ouvre que
+  // dans ce cas, et c'est voulu : voir `resolveOnFace`.
+  if (cell.gravity && !upright(body.up)) return resolveOnFace(cell, p, body)
   const { radius } = body
 
   /**
@@ -430,6 +442,174 @@ function fitsThroughBlockDoor(
   const bottom = door.center.y - door.halfHeight
   const top = door.center.y + door.halfHeight
   return feet >= bottom - 1e-4 && head <= top + 1e-4
+}
+
+/** L'axe du monde le plus proche d'une direction, et de quel côté. */
+function dominant(v: Vec3): { axis: 0 | 1 | 2; sign: 1 | -1 } {
+  const c = [v.x, v.y, v.z]
+  let axis: 0 | 1 | 2 = 0
+  if (Math.abs(c[1]!) > Math.abs(c[axis]!)) axis = 1
+  if (Math.abs(c[2]!) > Math.abs(c[axis]!)) axis = 2
+  return { axis, sign: c[axis]! >= 0 ? 1 : -1 }
+}
+
+/** Le corps est-il debout au sens du monde ? */
+function upright(up: Vec3): boolean {
+  return up.y > 0.999
+}
+
+/**
+ * Collision dans une salle dont les six faces sont habitables, quand on ne se tient pas
+ * sur celle du bas.
+ *
+ * C'est la même résolution que d'ordinaire, à une permutation d'axes près : la face vers
+ * laquelle on tombe reçoit la hauteur du corps — les pieds d'un côté, le crâne de
+ * l'autre — et les deux axes restants reçoivent son rayon. Rien de plus : une pièce
+ * cubique se traite comme une pièce droite dès qu'on accepte que « le bas » soit un
+ * paramètre.
+ *
+ * **Aucune exception d'ouverture ici, et ce n'est pas un oubli.** Les portes ne
+ * s'ouvrent que pour qui se tient d'aplomb. Une couture est une transformation rigide :
+ * elle emporte le repère du visiteur tel quel, si bien que sortir en se tenant sur un mur
+ * ferait arriver dans la rotonde couché sur le côté, avec une gravité horizontale et rien
+ * sous les pieds. Refuser est la seule réponse honnête — et la salle s'en charge
+ * elle-même, puisque sa porte est au ras d'une arête : qui s'en approche entre dans la
+ * bande d'accroche, bascule sur le sol du bas, et se retrouve debout devant elle.
+ */
+function resolveOnFace(cell: Cell, p: Vec3, body: Body): Resolved {
+  const { axis, sign } = dominant(body.up)
+  const min = [cell.min.x, cell.min.y, cell.min.z]
+  const max = [cell.max.x, cell.max.y, cell.max.z]
+  const c = [p.x, p.y, p.z]
+
+  // Le sol est la face vers laquelle on tombe, donc celle que la verticale du corps fuit.
+  const ground = sign > 0 ? min[axis]! : max[axis]!
+  const above = sign > 0 ? max[axis]! : min[axis]!
+
+  let floor = false
+  let ceiling = false
+  if ((c[axis]! - ground) * sign <= body.eyeHeight) {
+    c[axis] = ground + sign * body.eyeHeight
+    floor = true
+  }
+  if ((above - c[axis]!) * sign <= body.headroom) {
+    c[axis] = above - sign * body.headroom
+    ceiling = true
+  }
+
+  for (const k of [0, 1, 2]) {
+    if (k === axis) continue
+    c[k] = Math.min(Math.max(c[k]!, min[k]! + body.radius), max[k]! - body.radius)
+  }
+
+  return { pos: { x: c[0]!, y: c[1]!, z: c[2]! }, floor, ceiling }
+}
+
+/**
+ * La face qui doit devenir le sol, si le pas engagé fait entrer dans une bande
+ * d'accroche — ou `null` s'il n'y a pas lieu de basculer.
+ *
+ * La bascule ne coûte **aucun déplacement**, et c'est toute la finesse du réglage. On la
+ * déclenche à l'instant où le corps arrive à une hauteur d'œil de la face voisine, ce qui
+ * est exactement la distance à laquelle il se tiendra debout dessus. Le corps est donc
+ * déjà en place : il ne reste qu'à faire tourner son repère. Déclencher plus tôt ou plus
+ * tard obligerait à le déplacer d'autant, et l'à-coup se verrait.
+ *
+ * Il faut être posé, et marcher vers la face en question. On ne bascule pas en l'air, et
+ * on ne bascule pas en frôlant : c'est un geste, pas un accident.
+ */
+export function faceChange(cell: Cell, p: Vec3, up: Vec3, wish: Vec3, body: Body): Vec3 | null {
+  if (!cell.gravity) return null
+
+  const { axis } = dominant(up)
+  const min = [cell.min.x, cell.min.y, cell.min.z]
+  const max = [cell.max.x, cell.max.y, cell.max.z]
+  const at = [p.x, p.y, p.z]
+  const toward = [wish.x, wish.y, wish.z]
+
+  let best: { gap: number; axis: number; sign: number } | null = null
+  for (const k of [0, 1, 2]) {
+    if (k === axis) continue
+    for (const side of [-1, 1]) {
+      // On ne bascule que vers une face qu'on aborde franchement.
+      if (toward[k]! * side < 0.1) continue
+      const gap = side > 0 ? max[k]! - at[k]! : at[k]! - min[k]!
+      if (gap > body.eyeHeight) continue
+      // **Et pas devant une porte : on entre.** Sans cette clause, la bande d'accroche
+      // fait grimper le mur juste avant qu'on atteigne l'ouverture, et la salle n'a plus
+      // de sortie du tout — on tourne indéfiniment autour du cube. C'était le cas.
+      if (facingADoor(cell, p, k, -side, body)) continue
+      if (!best || gap < best.gap) best = { gap, axis: k, sign: -side }
+    }
+  }
+  if (!best) return null
+
+  // La nouvelle verticale sort de la face abordée, vers l'intérieur de la salle.
+  const v = [0, 0, 0]
+  v[best.axis] = best.sign
+  return { x: v[0]!, y: v[1]!, z: v[2]! }
+}
+
+/**
+ * Le corps est-il en face d'une ouverture percée dans la paroi visée ?
+ *
+ * On mesure sur le rectangle de la bouche, élargi du rayon du corps : il ne s'agit pas de
+ * savoir si l'on passera, mais si l'on est en train d'y aller. Se retrouver couché sur un
+ * mur à quinze centimètres du chambranle qu'on visait serait la pire des réponses.
+ */
+function facingADoor(cell: Cell, p: Vec3, axis: number, sign: number, body: Body): boolean {
+  for (const passage of cell.passages) {
+    const m = passage.from
+    const n = [m.normal.x, m.normal.y, m.normal.z]
+    if (Math.abs(n[axis]!) < 0.5 || Math.sign(n[axis]!) !== sign) continue
+
+    const rel = sub(p, m.center)
+    if (Math.abs(dot(rel, m.right)) > m.halfWidth + body.radius) continue
+    if (Math.abs(dot(rel, m.up)) > m.halfHeight + body.radius) continue
+    return true
+  }
+  return false
+}
+
+/**
+ * La direction du bas, à un endroit donné d'une cellule.
+ *
+ * Pour une salle aux six sols, c'est la face dont on est le plus près — la règle qui vaut
+ * pour ce qui n'a pas de tête : un cube lancé tombe vers la paroi la plus proche, ce qui
+ * donne, sans code de plus, des objets qui s'accumulent sur les six faces.
+ */
+export function downAt(cell: Cell, p: Vec3): Vec3 {
+  return underfoot(cell, p).down
+}
+
+/** Distance à la paroi vers laquelle on tombe. Zéro quand on la touche. */
+export function faceGap(cell: Cell, p: Vec3): number {
+  return underfoot(cell, p).gap
+}
+
+function underfoot(cell: Cell, p: Vec3): { down: Vec3; gap: number } {
+  if (!cell.gravity) return { down: { x: 0, y: -1, z: 0 }, gap: p.y - cell.min.y }
+
+  const min = [cell.min.x, cell.min.y, cell.min.z]
+  const max = [cell.max.x, cell.max.y, cell.max.z]
+  const at = [p.x, p.y, p.z]
+
+  let axis = 0
+  let sign = -1
+  let gap = Infinity
+  for (const k of [0, 1, 2]) {
+    for (const side of [-1, 1]) {
+      const distance = side > 0 ? max[k]! - at[k]! : at[k]! - min[k]!
+      if (distance < gap) {
+        gap = distance
+        axis = k
+        sign = side
+      }
+    }
+  }
+  const v = [0, 0, 0]
+  v[axis] = sign
+  return { down: { x: v[0]!, y: v[1]!, z: v[2]! }, gap }
 }
 
 /** L'abscisse d'une bouche le long de sa paroi. */

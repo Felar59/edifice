@@ -21,7 +21,7 @@
 
 import { create, fromBasis, type Mat4 } from '../math/mat4'
 import { add, cross, dot, len, normalize, rotateAxis, scale, sub, v3, type Vec3 } from '../math/vec3'
-import { advance, resolveAgainstCell } from '../world/motion'
+import { advance, downAt, faceGap, resolveAgainstCell } from '../world/motion'
 import type { Cell, World } from '../world/types'
 import type { Player } from './player'
 
@@ -106,7 +106,12 @@ export class Projectiles {
       }
       if (p.resting) continue
 
-      p.vel = add(p.vel, v3(0, -GRAVITY * dt, 0))
+      // Un cube n'a pas de tête, donc pas de face choisie : dans une salle aux six sols,
+      // il tombe vers la paroi dont il est le plus près. Sans code de plus, les objets
+      // lancés s'accumulent alors sur les six faces — et un cube qu'on jette vers un mur
+      // finit par y tomber plutôt que d'y rebondir bêtement.
+      const here = world.cells.get(p.cell)
+      p.vel = add(p.vel, scale(here ? downAt(here, p.pos) : v3(0, -1, 0), GRAVITY * dt))
 
       // Rotation propre, appliquée à la base entière.
       const angle = SPIN * dt
@@ -153,8 +158,12 @@ export class Projectiles {
         // Mais il ne s'immobilise que **posé**. Sans cette condition, un cube qui
         // frôle deux fois le montant d'une porte perd assez de vitesse pour être
         // déclaré au repos en pleine embrasure, et reste suspendu en l'air.
-        const floor = world.cells.get(p.cell)?.min.y ?? -Infinity
-        if (p.pos.y <= floor + HALF + 1e-3 && len(p.vel) < 0.6) {
+        //
+        // « Posé » veut dire contre la paroi vers laquelle il tombe : le sol d'ordinaire,
+        // n'importe laquelle des six dans la salle de la gravité.
+        const cell = world.cells.get(p.cell)
+        const gap = cell ? faceGap(cell, p.pos) : Infinity
+        if (gap <= HALF + 1e-3 && len(p.vel) < 0.6) {
           p.resting = true
           p.vel = v3(0, 0, 0)
         }
@@ -207,7 +216,7 @@ function orthonormalise(p: Projectile): void {
  * son centre. Le sol et le plafond sont désormais traités par la résolution commune,
  * qui n'avait pas cette notion quand rien ne tombait.
  */
-const CUBE_BODY = { radius: HALF, eyeHeight: HALF, headroom: HALF }
+const CUBE_BODY = { radius: HALF, eyeHeight: HALF, headroom: HALF, up: v3(0, 1, 0) }
 
 function clampInside(cell: Cell, p: Vec3): Vec3 {
   return resolveAgainstCell(cell, p, CUBE_BODY).pos

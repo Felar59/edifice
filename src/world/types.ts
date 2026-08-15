@@ -65,6 +65,24 @@ export interface Block {
   door?: Mouth
 }
 
+/**
+ * Une cellule dont **les six faces sont habitables**.
+ *
+ * Le bas cesse d'y être une constante : il est la face qu'on a choisie, et l'on en change
+ * en marchant. La bascule se déclenche sur une **bande d'accroche** peinte le long de
+ * chaque arête — et sa largeur n'est pas décorative.
+ *
+ * Elle vaut exactement la hauteur d'œil du visiteur. C'est ce qui rend la bascule
+ * gratuite : au moment où l'on arrive à cette distance de la face voisine, on est déjà
+ * précisément à la distance où l'on se tiendrait debout **sur** elle. Il n'y a donc rien à
+ * déplacer, seulement un repère à tourner. Une bande plus étroite ou plus large ferait
+ * sauter le corps d'autant au moment du basculement, et ce serait le genre d'à-coup qu'on
+ * met des heures à relier à sa cause.
+ */
+export interface FaceGravity {
+  grip: number
+}
+
 export interface Cell {
   id: string
   /** Boîte englobante intérieure, utilisée pour la collision de l'étape 1. */
@@ -72,6 +90,8 @@ export interface Cell {
   max: Vec3
   /** Ce qui est plein à l'intérieur, et qu'il faut contourner. */
   blocks?: Block[]
+  /** Si les six faces sont habitables, la façon d'en changer. */
+  gravity?: FaceGravity
   /** Sommets entrelacés, voir `FLOATS_PER_VERTEX`. */
   verts: F32
   /** Les passages qui partent de cette cellule. */

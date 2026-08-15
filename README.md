@@ -10,9 +10,10 @@ portfolio. Ce dépôt-ci contient le moteur.
 
 **État : le premier moment signature tourne.** Une rotonde à huit portes, des portails
 qu'on n'arrive pas à prendre en défaut, un éclairage qui franchit les ouvertures, le
-saut et la chute — le **tunnel-vrille**, dont la section pivote d'un quart de tour sur
-dix-huit mètres, gravité comprise — et le **volume impossible** : un coffre de deux mètres
-cinquante qui contient la salle de douze où il est posé. Cinq ailes attendent encore leur
+saut et la chute. Puis trois tricheries géométriques : le **tunnel-vrille**, dont la
+section pivote d'un quart de tour, gravité comprise ; le **volume impossible**, un coffre
+de deux mètres cinquante qui contient la salle de douze où il est posé ; et la **gravité
+par face**, un cube dont les six parois sont des sols. Quatre ailes attendent encore leur
 mécanique.
 
 ## Démarrer
@@ -39,9 +40,9 @@ Le monde n'est pas un espace unique mais un **graphe de cellules** reliées par 
 rigide : franchir cette ouverture, c'est changer de repère.
 
 Le plan du musée est une **rotonde** de 14 × 5 × 14, percée de huit portes, et sept
-**ailes** — une par tricherie géométrique : le tunnel-vrille et le reliquaire, qui
-tournent ; la gravité par face, l'escalier de Penrose, l'espace pavé, les murs mobiles et
-la perspective forcée, qui attendent. Les cinq dernières sont vides, et c'est voulu : on
+**ailes** — une par tricherie géométrique : le tunnel-vrille, le reliquaire et la gravité
+par face, qui tournent ; l'escalier de Penrose, l'espace pavé, les murs mobiles et la
+perspective forcée, qui attendent. Les quatre dernières sont vides, et c'est voulu : on
 les remplira une par une, chacune avec son propre problème.
 
 Les ailes sont éloignées de **centaines de mètres** les unes des autres et de la
@@ -349,6 +350,55 @@ près, le coffre remplit le champ et redevient ce qu'il n'est pas : une porte da
 Il faut voir deux de ses faces, ses arêtes contre la salle, et par l'ouverture cette même
 salle vue du fond. Un volume impossible qu'il faut expliquer est un volume raté.
 
+### La gravité par face
+
+Un cube de dix mètres dont **chaque paroi est un sol**. On y entre debout, on marche vers
+un mur, et à une hauteur d'homme de lui la gravité bascule : le mur devient le sol, la
+salle pivote d'un quart de tour autour de soi, et l'on continue à marcher. De proche en
+proche, les six faces sont habitables, plafond compris — en tenant la touche d'avance, on
+fait le tour du cube et l'on revient à son point de départ.
+
+**La bande d'accroche fait exactement une hauteur d'œil**, et c'est le réglage qui décide
+de tout. Au moment où l'on arrive à cette distance de la face voisine, on est déjà
+précisément à la distance où l'on se tiendra debout **sur** elle. Le basculement n'a donc
+rien à déplacer : il ne fait que tourner un repère. Déclencher plus tôt ou plus tard
+obligerait à déplacer le corps d'autant, et cet à-coup passerait pour un défaut de rendu.
+La bordure claire peinte le long de chaque arête marque cette bande : la règle et son
+signe sont la même chose, ce qui évite d'avoir à l'expliquer.
+
+**Le visiteur porte deux verticales.** Celle qu'il *subit* — la face sur laquelle il se
+tient, crantée sur un axe — commande la gravité et la collision, et change d'un coup.
+Celle qu'il *voit* la rejoint en tournant, à cinq radians par seconde. Les confondre
+donnerait, au choix, une caméra qui saute d'un quart de tour ou une gravité qui tire en
+biais pendant la rotation et fait glisser le corps dans l'angle. Le regard tourne du même
+angle que le haut, exactement comme dans le tunnel-vrille et pour la même raison :
+transporter l'un sans l'autre ferait piquer l'image du nez à chaque changement de face.
+
+**La porte ne s'ouvre que pour qui se tient d'aplomb.** Une couture est une transformation
+rigide : elle emporte le repère tel quel, si bien que sortir en marchant sur un mur ferait
+arriver dans la rotonde couché sur le côté, avec une gravité horizontale et rien sous les
+pieds. Refuser est la seule réponse honnête — et la salle s'en charge elle-même, sans rien
+interdire : sa porte est au ras d'une arête, donc dans la bande d'accroche. Qui s'en
+approche en marchant sur un mur bascule sur le sol du bas et se retrouve debout devant
+elle.
+
+**Un défaut trouvé en chemin, et il était fatal.** La bande d'accroche faisait grimper le
+mur juste avant qu'on atteigne la porte : la salle n'avait plus de sortie du tout, on
+tournait indéfiniment autour du cube. D'où la clause qui manquait — **on ne bascule pas
+devant une ouverture, on entre** — et l'invariant qui va avec : la salle doit avoir une
+sortie, vérifiée en marchant.
+
+Deux détails de mise en scène. Les **six faces sont de six teintes** : un cube uni tourné
+d'un quart de tour se superpose à lui-même, et sans elles on ne saurait plus sur laquelle
+on se tient ni d'où l'on vient — le même problème que la section du tunnel-vrille. Et la
+**lampe est au centre géométrique**, seule position qui ne désigne aucune face comme le
+bas ; une lampe au plafond dirait où est le haut avant qu'on ait fait un pas, et le dirait
+encore, à tort, quand on se tiendrait dessus.
+
+Les objets suivent la même règle sans code de plus : **un cube lancé tombe vers la paroi
+dont il est le plus près**. N'ayant pas de tête, il n'a pas de face choisie — et les objets
+s'accumulent donc sur les six faces.
+
 ### La verticalité
 
 On saute et on tombe. Gravité à dix-huit mètres par seconde carrée — près du double du
@@ -401,6 +451,14 @@ recherche de deux faces qui partagent un plan *et* des pixels. C'est la cause d'
 grésillement qu'on attribue toujours au rendu, jamais à la construction — et le seul cas
 que le musée ait connu était le seuil d'une embrasure posée en plein milieu d'une salle,
 là où le sol passait déjà.
+
+Ceux de la salle aux six sols mesurent une chose et une seule à la fois, et le plus utile
+est le plus bête : **la salle a une sortie**. Il est né d'un défaut — la bande d'accroche
+faisait grimper le mur juste avant la porte, et l'on tournait indéfiniment autour du cube.
+S'y ajoutent la largeur de la bande, qui doit valoir une hauteur d'œil au flottant près, le
+fait que **le basculement ne déplace pas le corps** — on mesure la longueur du pas à
+l'image où la face change —, les six faces effectivement foulées en deux traversées, et la
+sortie d'aplomb.
 
 S'y ajoutent les invariants du reliquaire, dont trois qui ne parlent pas de coutures mais
 de matière : on ne traverse pas un bloc plein, on n'y reste pas **pris** — un point posé

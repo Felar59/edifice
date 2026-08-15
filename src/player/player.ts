@@ -9,7 +9,7 @@
  * global seraient à jeter au premier virage.
  */
 
-import { advance, localUp, resolveAgainstCell, type Body } from '../world/motion'
+import { advance, faceChange, localUp, resolveAgainstCell, type Body } from '../world/motion'
 import { getLandmarks } from '../world/world'
 import type { World } from '../world/types'
 import { add, cross, dot, len, normalize, rotateAxis, scale, sub, v3, type Vec3 } from '../math/vec3'
@@ -21,7 +21,7 @@ import { add, cross, dot, len, normalize, rotateAxis, scale, sub, v3, type Vec3 
  * crâne ne sont pas un détail : ce sont eux qui heurtent le linteau, et donc eux qui
  * empêchent d'entrer dans une porte en pleine détente.
  */
-const BODY: Body = { radius: 0.35, eyeHeight: 1.65, headroom: 0.15 }
+const BODY: Body = { radius: 0.35, eyeHeight: 1.65, headroom: 0.15, up: v3(0, 1, 0) }
 
 const WALK = 3.4
 const SPRINT = 6.8
@@ -148,15 +148,45 @@ export function presets(): Preset[] {
       pos: marks.chestPos,
       forward: marks.chestForward,
     },
+    // La salle aux six sols. Ce point de vue ne teste pas une couture : il teste que la
+    // règle du lieu se lise sans mode d'emploi — six faces de six teintes, et la bordure
+    // claire qui marque la bande où l'on change de sol.
+    {
+      name: 'La salle aux six sols',
+      cell: marks.facesCell,
+      pos: marks.facesPos,
+      forward: marks.facesForward,
+    },
   ]
   return cached
 }
+
+/**
+ * Vitesse à laquelle le repère se réoriente quand on change de face, en radians par
+ * seconde. Un quart de tour en trois dixièmes de seconde : assez lent pour qu'on voie la
+ * salle tourner et comprenne ce qui arrive, assez vif pour ne pas donner la nausée.
+ */
+const RIGHTING = 5
 
 export class Player {
   cell: string
   pos: Vec3
   forward: Vec3
+  /**
+   * La verticale **vue** : celle de la caméra et de la marche. Elle rejoint `stance` en
+   * tournant, jamais d'un coup.
+   */
   up: Vec3
+  /**
+   * La verticale **subie** : la face sur laquelle le corps se tient, crantée sur un axe.
+   *
+   * Les deux ne font qu'un partout ailleurs. Elles se séparent le temps d'un basculement
+   * dans la salle aux six sols, et cette séparation est ce qui rend le passage propre :
+   * la gravité et la collision suivent immédiatement la nouvelle face — le corps y est
+   * déjà d'aplomb, il n'a pas à bouger d'un centimètre — pendant que l'image, elle, prend
+   * le temps de tourner.
+   */
+  stance: Vec3
   crossings = 0
   /** Vitesse le long de la verticale locale : négative en chute. */
   vertical = 0
@@ -171,6 +201,7 @@ export class Player {
     this.pos = { ...marks.hubCenter }
     this.forward = normalize({ x: -marks.seamNormal.x, y: 0, z: -marks.seamNormal.z })
     this.up = v3(0, 1, 0)
+    this.stance = v3(0, 1, 0)
   }
 
   goTo(preset: Preset, world?: World): void {
@@ -182,6 +213,9 @@ export class Player {
     // monde n'a aucun sens.
     const cell = world?.cells.get(preset.cell)
     this.up = cell ? localUp(cell, this.pos, v3(0, 1, 0)) : v3(0, 1, 0)
+    // On se pose toujours d'aplomb : une téléportation n'a pas de face de départ, et la
+    // salle aux six sols n'est pas plus légitime à en imposer une qu'une autre.
+    this.stance = { ...this.up }
     this.vertical = 0
     this.grounded = false
     this.renormalise()
@@ -238,7 +272,51 @@ export class Player {
     // Un seul déplacement, horizontal et vertical réunis : c'est ce qui permet à un
     // saut en diagonale de franchir une porte correctement, le découpage en sous-pas
     // traitant les deux composantes ensemble.
-    this.move(world, add(horizontal, scale(this.up, this.vertical * dt)))
+    //
+    // La composante verticale suit `stance` et non `up` : pendant un basculement, la
+    // gravité tire déjà vers la nouvelle face, alors que l'image tourne encore. Prendre
+    // `up` la ferait tirer en biais et ferait glisser le corps dans l'angle.
+    this.move(world, add(horizontal, scale(this.stance, this.vertical * dt)))
+
+    // --- La salle aux six sols ----------------------------------------------
+    const cell = world.cells.get(this.cell)
+    if (cell?.gravity && this.grounded) {
+      const next = faceChange(cell, this.pos, this.stance, normalize(horizontal), BODY)
+      if (next && dot(next, this.stance) < 0.999) {
+        this.stance = next
+        // On se tenait debout : la vitesse acquise le long de l'ancienne verticale n'a
+        // plus de sens le long de la nouvelle.
+        this.vertical = 0
+      }
+    }
+    this.right_up(dt)
+  }
+
+  /**
+   * Rapproche la verticale vue de la verticale subie, à vitesse bornée.
+   *
+   * Le regard tourne du même angle que le haut, exactement comme dans le tunnel-vrille et
+   * pour la même raison : transporter l'un sans l'autre ferait varier l'inclinaison au fil
+   * du basculement, et l'image piquerait du nez en changeant de face.
+   */
+  private right_up(dt: number): void {
+    const cosine = Math.min(1, Math.max(-1, dot(this.up, this.stance)))
+    if (cosine > 1 - 1e-9) {
+      this.up = { ...this.stance }
+      return
+    }
+
+    let axis = cross(this.up, this.stance)
+    // Un demi-tour exact n'a pas d'axe de rotation défini. Le cas ne se produit pas en
+    // marchant — on ne passe d'une face à son opposée qu'en deux quarts de tour — mais un
+    // placement de sonde peut le fabriquer, et une division par zéro silencieuse est
+    // précisément ce qu'on ne veut pas.
+    if (len(axis) < 1e-6) axis = normalize(cross(this.up, this.forward))
+    else axis = normalize(axis)
+
+    const angle = Math.min(RIGHTING * dt, Math.acos(cosine))
+    this.up = normalize(rotateAxis(this.up, axis, angle))
+    this.forward = normalize(rotateAxis(this.forward, axis, angle))
   }
 
   /**
@@ -267,16 +345,18 @@ export class Player {
     let landed = false
     let bumped = false
 
-    // La direction du regard et la verticale locale voyagent avec le corps.
-    const carried = [this.forward, this.up]
+    // La direction du regard et les deux verticales voyagent avec le corps.
+    const carried = [this.forward, this.up, this.stance]
+    const body = { ...BODY, up: this.stance }
     const result = advance(world, this.cell, this.pos, delta, carried, (cell, p) => {
-      const resolved = resolveAgainstCell(cell, p, BODY)
+      const resolved = resolveAgainstCell(cell, p, body)
       if (resolved.floor) landed = true
       if (resolved.ceiling) bumped = true
       return resolved.pos
     })
     this.forward = carried[0]!
     this.up = carried[1]!
+    this.stance = carried[2]!
     this.cell = result.cell
     this.pos = result.pos
     this.crossings += result.crossings

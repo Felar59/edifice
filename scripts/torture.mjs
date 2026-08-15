@@ -44,6 +44,9 @@ const VIEWS = [
   // tricherie se **voit** — la boîte, sa porte, et la nef qui n'y tient pas, dans la même
   // image. Un volume impossible qu'il faut expliquer est un volume raté.
   { file: '15-volume-impossible', label: 'Le volume impossible', preset: 13 },
+  // La salle aux six sols : six teintes et la bordure d'accroche, qui est le mode d'emploi
+  // du lieu. Si l'image ne les distingue pas, le visiteur ne les distinguera pas non plus.
+  { file: '16-six-sols', label: 'La salle aux six sols', preset: 14 },
 ]
 
 /**

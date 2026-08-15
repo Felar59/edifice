@@ -269,6 +269,37 @@ function tubeLighting(tint: Colour): CellLighting {
   }
 }
 
+/**
+ * L'éclairage d'une salle aux six sols : une seule lampe, au **centre géométrique**.
+ *
+ * C'est la seule position qui ne désigne aucune face comme le bas. Une lampe au plafond,
+ * comme partout ailleurs, dirait au visiteur où est le haut avant qu'il ait fait un pas —
+ * et le lui dirait encore, à tort, quand il se tiendrait dessus. Les six faces reçoivent
+ * ici exactement la même lumière, et les huit coins restent sombres : c'est la symétrie
+ * qu'on veut faire sentir.
+ */
+function cubeLighting(box: Box, tint: Colour, mouths: Mouth[]): CellLighting {
+  const centre = {
+    x: (box.min.x + box.max.x) / 2,
+    y: (box.min.y + box.max.y) / 2,
+    z: (box.min.z + box.max.z) / 2,
+  }
+  const span = box.max.y - box.min.y
+
+  return {
+    ambient: [tint[0] * 0.06, tint[1] * 0.06, tint[2] * 0.06],
+    lights: [
+      { position: centre, colour: tint, intensity: 30, radius: span * 1.4 },
+      ...mouths.map((m) => ({
+        position: add(add(m.center, scale(m.normal, REVEAL + 0.7)), { x: 0, y: 1.4, z: 0 }),
+        colour: tint,
+        intensity: 5,
+        radius: 7,
+      })),
+    ],
+  }
+}
+
 /** Une aile : ce qu'elle mesure, où sa porte se trouve, et ce qui viendra dedans. */
 interface Wing {
   id: string
@@ -336,6 +367,51 @@ const VRILLE = makeTwist({
  * transformation reste rigide, et le visiteur garde sa stature. On peut faire le tour du
  * coffre, le mesurer du regard, et rien ne change.
  */
+/**
+ * **La salle aux six sols** — la gravité par face.
+ *
+ * Un cube de dix mètres dont chaque paroi est un sol. On y entre debout, on marche vers
+ * un mur, et à une hauteur d'homme de lui la gravité bascule : le mur devient le sol, la
+ * salle pivote d'un quart de tour autour de soi, et l'on continue à marcher. De proche en
+ * proche, les six faces sont habitables, plafond compris.
+ *
+ * **Les six faces sont de six teintes.** Sans cela on ne sait plus sur laquelle on se
+ * tient ni d'où l'on vient — un cube uni tourné d'un quart de tour se superpose à
+ * lui-même, exactement comme la section du tunnel-vrille.
+ *
+ * **La bordure peinte est la règle.** Elle marque la bande où le basculement se
+ * déclenche, et sa largeur est celle de la hauteur d'œil du visiteur — ce qui n'est pas
+ * un choix graphique mais la condition pour que la bascule ne déplace rien. Voir
+ * `FaceGravity`.
+ *
+ * **La porte ne s'ouvre que pour qui se tient d'aplomb**, et la salle s'en charge
+ * elle-même : la porte est au ras d'une arête, donc dans la bande d'accroche. Qui s'en
+ * approche en marchant sur un mur bascule sur le sol du bas et se retrouve debout devant
+ * elle. Il n'y a donc rien à interdire — la géométrie suffit.
+ */
+const GRAVITY_WING = 'gravite'
+/** Largeur de la bande d'accroche. Égale à la hauteur d'œil du visiteur, obligatoirement. */
+const GRIP = 1.65
+/** La bordure, franchement plus claire que les six faces : c'est un mode d'emploi. */
+const GRIP_COLOUR: Color = [0.86, 0.88, 0.92]
+/**
+ * Six teintes, une par face, et assez éloignées les unes des autres pour qu'un coup d'œil
+ * suffise à savoir où l'on se tient. Deux faces opposées sont volontairement proches — le
+ * sol et le plafond de l'entrée, les deux bleus — parce que ce sont elles qu'on confond le
+ * moins, ayant marché sur l'une avant d'atteindre l'autre.
+ */
+const SIX_FLOORS: RoomPalette = {
+  floor: [0.30, 0.38, 0.52],
+  ceiling: [0.24, 0.30, 0.42],
+  wall: [0.4, 0.4, 0.4],
+  walls: {
+    north: [0.52, 0.34, 0.30],
+    south: [0.30, 0.46, 0.36],
+    west: [0.50, 0.44, 0.28],
+    east: [0.42, 0.32, 0.48],
+  },
+}
+
 /** L'aile qui l'accueille : celle réservée à ce qui se contient soi-même. */
 const RELIQUARY_WING = 'recursive'
 /**
@@ -568,6 +644,10 @@ export interface Landmarks {
   chestCell: string
   chestPos: Vec3
   chestForward: Vec3
+  /** Une pose dans la salle aux six sols, d'où l'on voit quatre de ses faces. */
+  facesCell: string
+  facesPos: Vec3
+  facesForward: Vec3
   /** La liste des ailes et de ce qu'elles accueilleront, pour l'affichage. */
   wings: { id: string; purpose: string }[]
 }
@@ -618,7 +698,11 @@ export function buildWorld(): World {
       wing,
       mouths,
       holes,
-      lighting: twisted ? tubeLighting(wing.tint) : lightingFor(wing.box, wing.tint, mouths),
+      lighting: twisted
+        ? tubeLighting(wing.tint)
+        : wing.id === GRAVITY_WING
+          ? cubeLighting(wing.box, wing.tint, mouths)
+          : lightingFor(wing.box, wing.tint, mouths),
       ...(chest ? { chest } : {}),
     })
     hubMouths.push({
@@ -712,6 +796,7 @@ export function buildWorld(): World {
   ]
 
   for (const entry of wingData) {
+    const sixSided = entry.wing.id === GRAVITY_WING
     const extra: number[] = []
     for (const m of entry.mouths) {
       // **Une embrasure posée dans une pièce n'a pas de seuil à dessiner.**
@@ -774,8 +859,9 @@ export function buildWorld(): World {
           : buildRoom(
               entry.wing.box.min,
               entry.wing.box.max,
-              paletteFor(entry.wing.tint),
+              sixSided ? SIX_FLOORS : paletteFor(entry.wing.tint),
               entry.holes,
+              sixSided ? { border: GRIP, edge: GRIP_COLOUR } : undefined,
             ),
         extra,
       ),
@@ -783,6 +869,7 @@ export function buildWorld(): World {
       lighting: entry.lighting,
       ...(twisted ? { twist: VRILLE } : {}),
       ...(entry.chest ? { blocks: [{ ...entry.chest, door: entry.mouths[1]! }] } : {}),
+      ...(sixSided ? { gravity: { grip: GRIP } } : {}),
     })
   }
 
@@ -810,6 +897,15 @@ export function buildWorld(): World {
     return { pos, forward: normalize(sub(chestDoor.center, pos)) }
   })()
 
+  const facesView = (() => {
+    const wing = wingData.find((entry) => entry.wing.id === GRAVITY_WING)!.wing
+    const pos = { x: wing.box.min.x + 2.2, y: wing.box.min.y + 1.65, z: wing.box.min.z + 2.2 }
+    // Le regard vise le coin opposé à mi-hauteur : viser plus haut sort le sol de l'image,
+    // et une salle aux six sols dont on ne voit pas le sol ne raconte que la moitié.
+    const target = { x: wing.box.max.x - 1, y: (wing.box.min.y + wing.box.max.y) / 2 - 1, z: wing.box.max.z - 1 }
+    return { cell: wing.id, pos, forward: normalize(sub(target, pos)) }
+  })()
+
   const reference = hubPassages[0]!
   landmarks = {
     hub: HUB,
@@ -828,6 +924,11 @@ export function buildWorld(): World {
     chestCell: chestWing.wing.id,
     chestPos: chestView.pos,
     chestForward: chestView.forward,
+    // Debout dans un coin, le regard vers le coin opposé : quatre des six faces sont dans
+    // l'image, avec leurs bordures — donc la règle du lieu autant que sa géométrie.
+    facesCell: facesView.cell,
+    facesPos: facesView.pos,
+    facesForward: facesView.forward,
     wings: WINGS.map((w) => ({ id: w.id, purpose: w.purpose })),
   }
 

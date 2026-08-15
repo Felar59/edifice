@@ -134,6 +134,64 @@ export function pushWall(out: number[], spec: WallSpec): void {
   pushSubQuad(out, spec, cursor, 1, 0, 1)           // bande pleine hauteur après
 }
 
+/**
+ * Une paroi divisée en neuf, dont les huit morceaux du pourtour portent une autre teinte.
+ *
+ * La bordure n'est pas un ornement : c'est la **bande d'accroche** de la salle aux six
+ * sols, celle où le fait de marcher change la face sur laquelle on se tient. La règle et
+ * son signe sont la même chose, ce qui évite d'avoir à l'expliquer.
+ *
+ * Chaque morceau est une paroi à part entière, et reçoit donc les ouvertures qui le
+ * traversent — clipées par `pushWall` dans son propre repère. Une ouverture qui chevauche
+ * deux morceaux est dessinée correctement dans les deux ; une qui n'en touche aucun ne
+ * doit surtout pas leur être passée, faute de quoi le découpage en bandes déborderait la
+ * paroi.
+ */
+export function pushPanelled(out: number[], spec: WallSpec, border: number, edge: Color): void {
+  const wRight = len(spec.right)
+  const wUp = len(spec.up)
+  const su = [0, Math.min(border / wRight, 0.5), Math.max(1 - border / wRight, 0.5), 1]
+  const sv = [0, Math.min(border / wUp, 0.5), Math.max(1 - border / wUp, 0.5), 1]
+
+  // Chaque ouverture, ramenée aux coordonnées paramétriques de la paroi entière.
+  const dirR = scale(spec.right, 1 / wRight)
+  const dirU = scale(spec.up, 1 / wUp)
+  const spans = (spec.holes ?? []).map((hole) => {
+    const rel = sub(hole.center, spec.origin)
+    const cs = (rel.x * dirR.x + rel.y * dirR.y + rel.z * dirR.z) / wRight
+    const ct = (rel.x * dirU.x + rel.y * dirU.y + rel.z * dirU.z) / wUp
+    return {
+      hole,
+      s0: cs - hole.halfWidth / wRight,
+      s1: cs + hole.halfWidth / wRight,
+      t0: ct - hole.halfHeight / wUp,
+      t1: ct + hole.halfHeight / wUp,
+    }
+  })
+
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+      const piece: WallSpec = {
+        origin: add(
+          add(spec.origin, scale(spec.right, su[i]!)),
+          scale(spec.up, sv[j]!),
+        ),
+        right: scale(spec.right, su[i + 1]! - su[i]!),
+        up: scale(spec.up, sv[j + 1]! - sv[j]!),
+        color: i === 1 && j === 1 ? spec.color : edge,
+      }
+      const holes = spans
+        .filter(
+          (h) =>
+            Math.min(h.s1, su[i + 1]!) - Math.max(h.s0, su[i]!) > 1e-6 &&
+            Math.min(h.t1, sv[j + 1]!) - Math.max(h.t0, sv[j]!) > 1e-6,
+        )
+        .map((h) => h.hole)
+      pushWall(out, holes.length ? { ...piece, holes } : piece)
+    }
+  }
+}
+
 export interface RoomHoles {
   /** Ouvertures sur la paroi z = min.z (normale intérieure +Z). */
   north?: Hole[]
@@ -149,59 +207,82 @@ export interface RoomPalette {
   floor: Color
   ceiling: Color
   wall: Color
+  /**
+   * Une teinte par paroi, quand il faut pouvoir les distinguer.
+   *
+   * Indispensable dès qu'une pièce a plusieurs sols : six faces de la même couleur, et
+   * l'on ne sait plus sur laquelle on se tient ni d'où l'on vient.
+   */
+  walls?: { north: Color; south: Color; west: Color; east: Color }
+}
+
+/** De quoi peindre une bordure sur chaque paroi. Voir `pushPanelled`. */
+export interface Panels {
+  border: number
+  edge: Color
 }
 
 /** Une pièce parallélépipédique vue de l'intérieur. */
-export function buildRoom(min: Vec3, max: Vec3, pal: RoomPalette, holes: RoomHoles = {}): F32 {
+export function buildRoom(
+  min: Vec3,
+  max: Vec3,
+  pal: RoomPalette,
+  holes: RoomHoles = {},
+  panels?: Panels,
+): F32 {
   const out: number[] = []
+  const emit = (spec: WallSpec): void => {
+    if (panels) pushPanelled(out, spec, panels.border, panels.edge)
+    else pushWall(out, spec)
+  }
   const dx = max.x - min.x
   const dy = max.y - min.y
   const dz = max.z - min.z
 
   // Sol : normale +Y, donc right × up = +Y avec right = +X et up = -Z.
-  pushWall(out, {
+  emit({
     origin: { x: min.x, y: min.y, z: max.z },
     right: { x: dx, y: 0, z: 0 },
     up: { x: 0, y: 0, z: -dz },
     color: pal.floor,
   })
   // Plafond : normale -Y.
-  pushWall(out, {
+  emit({
     origin: { x: min.x, y: max.y, z: min.z },
     right: { x: dx, y: 0, z: 0 },
     up: { x: 0, y: 0, z: dz },
     color: pal.ceiling,
   })
   // Paroi nord (z = min.z), normale +Z : right = +X, up = +Y.
-  pushWall(out, {
+  emit({
     origin: { x: min.x, y: min.y, z: min.z },
     right: { x: dx, y: 0, z: 0 },
     up: { x: 0, y: dy, z: 0 },
-    color: pal.wall,
+    color: pal.walls?.north ?? pal.wall,
     ...(holes.north ? { holes: holes.north } : {}),
   })
   // Paroi sud (z = max.z), normale -Z : right = -X, up = +Y.
-  pushWall(out, {
+  emit({
     origin: { x: max.x, y: min.y, z: max.z },
     right: { x: -dx, y: 0, z: 0 },
     up: { x: 0, y: dy, z: 0 },
-    color: pal.wall,
+    color: pal.walls?.south ?? pal.wall,
     ...(holes.south ? { holes: holes.south } : {}),
   })
   // Paroi ouest (x = min.x), normale +X : right = -Z, up = +Y.
-  pushWall(out, {
+  emit({
     origin: { x: min.x, y: min.y, z: max.z },
     right: { x: 0, y: 0, z: -dz },
     up: { x: 0, y: dy, z: 0 },
-    color: pal.wall,
+    color: pal.walls?.west ?? pal.wall,
     ...(holes.west ? { holes: holes.west } : {}),
   })
   // Paroi est (x = max.x), normale -X : right = +Z, up = +Y.
-  pushWall(out, {
+  emit({
     origin: { x: max.x, y: min.y, z: min.z },
     right: { x: 0, y: 0, z: dz },
     up: { x: 0, y: dy, z: 0 },
-    color: pal.wall,
+    color: pal.walls?.east ?? pal.wall,
     ...(holes.east ? { holes: holes.east } : {}),
   })
 

@@ -32,7 +32,7 @@ export interface Check {
 const EPS = 1e-5
 
 /** Un corps de sonde, aux mesures du visiteur. */
-const PROBE_BODY = { radius: 0.35, eyeHeight: 1.65, headroom: 0.15 }
+const PROBE_BODY = { radius: 0.35, eyeHeight: 1.65, headroom: 0.15, up: v3(0, 1, 0) }
 
 function fmt(n: number): string {
   return n.toExponential(1)
@@ -699,7 +699,127 @@ export function runSelfTest(world: World): Check[] {
     }
   }
 
-  // 12. Aucune surface ne doit en recouvrir une autre.
+  // 12. La salle aux six sols.
+  //
+  //    **La bande d'accroche fait exactement une hauteur d'œil.** C'est l'invariant qui
+  //    porte tout le reste : au moment où l'on arrive à cette distance de la face voisine,
+  //    on est déjà précisément à la distance où l'on se tiendra debout dessus. Le
+  //    basculement n'a donc rien à déplacer. Une bande d'une autre largeur ferait sauter le
+  //    corps d'autant, et l'à-coup passerait pour un défaut de rendu.
+  //
+  //    **Le basculement ne déplace pas le corps.** On le vérifie plutôt que de s'en
+  //    remettre au calcul ci-dessus : à l'image où la face change, le pas ne doit pas être
+  //    plus long qu'un pas ordinaire.
+  //
+  //    **Les six faces sont habitables.** Deux traversées de la salle, l'une vers l'est et
+  //    l'autre vers le sud, doivent faire visiter les six.
+  //
+  //    **La salle a une sortie.** Ce contrôle-là est né d'un défaut : la bande d'accroche
+  //    faisait grimper le mur juste avant qu'on atteigne la porte, si bien qu'on tournait
+  //    indéfiniment autour du cube sans pouvoir en sortir. On ne bascule donc pas devant
+  //    une ouverture — on entre.
+  //
+  //    **On ne sort que d'aplomb.** Une couture emporte le repère tel quel : sortir en se
+  //    tenant sur un mur ferait arriver dans la rotonde couché, avec une gravité
+  //    horizontale et rien sous les pieds.
+  {
+    const room = [...world.cells.values()].find((c) => c.gravity)
+    if (!room) {
+      add_('six sols · la salle existe', false, 'aucune cellule à gravité par face')
+    } else {
+      const floor = room.min.y
+      const middle = {
+        x: (room.min.x + room.max.x) / 2,
+        y: floor + PROBE_BODY.eyeHeight,
+        z: (room.min.z + room.max.z) / 2,
+      }
+
+      add_(
+        'six sols · la bande d’accroche fait une hauteur d’œil',
+        Math.abs(room.gravity!.grip - PROBE_BODY.eyeHeight) < 1e-9,
+        `${room.gravity!.grip.toFixed(2)} m contre ${PROBE_BODY.eyeHeight.toFixed(2)} m`,
+      )
+
+      /** Une traversée de la salle, tenue en marche avant. Renvoie ce qu'on y observe. */
+      const cross = (forward: Vec3, steps: number) => {
+        const walker = new Player()
+        walker.goTo({ name: 'six sols', cell: room.id, pos: { ...middle }, forward }, world)
+        // Le regard est incliné avant de partir : sans inclinaison, l'angle entre le regard
+        // et le haut resterait nul quoi qu'il arrive, et l'invariant serait vide.
+        walker.look(0, 90)
+        const tilt = dot(walker.forward, walker.up)
+
+        const faces = new Set<string>()
+        const key = (v: Vec3): string => `${Math.round(v.x)},${Math.round(v.y)},${Math.round(v.z)}`
+        faces.add(key(walker.stance))
+
+        let jump = 0
+        let drift = 0
+        for (let i = 0; i < steps && walker.cell === room.id; i++) {
+          const was = { ...walker.pos }
+          const stance = { ...walker.stance }
+          walker.update(1 / 60, world, new Set(['KeyW']))
+          faces.add(key(walker.stance))
+          if (key(stance) !== key(walker.stance)) jump = Math.max(jump, distance(was, walker.pos))
+          drift = Math.max(drift, Math.abs(dot(walker.forward, walker.up) - tilt))
+        }
+        return { faces, jump, drift, walker }
+      }
+
+      // Un pas de marche ordinaire à soixante images par seconde, plus la chute d'une
+      // image : au-delà, le basculement aurait déplacé le corps.
+      const stride = 6.8 / 60 + 18 / 3600 + 1e-3
+
+      const east = cross({ x: 1, y: 0, z: 0 }, 900)
+      const south = cross({ x: 0, y: 0, z: 1 }, 900)
+      const seen = new Set([...east.faces, ...south.faces])
+
+      add_(
+        'six sols · les six faces sont habitables',
+        seen.size === 6,
+        `${seen.size} face(s) foulée(s) : ${[...seen].join(' · ')}`,
+      )
+      add_(
+        'six sols · le basculement ne déplace pas le corps',
+        Math.max(east.jump, south.jump) <= stride,
+        `pas maximal ${Math.max(east.jump, south.jump).toFixed(4)} m à l’image du changement,` +
+          ` pour ${stride.toFixed(4)} m de marche ordinaire`,
+      )
+      add_(
+        'six sols · le regard ne dérive pas',
+        Math.max(east.drift, south.drift) < 2e-3,
+        `écart maximal d’inclinaison ${fmt(Math.max(east.drift, south.drift))}`,
+      )
+
+      // La sortie. On part du milieu, face à la porte, et l'on doit finir dehors et debout.
+      const door = room.passages[0]!.from
+      const leaver = new Player()
+      leaver.goTo(
+        {
+          name: 'sortie',
+          cell: room.id,
+          pos: { ...middle },
+          forward: scale(door.normal, -1),
+        },
+        world,
+      )
+      for (let i = 0; i < 600 && leaver.cell === room.id; i++) {
+        leaver.update(1 / 60, world, new Set(['KeyW']))
+      }
+      add_(
+        'six sols · la salle a une sortie',
+        leaver.cell !== room.id,
+        leaver.cell === room.id ? 'toujours dedans après dix secondes de marche' : `sorti vers ${leaver.cell}`,
+      )
+      add_(
+        'six sols · on ne sort que d’aplomb',
+        dot(leaver.up, v3(0, 1, 0)) > 1 - 1e-6,
+        `verticale à ${(Math.acos(Math.min(1, dot(leaver.up, v3(0, 1, 0)))) * 180 / Math.PI).toFixed(2)}° de l’aplomb`,
+      )
+    }
+  }
+
+  // 13. Aucune surface ne doit en recouvrir une autre.
   //
   //    Deux quads dans le même plan, qui partagent des pixels, se départagent au dernier
   //    bit de la profondeur interpolée — différemment d'un pixel à l'autre et d'une image
@@ -770,7 +890,7 @@ export function runSelfTest(world: World): Check[] {
     )
   }
 
-  // 13. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
+  // 14. Un contrôle bête et utile : personne ne doit se retrouver hors de sa cellule.
   const stray = v3(0, 1.65, 0)
   for (const cell of world.cells.values()) {
     const p = resolveAgainstCell(cell, stray, PROBE_BODY).pos
