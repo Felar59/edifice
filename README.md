@@ -780,6 +780,20 @@ sorties de l'exercice :
   et la salle pavée sont là pour une tricherie de géométrie ; leur donner une matière riche
   reviendrait à disputer l'attention à ce qu'ils ont à montrer.
 
+### L'atelier des matières
+
+Toutes les matières du musée sont posées côte à côte, sur des panneaux debout, au milieu de
+la crypte — et tout le mobilier devant. C'est un lieu de travail avant d'être un lieu de
+visite : on y juge une matière **contre sa voisine**, dans la même lumière et au même angle,
+ce qu'aucune salle meublée ne permet. Dans une galerie, on compare du marbre éclairé
+chaudement à du béton éclairé froidement, et l'on ne compare plus rien. La crypte s'éclaire
+donc à plat, d'une file de sources égales : une source unique au plafond en aurait éclairé
+trois et laissé sept dans l'ombre, et l'on aurait jugé l'éclairage au lieu de la matière.
+
+Les salles du musée n'en portent donc pas encore, de mobilier : elles reçoivent une **allure**,
+et ce qui se pose dessus s'essaie d'abord ici. Le rangement viendra quand il y aura de quoi
+ranger.
+
 ### Le mobilier
 
 Un cordon de séparation, un banc, une plante en pot. Aucun ne joue de rôle dans la géométrie

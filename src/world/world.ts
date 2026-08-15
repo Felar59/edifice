@@ -763,6 +763,7 @@ const MATTER = {
   beton: 7,
   tole: 8,
   platre: 9,
+  verriere: 10,
 } as const
 
 /**
@@ -1071,6 +1072,81 @@ const CABINETS: Cabinet[] = [
     lighting: (box) => cabinetLighting(box, [1, 0.97, 0.94], 4),
   },
 ]
+
+/**
+ * **L'atelier des matières**, au milieu de la crypte.
+ *
+ * Toutes les matières du musée y sont posées côte à côte sur des panneaux debout, et tout le
+ * mobilier devant. C'est un lieu de travail avant d'être un lieu de visite : on y juge une
+ * matière contre sa voisine, dans la même lumière et au même angle, ce qu'aucune salle
+ * meublée ne permet — dans une galerie, on compare du marbre éclairé chaudement à du béton
+ * éclairé froidement, et l'on ne compare plus rien.
+ *
+ * Les salles du musée n'en portent donc pas encore : elles reçoivent une allure, et ce qui se
+ * pose dessus s'essaie d'abord ici. Le rangement viendra quand il y aura de quoi ranger.
+ */
+function furnishTheCrypt(out: number[]): void {
+  const centre = centreOf(LOWER_BOX)
+  const samples: { matter: number; tint: Color }[] = [
+    { matter: MATTER.marbre, tint: [0.6, 0.58, 0.55] },
+    { matter: MATTER.parquet, tint: [0.5, 0.34, 0.2] },
+    { matter: MATTER.moquette, tint: [0.4, 0.12, 0.13] },
+    { matter: MATTER.lambris, tint: [0.62, 0.58, 0.5] },
+    { matter: MATTER.pierre, tint: [0.6, 0.57, 0.5] },
+    { matter: MATTER.caissons, tint: [0.55, 0.53, 0.48] },
+    { matter: MATTER.beton, tint: [0.48, 0.49, 0.5] },
+    { matter: MATTER.tole, tint: [0.45, 0.48, 0.47] },
+    { matter: MATTER.platre, tint: [0.7, 0.69, 0.66] },
+    { matter: MATTER.verriere, tint: [0.8, 0.79, 0.74] },
+  ]
+
+  // Les panneaux, en ligne, tournés vers l'entrée. Deux mètres cinquante de haut : la hauteur
+  // d'une paroi, pour que les motifs dont la taille compte — un lambris, un béton banché — se
+  // lisent à leur échelle réelle et non en réduction.
+  const wide = 1.6
+  const gap = 0.5
+  const span = samples.length * wide + (samples.length - 1) * gap
+  samples.forEach((sample, i) => {
+    const x = centre.x - span / 2 + i * (wide + gap)
+    pushBlock(
+      out,
+      { x, y: LOWER_BOX.min.y, z: centre.z - 0.15 },
+      { x: x + wide, y: LOWER_BOX.min.y + 2.5, z: centre.z + 0.15 },
+      { side: made(sample.tint, sample.matter), top: made(sample.tint, sample.matter) },
+    )
+  })
+
+  // Et le mobilier devant, en vitrine : le cordon qui tient le visiteur à distance de la
+  // ligne de panneaux, un banc pour s'asseoir en face, deux plantes aux bouts.
+  const front = centre.z + 3.2
+  pushCordon(
+    out,
+    { x: centre.x - span / 2, y: LOWER_BOX.min.y, z: front },
+    { x: centre.x + span / 2, y: LOWER_BOX.min.y, z: front },
+    6,
+    FURNITURE.laiton,
+    FURNITURE.fonte,
+    FURNITURE.cordage,
+  )
+  pushBench(
+    out,
+    { x: centre.x, y: LOWER_BOX.min.y, z: front + 2.4 },
+    3.0,
+    { x: 1, y: 0, z: 0 },
+    FURNITURE.chene,
+    FURNITURE.fonte,
+  )
+  for (const [dx, seed] of [[-span / 2 - 1.4, 4], [span / 2 + 1.4, 9]]) {
+    pushPlant(
+      out,
+      { x: centre.x + dx, y: LOWER_BOX.min.y, z: front },
+      FURNITURE.terre,
+      FURNITURE.humus,
+      FURNITURE.feuille,
+      seed,
+    )
+  }
+}
 
 const LOWER = 'salle-basse'
 // Trente mètres de côté : la salle basse n'est plus un cul-de-sac mais un palier, et il
@@ -1677,7 +1753,22 @@ export function buildWorld(): World {
   // par ses propres lampes, et l'ajouter poserait une bande claire en travers de la volée.
   const penroseWing = wingData.find((entry) => entry.wing.id === PENROSE_WING)!
   const lowerMouth = mouth(LOWER, 'salle-basse.porte', LOWER_BOX, 'north', 907.5)
-  const lowerLighting = lightingFor(LOWER_BOX, LOWER_TINT, [lowerMouth])
+  // **L'atelier s'éclaire à plat.** On y compare des matières, donc il faut la même lumière
+  // partout : une source unique au plafond en aurait éclairé trois et laissé sept dans
+  // l'ombre, et l'on aurait jugé l'éclairage au lieu de la matière.
+  const lowerLighting: CellLighting = {
+    ambient: [LOWER_TINT[0] * 0.1, LOWER_TINT[1] * 0.1, LOWER_TINT[2] * 0.1],
+    lights: [-9, -3, 3, 9].map((dx) => ({
+      position: {
+        x: (LOWER_BOX.min.x + LOWER_BOX.max.x) / 2 + dx,
+        y: LOWER_BOX.max.y - 0.6,
+        z: (LOWER_BOX.min.z + LOWER_BOX.max.z) / 2 + 1.6,
+      },
+      colour: LOWER_TINT,
+      intensity: 7,
+      radius: 16,
+    })),
+  }
 
   const stairSeams: Passage[] = stair.seams.map((from, i) => ({
     from,
@@ -1738,39 +1829,6 @@ export function buildWorld(): World {
   const hubExtra: number[] = []
   for (const { mouth: m } of hubMouths) pushReveal(hubExtra, m, accent)
 
-  // **Le hall se meuble le premier**, parce que c'est lui qui doit avoir l'air normal : tout
-  // l'effet du reste en dépend. Quatre plantes aux angles, deux bancs dos à dos au centre, et
-  // la rotonde cesse d'être une boîte à huit portes pour devenir un endroit où l'on attend.
-  const hubBlocks: Block[] = []
-  for (const [sx, sz, seed] of [[-1, -1, 2], [1, -1, 5], [-1, 1, 8], [1, 1, 13]]) {
-    pushPlant(
-      hubExtra,
-      { x: sx * 5.4, y: HUB_BOX.min.y, z: sz * 5.4 },
-      FURNITURE.terre,
-      FURNITURE.humus,
-      FURNITURE.feuille,
-      seed,
-    )
-  }
-  // Les bancs sont posés de part et d'autre, jamais au centre : le milieu de la rotonde est
-  // le point de vue d'où l'on juge le musée, et l'auto-test y laisse tomber un corps.
-  for (const dz of [-3.2, 3.2]) {
-    pushBench(
-      hubExtra,
-      { x: 0, y: HUB_BOX.min.y, z: dz },
-      2.8,
-      { x: 1, y: 0, z: 0 },
-      FURNITURE.chene,
-      FURNITURE.fonte,
-    )
-  }
-  for (const dz of [-3.2, 3.2]) {
-    hubBlocks.push({
-      min: { x: -1.5, y: HUB_BOX.min.y, z: dz - 0.3 },
-      max: { x: 1.5, y: HUB_BOX.min.y + 0.45, z: dz + 0.3 },
-    })
-  }
-
   const cells: Cell[] = [
     {
       id: HUB,
@@ -1795,7 +1853,6 @@ export function buildWorld(): World {
       ),
       passages: hubPassages,
       lighting: hubLighting,
-      blocks: hubBlocks,
     },
   ]
 
@@ -2002,6 +2059,8 @@ export function buildWorld(): World {
         ...(blocks.length ? { blocks } : {}),
       })
     }
+
+    furnishTheCrypt(extra)
 
     cells.push({
       id: LOWER,
