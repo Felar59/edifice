@@ -31,4 +31,18 @@ Chaque projet a son `build.mjs`, qui écrit son `.wasm` dans `src/machines/`.
 
 | projet | ce qui tourne | ce que le musée refait |
 | --- | --- | --- |
-| `wolf3d` | génération du labyrinthe (automates cellulaires, marches aléatoires, élagage), lancer de rayon par DDA, lecture de la carte | le dessin des colonnes, qui passait par SFML |
+| `wolf3d` (noyau) | génération du labyrinthe (automates cellulaires, marches aléatoires, élagage), lancer de rayon par DDA, lecture de la carte | le dessin des colonnes, qui passait par SFML |
+| `wolf3d` (entier) | **le jeu complet** : menu, réglages, carte, simulation, arme, minimap, son | rien — c'est SFML qu'on a portée |
+
+### Les deux Wolf3D
+
+Le premier est le noyau du jeu recompilé seul, sans sa bibliothèque : `machines/wolf3d/`,
+construit par `build.mjs` avec `zig cc`. Léger, immédiat, et c'est du vrai C.
+
+Le second est le jeu entier, `machines/wolf3d/web/`, construit par `build.sh` avec emscripten.
+Il n'a demandé aucune réécriture du jeu — un mot et trois littéraux, consignés dans
+`patches/` — mais il a fallu apprendre le navigateur à **SFML** : un moteur de fenêtre sur le
+canevas, un contexte EGL unique, et lui rendre ses nuanceurs, qu'elle désactive en OpenGL ES.
+Ces modifications vivent dans une copie de SFML et de CSFML hors du dépôt
+(`C:\Users\felar\build\`) ; le journal complet, avec chaque mur rencontré, est dans
+`wolf3d-web.txt` sur le bureau.

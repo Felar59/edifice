@@ -1,0 +1,36 @@
+Le GLSL du navigateur ne convertit pas les entiers en flottants tout seul.
+
+OpenGL de bureau accepte « 0.5 * 1280 » : il voit un flottant et un entier, et
+promeut l'entier. GLSL ES 1.00 — celui de WebGL — refuse, et le nuanceur du sol
+et du plafond ne compile pas. Trois littéraux à écrire en flottant, et rien
+d'autre : le calcul est le même.
+
+--- a/shaders/floor_ceiling.frag
++++ b/shaders/floor_ceiling.frag
+@@ -21,7 +21,7 @@
+     vec2 plane = vec2(-dir.y * plane_len, dir.x * plane_len);
+     vec2 ray_dir_left  = dir - plane;
+     vec2 ray_dir_right = dir + plane;
+-    float camera_z = 0.5 * 1280 + jump_y;
++    float camera_z = 0.5 * 1280.0 + jump_y;
+     float row_dist = (camera_z / (screen_y - axis_y));
+     shadow = 1.1 / (1.0 + row_dist * 0.5);
+     shadow = clamp(shadow, 0.0, 1.0);
+@@ -39,7 +39,7 @@
+     vec2 plane = vec2(-dir.y * plane_len, dir.x * plane_len);
+     vec2 ray_dir_left  = dir - plane;
+     vec2 ray_dir_right = dir + plane;
+-    float camera_z = 0.5 * 1280 - jump_y;
++    float camera_z = 0.5 * 1280.0 - jump_y;
+     float row_dist = (camera_z / (axis_y - screen_y));
+     shadow = 1.1 / (1.0 + row_dist * 0.5);
+     shadow = clamp(shadow, 0.0, 1.0);
+@@ -55,7 +55,7 @@
+ {
+     vec2 win_s = resolution;
+     float y = gl_FragCoord.y;
+-    float screen_y = axis_y * 2 - y;
++    float screen_y = axis_y * 2.0 - y;
+     if (screen_y <= axis_y) {
+         apply_ceiling(win_s, screen_y);
+     } else

@@ -122,6 +122,11 @@ export async function launch(url, { width = 1440, height = 810, port = 9333 } = 
       await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...base, buttons: 0 })
     },
 
+    /** Déplacer sans cliquer : ce qui décide du survol dans les jeux. */
+    async move(x, y) {
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, buttons: 0 })
+    },
+
     /** Frappe de confiance. `code` au sens KeyboardEvent.code. */
     async press(code, { key = code, keyCode = 0, modifiers = 0 } = {}) {
       const base = { code, key, windowsVirtualKeyCode: keyCode, modifiers }

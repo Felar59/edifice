@@ -51,6 +51,14 @@ em++ "$OBJ"/*.o \
   -sSTACK_SIZE=8388608 \
   -sMAX_WEBGL_VERSION=2 \
   -sGL_ENABLE_GET_PROC_ADDRESS=1 \
+  `# SFML 2.6 dessine en pipeline fixe — glMatrixMode, glVertexPointer,` \
+  `# glEnableClientState — hérité d'OpenGL 1.1. WebGL n'a rien de tout cela : il` \
+  `# est ES 2, tout passe par des nuanceurs. C'est le mur qui a obligé le fork` \
+  `# VRSFML à réécrire toute la couche de rendu de SFML 3.` \
+  `#` \
+  `# Emscripten a précisément une réponse à ce cas : une émulation du pipeline fixe` \
+  `# écrite au-dessus de WebGL, faite pour les portages de code OpenGL ancien.` \
+  -sLEGACY_GL_EMULATION=1 \
   -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,stringToUTF8,lengthBytesUTF8,setValue \
   -sEXPORTED_FUNCTIONS=_main,_edifice_environ,_malloc \
   -sINVOKE_RUN=0 \

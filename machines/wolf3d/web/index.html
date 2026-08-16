@@ -3,9 +3,10 @@
 <title>Wolf3D — dans le navigateur</title>
 <style>
   body { margin: 0; background: #101012; display: grid; place-items: center; height: 100vh; }
-  canvas { border: 0; display: block; }
-  #log { position: fixed; bottom: 0; left: 0; right: 0; color: #9a8; font: 12px monospace;
-         background: #000a; padding: 4px 8px; max-height: 8em; overflow: auto; white-space: pre; }
+  /* C'est la page qui fixe la définition du jeu : le portage lit la taille CSS
+     du canevas et s'y installe. */
+  canvas { border: 0; display: block; width: 100vw; height: 100vh; }
+  #log { display: none; }
 </style>
 <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
 <div id="log"></div>
