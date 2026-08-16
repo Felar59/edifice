@@ -539,6 +539,8 @@ async function main(): Promise<void> {
   let ecran = 0
   /** Où le regard rencontre la matière, cette image-ci. Le clavier s'en sert aussi. */
   let regard: ReturnType<typeof castRay> = null
+  /** Le rayon long du panneau de diagnostic, rafraîchi dix fois par seconde. */
+  let regardLoin: ReturnType<typeof castRay> = null
 
   const frame = (now: number): void => {
     // Onglet en arrière-plan, point d'arrêt dans le débogueur : un pas de temps
@@ -547,7 +549,20 @@ async function main(): Promise<void> {
     previous = now
     fps += (1 / Math.max(dt, 1e-4) - fps) * 0.1
 
-    regard = castRay(world, player.cell, player.pos, player.forward)
+    // Deux rayons, deux cadences — parce qu'ils ne servent pas la même chose.
+    //
+    // Le rayon **court** décide des gestes : l'interrupteur de la borne se presse à moins
+    // de trois mètres cinquante, six suffisent donc largement, et il se relance à chaque
+    // image pour que le geste réponde. Le rayon **long** ne sert qu'à la ligne « visée » du
+    // panneau de diagnostic : quarante mètres, qui peuvent traverser une couture et finir
+    // leur course dans l'escalier de Penrose — dont la marche fine coûtait les deux tiers
+    // du processeur dans certaines salles. Une ligne de texte n'a pas besoin de soixante
+    // rafraîchissements par seconde : dix suffisent, et personne ne peut voir la différence.
+    regard = castRay(world, player.cell, player.pos, player.forward, 6)
+    // Et il ne se lance que si quelqu'un le lit : panneau masqué, coût nul.
+    if (hud.diagnostics && hook.frames % 6 === 0) {
+      regardLoin = castRay(world, player.cell, player.pos, player.forward)
+    }
 
     sons.distance(Math.sqrt(toMachine()))
 
@@ -678,7 +693,7 @@ async function main(): Promise<void> {
       maxDepth: renderer.maxDepth,
       projectiles: projectiles.count,
       stats: renderer.getStats(),
-      aim: regard,
+      aim: regardLoin,
       prompt: playing
         ? 'P — lâcher la machine'
         : viseBouton(regard)

@@ -31,7 +31,7 @@ async function fetchJson(url, tries = 60) {
   throw new Error(`Pas de réponse de ${url}`)
 }
 
-export async function launch(url, { width = 1440, height = 810, port = 9333 } = {}) {
+export async function launch(url, { width = 1440, height = 810, port = 9333, debride = false } = {}) {
   const profile = mkdtempSync(join(tmpdir(), 'museum-shot-'))
   const proc = spawn(
     findBrowser(),
@@ -45,6 +45,9 @@ export async function launch(url, { width = 1440, height = 810, port = 9333 } = 
       '--disable-extensions',
       '--force-device-scale-factor=1',
       // WebGPU n'est pas activé par défaut en mode sans interface.
+      // Pour mesurer : sans la synchronisation verticale, les images par seconde
+      // deviennent une mesure du cout reel d'une image, pas un plafond a 60.
+      ...(debride ? ['--disable-frame-rate-limit', '--disable-gpu-vsync'] : []),
       '--enable-unsafe-webgpu',
       '--enable-features=Vulkan',
       url,
@@ -147,6 +150,35 @@ export async function launch(url, { width = 1440, height = 810, port = 9333 } = 
       throw new Error(`Délai dépassé : ${predicate}`)
     },
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+
+    /**
+     * Échantillonne le processeur pendant `ms` et rend les fonctions les plus chaudes,
+     * en pourcentage du temps total — le vrai outil quand les images par seconde ne
+     * bougent pas avec la résolution.
+     */
+    async profile(ms) {
+      await send('Profiler.enable')
+      await send('Profiler.setSamplingInterval', { interval: 100 })
+      await send('Profiler.start')
+      await new Promise((r) => setTimeout(r, ms))
+      const { profile } = await send('Profiler.stop')
+      const hits = new Map()
+      let total = 0
+      const byId = new Map(profile.nodes.map((n) => [n.id, n]))
+      for (const n of profile.nodes) {
+        const self = n.hitCount ?? 0
+        if (!self) continue
+        total += self
+        const f = n.callFrame
+        const nom = `${f.functionName || '(anonyme)'} ${f.url.split('/').pop() ?? ''}:${f.lineNumber}`
+        hits.set(nom, (hits.get(nom) ?? 0) + self)
+      }
+      void byId
+      return [...hits.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 14)
+        .map(([nom, n]) => `${((n / total) * 100).toFixed(1).padStart(5)} %  ${nom}`)
+    },
     async screenshot() {
       const { data } = await send('Page.captureScreenshot', { format: 'png' })
       return Buffer.from(data, 'base64')

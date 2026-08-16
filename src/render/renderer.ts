@@ -669,7 +669,9 @@ export class Renderer {
     const mesh = this.meshes.get(cell.id)
     if (mesh) {
       pass.setVertexBuffer(0, mesh.buffer)
-      for (const shift of this.lattice(cell, camPos, viewFwd)) {
+      // `shifts` est déjà calculé plus haut pour les ouvertures : le recalculer ici
+      // refaisait tout le quadrillage du réseau une seconde fois par passe.
+      for (const shift of shifts) {
         const model = translation(shift)
         const offset = this.writeSceneUniforms(viewProj, model, camPos, cell, shift)
         pass.setBindGroup(0, this.sceneBindGroup, [offset])

@@ -56,6 +56,11 @@ export class Hud {
     ].join('\n')
   }
 
+  /** Le panneau de mesures est-il à l'écran ? Ce qui ne se voit pas ne se calcule pas. */
+  get diagnostics(): boolean {
+    return !this.stats.hidden
+  }
+
   toggle(): void {
     this.setVisible(this.stats.hidden)
   }
