@@ -13,14 +13,14 @@
  * mémoire du module. Ni `wasm-bindgen`, ni glu, ni sérialisation — trois lignes suffisent à
  * charger le module, et rien ne se met entre le C et la page.
  *
- * ## L'arpenteur
+ * ## On y joue
  *
- * Personne ne tient encore la caméra du labyrinthe : c'est la partie qui viendra avec le
- * stéréoscope. En attendant, un arpenteur le parcourt tout seul, et c'est ce que le plan
- * appelle l'auto-démonstration — la machine fonctionne devant le visiteur avant qu'il ait
- * compris qu'il peut s'en servir. Sa marche est bête à dessein : il avance, et quand un mur
- * arrive il tourne du côté le plus dégagé. Il n'a pas à jouer bien, il a à montrer que ça
- * tourne.
+ * Le plan est catégorique : chaque projet doit être **utilisé pour de vrai**. Devant l'écran,
+ * une touche prend la main, et les mêmes touches qui font marcher dans le musée font marcher
+ * dans le labyrinthe. Tant que personne ne s'en sert, un arpenteur le parcourt tout seul —
+ * c'est l'auto-démonstration que le plan réclame au LOT 5, la machine qui tourne devant le
+ * visiteur avant qu'il ait compris qu'il peut s'en servir. Mais c'est un économiseur d'écran,
+ * pas la machine : la machine, c'est quand on la tient.
  */
 
 import url from './wolf3d.wasm?url'
@@ -101,9 +101,14 @@ export class Maze {
     return t === 35 || t === 79 || t === 68 // '#', 'O', 'D'
   }
 
-  /** Fait avancer l'arpenteur, puis rend l'image du moment. */
-  step(dt: number): Uint8Array<ArrayBuffer> {
-    this.walk(dt)
+  /**
+   * Fait avancer le jeu d'une image, puis la rend.
+   *
+   * `keys` est nul quand personne ne tient la machine : elle tourne alors toute seule.
+   */
+  step(dt: number, keys: Set<string> | null): Uint8Array<ArrayBuffer> {
+    if (keys) this.drive(dt, keys)
+    else this.walk(dt)
     this.k.wolf_view(this.x, this.y, this.angle, 1.15, SCREEN_W, SCREEN_H)
     // La mémoire d'un module peut se déplacer quand il en demande davantage : la vue se
     // reconstruit à chaque image plutôt que de se garder. C'est le même piège que dans le
@@ -113,6 +118,46 @@ export class Maze {
       this.k.wolf_frame(),
       SCREEN_W * SCREEN_H * 4,
     ) as Uint8Array<ArrayBuffer>
+  }
+
+  /**
+   * Les commandes du visiteur.
+   *
+   * Avancer, reculer, tourner : celles du jeu d'origine. Le pas de côté n'y était pas, et on
+   * ne l'ajoute pas — ce n'est pas notre jeu.
+   */
+  private drive(dt: number, keys: Set<string>): void {
+    const turn = 2.4
+    const speed = 2.6
+    if (keys.has('KeyA') || keys.has('ArrowLeft')) this.angle -= turn * dt
+    if (keys.has('KeyD') || keys.has('ArrowRight')) this.angle += turn * dt
+
+    let move = 0
+    if (keys.has('KeyW') || keys.has('ArrowUp')) move += 1
+    if (keys.has('KeyS') || keys.has('ArrowDown')) move -= 1
+    if (move === 0) return
+
+    const step = move * speed * dt
+    this.slide(Math.cos(this.angle) * step, Math.sin(this.angle) * step)
+  }
+
+  /**
+   * Un pas, axe par axe, avec un rayon.
+   *
+   * Séparer les deux axes est ce qui permet de **glisser le long d'un mur** au lieu de s'y
+   * coller net : un pas en diagonale dont la composante en x est bloquée garde sa composante
+   * en y. Sans cela, on reste accroché à chaque angle, et un labyrinthe devient injouable.
+   */
+  private slide(dx: number, dy: number): void {
+    const room = 0.28
+    const free = (x: number, y: number): boolean =>
+      !this.wall(Math.floor(x + room), Math.floor(y)) &&
+      !this.wall(Math.floor(x - room), Math.floor(y)) &&
+      !this.wall(Math.floor(x), Math.floor(y + room)) &&
+      !this.wall(Math.floor(x), Math.floor(y - room))
+
+    if (free(this.x + dx, this.y)) this.x += dx
+    if (free(this.x, this.y + dy)) this.y += dy
   }
 
   private walk(dt: number): void {
@@ -126,8 +171,7 @@ export class Maze {
       !this.wall(Math.floor(x + Math.cos(this.angle) * 0.4), Math.floor(y + Math.sin(this.angle) * 0.4))
 
     if (clear(nx, ny)) {
-      this.x = nx
-      this.y = ny
+      this.slide(nx - this.x, ny - this.y)
       // Une dérive lente et continue, pour que la vue ne soit jamais tout à fait la même.
       this.angle += Math.sin(this.x * 0.7 + this.y * 0.4) * 0.25 * dt
       return

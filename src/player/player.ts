@@ -326,7 +326,7 @@ export class Player {
     // aucun déplacement, en l'air comme au sol. Reste la condition qui compte, marcher
     // franchement vers la face — on s'accroche à un mur, on ne s'y accroche pas en passant.
     const cell = world.cells.get(this.cell)
-    if (cell?.gravity) {
+    if (cell?.gravity || cell?.carries) {
       // **Deux verrous, et chacun a coûté un défaut visible.**
       //
       // Il faut marcher : à l'arrêt, la direction souhaitée est le vecteur nul, dont la
@@ -349,7 +349,7 @@ export class Player {
           this.vertical = 0
         }
       }
-    } else if (!cell?.carries && !cell?.twist && this.stance.y < 0.999 && this.grounded) {
+    } else if (!cell?.twist && this.stance.y < 0.999 && this.grounded) {
       // **Dans une pièce ordinaire, une verticale de travers est un état de vol.**
       //
       // On l'emporte en tombant par la porte du sol : elle traverse la rotonde, entre dans

@@ -15,7 +15,7 @@ import myworld from './assets/myworld1.png?url'
 import shell from './assets/42sh1.png?url'
 import antivirus from './assets/antivirus.png?url'
 import physiqueUrl from './player/physique.wasm?url'
-import { buildWorld, HUB } from './world/world'
+import { buildWorld, getLandmarks, HUB } from './world/world'
 import { buildCube } from './world/geometry'
 import { Hud } from './ui/hud'
 import { SettingsPage } from './ui/settings'
@@ -134,6 +134,26 @@ async function main(): Promise<void> {
     console.error('wolf3d :', err)
   }
 
+  /**
+   * A-t-on la main sur la machine ?
+   *
+   * Deux états, et rien entre les deux : ou l'on marche dans le musée, ou l'on joue au jeu.
+   * Les touches sont les mêmes des deux côtés, ce qui n'est pas une économie mais une
+   * intention — on ne change pas de commandes en s'asseyant devant une machine, on change de
+   * ce qu'elles commandent.
+   */
+  let playing = false
+
+  /** Est-on assez près de l'écran pour s'en servir ? */
+  const atMachine = (): boolean => {
+    const m = getLandmarks()
+    if (player.cell !== m.machineCell) return false
+    const dx = player.pos.x - m.machinePos.x
+    const dy = player.pos.y - m.machinePos.y
+    const dz = player.pos.z - m.machinePos.z
+    return dx * dx + dy * dy + dz * dz < 25
+  }
+
   const player = new Player()
 
   // **Le noyau de physique est chargé avant la première image.** Il porte le monde, et un
@@ -203,6 +223,12 @@ async function main(): Promise<void> {
         break
       case 'KeyT':
         renderer.flat = !renderer.flat
+        break
+      case 'KeyE':
+        // **On lâche toujours, on ne prend que devant.** Une machine dont on ne peut pas
+        // sortir est un piège, et le plan y tient : aucune énigme ne doit bloquer.
+        if (playing) playing = false
+        else if (maze && atMachine()) playing = true
         break
       case 'BracketLeft':
         renderer.maxDepth = Math.max(0, renderer.maxDepth - 1)
@@ -306,12 +332,17 @@ async function main(): Promise<void> {
     previous = now
     fps += (1 / Math.max(dt, 1e-4) - fps) * 0.1
 
+    // On s'éloigne, on lâche : sans cela on piloterait un écran qu'on ne voit plus.
+    if (playing && !atMachine()) playing = false
+
     if (!paused) {
-      player.update(dt, world, keys)
+      // Ou l'on marche dans le musée, ou l'on joue : le visiteur ne bouge pas pendant qu'il
+      // tient la machine, et c'est ce qui rend les mêmes touches lisibles des deux côtés.
+      if (!playing) player.update(dt, world, keys)
       projectiles.update(dt, world)
-      // La machine tourne, qu'on la regarde ou non — c'est ce qui fait qu'on la découvre
+      // La machine tourne, qu'on la tienne ou non — c'est ce qui fait qu'on la découvre
       // déjà en marche plutôt qu'à mettre en marche.
-      if (maze) pictures.paint(MACHINE_LAYER, maze.step(dt), 512, 288)
+      if (maze) pictures.paint(MACHINE_LAYER, maze.step(dt, playing ? keys : null), 512, 288)
     }
 
     renderer.render(
@@ -328,6 +359,11 @@ async function main(): Promise<void> {
       projectiles: projectiles.count,
       stats: renderer.getStats(),
       aim: castRay(world, player.cell, player.pos, player.forward),
+      prompt: playing
+        ? 'E — lâcher la machine'
+        : maze && atMachine()
+          ? 'E — prendre la main'
+          : null,
     })
 
     hook.frames++

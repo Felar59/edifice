@@ -778,7 +778,7 @@ function throughADoor(
  * on ne bascule pas en frôlant : c'est un geste, pas un accident.
  */
 export function faceChange(cell: Cell, p: Vec3, up: Vec3, wish: Vec3, body: Body): Vec3 | null {
-  if (!cell.gravity) return null
+  if (!cell.gravity && !cell.carries) return null
 
   const { axis, sign } = dominant(up)
 
@@ -835,7 +835,16 @@ export function faceChange(cell: Cell, p: Vec3, up: Vec3, wish: Vec3, body: Body
   // La nouvelle verticale sort de la face abordée, vers l'intérieur de la salle.
   const v = [0, 0, 0]
   v[best.axis] = best.sign
-  return { x: v[0]!, y: v[1]!, z: v[2]! }
+  const next = { x: v[0]!, y: v[1]!, z: v[2]! }
+
+  // **Une salle qui garde la gravité qu'on lui apporte n'offre qu'un retour, jamais une
+  // montée.** Elle n'a pas six sols : ses murs restent des murs, et l'on n'y grimpe pas.
+  // Mais qui s'est retrouvé debout sur l'un d'eux doit pouvoir redescendre, faute de quoi
+  // l'aile est un piège. L'accroche y est donc à sens unique — on ne s'y raccroche qu'au sol
+  // du monde. C'est aussi ce qui garde la trémie du plafond hors de portée : elle ne
+  // s'atteint qu'en arrivant de travers, jamais en partant d'en bas.
+  if (!cell.gravity && next.y < 0.999) return null
+  return next
 }
 
 /**

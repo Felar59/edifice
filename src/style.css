@@ -162,6 +162,15 @@ kbd {
   color: var(--dim);
 }
 
+#prompt {
+  bottom: 6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  letter-spacing: 0.08em;
+}
+
 .panel[hidden] {
   display: none;
 }

@@ -13,6 +13,8 @@ export interface HudData {
   stats: RenderStats
   /** Ce que le rayon d'interaction rencontre droit devant, s'il rencontre quelque chose. */
   aim: RayHit | null
+  /** L'invite d'une machine à portée de main, s'il y en a une. */
+  prompt: string | null
 }
 
 /**
@@ -26,10 +28,20 @@ export interface HudData {
 export class Hud {
   private readonly stats: HTMLElement
   private readonly keys: HTMLElement
+  /**
+   * L'invite d'une machine.
+   *
+   * Le seul texte du musée qui s'adresse au visiteur, et il n'apparaît qu'à portée de main.
+   * Le plan interdit les notices et les menus ; il ne dit rien contre trois mots qui
+   * n'existent que devant l'objet qu'ils désignent. Sans eux, une machine qui tourne toute
+   * seule reste un décor, et personne n'essaie de la toucher.
+   */
+  private readonly prompt: HTMLElement
 
   constructor() {
     this.stats = panel('stats')
     this.keys = panel('keys')
+    this.prompt = panel('prompt')
 
     const reticle = document.createElement('div')
     reticle.id = 'reticle'
@@ -54,6 +66,11 @@ export class Hud {
   }
 
   update(d: HudData): void {
+    // L'invite reste visible quand les panneaux sont masqués : c'est du jeu, pas de la mise
+    // au point.
+    this.prompt.hidden = d.prompt === null
+    this.prompt.textContent = d.prompt ?? ''
+
     if (this.stats.hidden) return
     this.stats.textContent = [
       `${d.fps.toFixed(0).padStart(3)} i/s`,

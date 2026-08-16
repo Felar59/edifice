@@ -1007,6 +1007,62 @@ export function runSelfTest(world: World, physics: Physics): Check[] {
         faller.cell !== inside ? `${inside} → ${faller.cell}` : `bloqué dans ${inside}`,
       )
 
+      // **Et l'on y arrive d'aplomb.** La couture qui donne sur la grande salle porte un
+      // quart de tour : le mur qu'on longeait devient le sol en la franchissant. C'est ce
+      // qui fait qu'on entre en marchant, debout, sans à-coup et sans rien avoir à faire —
+      // et c'est le seul endroit du musée où une couture change la verticale d'un coup, ce
+      // qui mérite d'être vérifié plutôt que cru.
+      add_(
+        'on arrive d’aplomb dans la grande salle',
+        dot(faller.stance, v3(0, 1, 0)) > 0.999 && faller.grounded,
+        `verticale ${fmt(dot(faller.stance, v3(0, 1, 0)))} · ${faller.grounded ? 'posé' : 'en l’air'}`,
+      )
+
+      // **L'accroche de l'aile rouge est à sens unique.** Debout sur le mur du fond, on doit
+      // pouvoir se laisser retomber sur le plancher ; debout sur le plancher, on ne doit pas
+      // pouvoir grimper au mur. Sans le premier, l'aile est un piège ; sans le second, la
+      // trémie du plafond s'atteindrait sans jamais passer par la salle aux six sols, et
+      // toute la séquence perdrait sa raison d'être.
+      const wing = world.cells.get(landed)!
+      const down = new Player()
+      down.goTo(
+        {
+          name: 'retour',
+          cell: landed,
+          pos: { x: 509, y: wing.min.y + PROBE_BODY.eyeHeight, z: wing.max.z - PROBE_BODY.eyeHeight },
+          forward: v3(0, -1, 0),
+        },
+        world,
+      )
+      down.stance = v3(0, 0, -1)
+      down.up = v3(0, 0, -1)
+      for (let i = 0; i < 400 && down.stance.y < 0.999; i++) {
+        down.face(v3(0, -1, 0))
+        down.update(1 / 60, world, new Set(['KeyW']))
+      }
+      add_(
+        'aile rouge · du mur on redescend au sol',
+        down.stance.y > 0.999,
+        down.stance.y > 0.999 ? 'raccroché au plancher' : 'resté sur le mur',
+      )
+
+      const climber = new Player()
+      climber.goTo(
+        {
+          name: 'montée',
+          cell: landed,
+          pos: { x: 509, y: wing.min.y + PROBE_BODY.eyeHeight, z: wing.min.z + 4 },
+          forward: v3(0, 0, 1),
+        },
+        world,
+      )
+      for (let i = 0; i < 600; i++) climber.update(1 / 60, world, new Set(['KeyW']))
+      add_(
+        'aile rouge · du sol on ne grimpe pas au mur',
+        climber.stance.y > 0.999 && climber.cell === landed,
+        `verticale ${fmt(climber.stance.y)} dans ${climber.cell}`,
+      )
+
       // Et le contrôle qui donne son sens au précédent : d'aplomb, sur le plancher, la même
       // trémie est hors de portée. Sans quoi la trappe ne servirait à rien — il suffirait de
       // marcher jusqu'au fond de l'aile rouge pour monter, et la gravité de travers ne serait

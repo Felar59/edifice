@@ -1444,11 +1444,24 @@ const CONDUIT = 'conduit'
 const GREAT = 'grande-salle'
 
 /** Le conduit : une gaine verticale de six mètres, dans le coin de l'aile rouge. */
-const CONDUIT_BOX: Box = { min: { x: 514.6, y: 3.6, z: 506.2 }, max: { x: 518, y: 9.6, z: 510 } }
+const CONDUIT_BOX: Box = { min: { x: 514.5, y: 3.6, z: 506.25 }, max: { x: 518, y: 9.5, z: 510 } }
 const CONDUIT_TINT: Colour = [0.9, 0.72, 0.55]
 
-/** La grande salle, tout en haut. Vide pour l'instant : c'est un terrain, pas une pièce. */
-const GREAT_BOX: Box = { min: { x: 498, y: 9.6, z: 492 }, max: { x: 526, y: 21.6, z: 510 } }
+/**
+ * La grande salle, au bout du conduit.
+ *
+ * **On y entre par le sol, et c'est la couture qui s'en charge.** On monte le conduit debout
+ * sur sa paroi, gravité de travers ; la couture qui donne sur la grande salle porte un quart
+ * de tour, si bien que le mur qu'on longeait *devient* le sol en la franchissant. On arrive
+ * d'aplomb, en marchant, sans à-coup et sans avoir rien à faire.
+ *
+ * C'est exactement ce que l'espace cousu sait faire depuis le premier jour, et c'est la
+ * première fois qu'on s'en sert pour autre chose que relier deux pièces droites : une
+ * transformation rigide n'est pas obligée de garder la verticale, elle est seulement obligée
+ * de ne pas déformer. La salle est donc une pièce ordinaire — ni six sols, ni gravité
+ * apportée. On y arrive debout et l'on y reste.
+ */
+const GREAT_BOX: Box = { min: { x: 1200, y: 0, z: 1200 }, max: { x: 1228, y: 12, z: 1218 } }
 const GREAT_TINT: Colour = [0.72, 0.86, 1]
 
 /**
@@ -1490,8 +1503,17 @@ function hatchMouths(
   }
 }
 
-/** L'axe des deux trémies : le coin du fond à droite, celui qu'on va chercher en marchant. */
-const HATCH_AT = { x: CONDUIT_BOX.max.x - 1.8, z: CONDUIT_BOX.max.z - 1.6 }
+/**
+ * L'axe des deux trémies : le coin du fond à droite, celui qu'on va chercher en marchant.
+ *
+ * **Sur la grille au quart de mètre**, comme tout le reste du musée, et cette fois ce n'est
+ * pas une précaution. Tant que la couture d'en haut était une translation pure, seule sa
+ * différence comptait et les deux bouches pouvaient être n'importe où : les erreurs
+ * s'annulaient. Depuis qu'elle porte un quart de tour, les coordonnées se mélangent, et un
+ * dix-huitième de mètre qui n'existe pas en flottant 32 bits ressort en écart de vingt-sept
+ * microns sur des bouches censées coïncider au bit près.
+ */
+const HATCH_AT = { x: CONDUIT_BOX.max.x - 1.75, z: CONDUIT_BOX.max.z - 1.5 }
 
 const GRIP_COLOUR: Color = [0.86, 0.88, 0.92]
 /**
@@ -1904,6 +1926,9 @@ export interface Landmarks {
   bridgeCell: string
   bridgePos: Vec3
   bridgeForward: Vec3
+  /** L'écran de la première machine : où il est, pour savoir quand on est devant. */
+  machineCell: string
+  machinePos: Vec3
   cryptCell: string
   cryptPos: Vec3
   cryptForward: Vec3
@@ -2164,7 +2189,7 @@ export function buildWorld(): World {
     })),
   }
   const greatLighting: CellLighting = {
-    ambient: [GREAT_TINT[0] * 0.05, GREAT_TINT[1] * 0.05, GREAT_TINT[2] * 0.05],
+    ambient: [GREAT_TINT[0] * 0.06, GREAT_TINT[1] * 0.06, GREAT_TINT[2] * 0.06],
     // Une grande salle demande plusieurs foyers : une lampe unique au centre laisse ses
     // coins dans le noir, et ce sont justement les coins qu'on ira parcourir.
     lights: [-8, 0, 8].flatMap((dx) =>
@@ -2186,11 +2211,30 @@ export function buildWorld(): World {
     { cell: CONDUIT, y: CONDUIT_BOX.min.y },
     HATCH_AT,
   )
-  const upper = hatchMouths(
-    { cell: CONDUIT, y: CONDUIT_BOX.max.y },
-    { cell: GREAT, y: GREAT_BOX.min.y },
-    HATCH_AT,
-  )
+  // **La couture qui redresse.** Côté conduit, une trémie au plafond comme la précédente.
+  // Côté grande salle, une porte de mur — mais dont le repère est **retourné** : son haut
+  // pointe vers le bas. C'est ce demi-tour qui fait basculer le quart de tour.
+  //
+  // Le calcul tient en deux lignes. Une couture envoie `from.up` sur `to.up` ; le visiteur
+  // qui monte le conduit a pour verticale l'opposé du haut de la trémie, donc il arrive avec
+  // l'opposé du haut de la porte. En posant ce haut vers le bas, il arrive vers le haut.
+  const upper = {
+    under: hatchMouths(
+      { cell: CONDUIT, y: CONDUIT_BOX.max.y },
+      { cell: CONDUIT, y: CONDUIT_BOX.max.y },
+      HATCH_AT,
+    ).under,
+    over: {
+      id: 'grande-salle.porte',
+      cell: GREAT,
+      center: { x: 1214, y: GREAT_BOX.min.y + 1.5, z: GREAT_BOX.min.z - REVEAL },
+      right: { x: -1, y: 0, z: 0 },
+      up: { x: 0, y: -1, z: 0 },
+      normal: { x: 0, y: 0, z: 1 },
+      halfWidth: 1.4,
+      halfHeight: 1.6,
+    } as Mouth,
+  }
   const [intoConduit, outOfConduit] = makePassages(
     lower.under,
     mobileWing.lighting,
@@ -2492,33 +2536,35 @@ export function buildWorld(): World {
     // l'œil — mais il fallait d'abord prouver que le C d'origine tourne dans le musée. Il
     // tourne : ce qu'on voit là est son lancer de rayon, dans son labyrinthe.
     const screen: number[] = []
-    const wall = GREAT_BOX.min.z
+    // Contre la paroi du fond, en face de la porte : c'est la première chose qu'on voit en
+    // entrant, et il faut traverser la salle pour y arriver.
+    const wall = GREAT_BOX.max.z
     const foot = GREAT_BOX.min.y
     pushBlock(
       screen,
-      { x: 509, y: foot + 0.6, z: wall },
-      { x: 515.4, y: foot + 5, z: wall + 0.35 },
+      { x: 1210.8, y: foot + 0.6, z: wall - 0.35 },
+      { x: 1217.2, y: foot + 5, z: wall },
       { side: made(tinted(GREAT_TINT, 0.16), MATTER.tole), top: made(tinted(GREAT_TINT, 0.22), MATTER.tole) },
     )
     // Un socle, pour que l'écran ait l'air posé et non collé.
     pushBlock(
       screen,
-      { x: 508.4, y: foot, z: wall },
-      { x: 516, y: foot + 0.6, z: wall + 1.1 },
+      { x: 1210.2, y: foot, z: wall - 1.1 },
+      { x: 1217.8, y: foot + 0.6, z: wall },
       { side: made(tinted(GREAT_TINT, 0.2), MATTER.beton), top: made(tinted(GREAT_TINT, 0.3), MATTER.beton) },
     )
     {
-      const x0 = 509.4
-      const x1 = 515
+      const x0 = 1211.2
+      const x1 = 1216.8
       const y0 = foot + 1
       const y1 = foot + 4.15
-      const z = wall + 0.36
+      const z = wall - 0.36
       pushQuad(
         screen,
-        { x: x0, y: y0, z },
         { x: x1, y: y0, z },
-        { x: x1, y: y1, z },
+        { x: x0, y: y0, z },
         { x: x0, y: y1, z },
+        { x: x1, y: y1, z },
         made([1, 1, 1], PICTURES.machine),
         [[0, 1], [1, 1], [1, 0], [0, 0]],
       )
@@ -2538,15 +2584,12 @@ export function buildWorld(): World {
             ceiling: made(tinted(GREAT_TINT, 0.28), MATTER.beton),
             wall: made(tinted(GREAT_TINT, 0.4), MATTER.beton),
           },
-          { floor: [holeOf(upper.over)] },
+          { north: [holeOf(upper.over)] },
         ),
         jambs(upper.over, GREAT_TINT).concat(screen),
       ),
       passages: [outOfGreat],
       lighting: greatLighting,
-      // Les six faces sont habitables : on y arrive couché sur une paroi, et sans cela rien
-      // ne permettrait de se relever. La salle serait un piège au lieu d'un terrain.
-      gravity: { grip: GRIP },
     })
   }
 
@@ -2668,6 +2711,8 @@ export function buildWorld(): World {
     bridgeCell: BRIDGE,
     bridgePos: { x: BRIDGE_X, y: BRIDGE_DECK + 1.65, z: 1022 },
     bridgeForward: { x: 0.12, y: -0.08, z: 1 },
+    machineCell: GREAT,
+    machinePos: { x: 1214, y: GREAT_BOX.min.y + 2.5, z: GREAT_BOX.max.z - 0.4 },
     wings: WINGS.map((w) => ({ id: w.id, purpose: w.purpose })),
   }
 
