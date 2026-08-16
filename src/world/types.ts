@@ -80,40 +80,6 @@ export interface Block {
 }
 
 /**
- * Une cloison qui change de place.
- *
- * C'est la même chose qu'un bloc, à ceci près que sa boîte se déplace — et que le morceau de
- * géométrie qui la représente se déplace avec, du même vecteur, à la même image. Tout tient
- * dans cette égalité : ce qu'on voit et ce qu'on heurte doivent être le même objet, sans quoi
- * on se cogne au fantôme d'un mur qui est ailleurs.
- *
- * **Le bloc est partagé, pas recopié.** `block` est un élément de `Cell.blocks` : le faire
- * avancer met à jour du même coup la collision du visiteur, celle des cubes, et le rayon
- * d'interaction, qui tous les trois consultent cette liste sans rien savoir du mouvement.
- * C'est ce qui rend le système petit.
- *
- * **Deux places, et rien entre les deux.** Le déplacement est instantané parce qu'il est par
- * définition invisible — voir `movers.ts`. Une interpolation ne servirait qu'à risquer d'être
- * vue en chemin, et une cloison aperçue en mouvement détruit l'aile entière d'un coup.
- */
-export interface Mover {
-  /** La boîte de collision, celle-là même qui figure dans `Cell.blocks`. */
-  block: Block
-  /** La géométrie de la cloison, dessinée à sa place de repos. */
-  verts: F32
-  /** Sa boîte au repos, dont `block` est la copie déplacée. */
-  rest: { min: Vec3; max: Vec3 }
-  /** La course : de la place de repos à la place avancée. */
-  travel: Vec3
-  /** Où elle est : zéro au repos, un en bout de course. */
-  placed: 0 | 1
-  /** Où elle doit aller. Tant que c'est différent de `placed`, elle attend son heure. */
-  target: 0 | 1
-  /** Le déplacement du moment, tenu à jour par `tickMovers` et lu par le rendu. */
-  offset: Vec3
-}
-
-/**
  * Une cellule dont **les six faces sont habitables**.
  *
  * Le bas cesse d'y être une constante : il est la face qu'on a choisie, et l'on en change
@@ -202,8 +168,6 @@ export interface Cell {
   max: Vec3
   /** Ce qui est plein à l'intérieur, et qu'il faut contourner. */
   blocks?: Block[]
-  /** Ce qui est plein **et se déplace**. */
-  movers?: Mover[]
   /** Si les six faces sont habitables, la façon d'en changer. */
   gravity?: FaceGravity
   /**

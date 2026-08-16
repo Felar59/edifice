@@ -513,21 +513,6 @@ export function resolveAgainstCell(cell: Cell, p: Vec3, body: Body): Resolved {
     if (pushed.floor) floor = true
   }
 
-  // **Et les murs reprennent le dernier mot.**
-  //
-  // Un bloc fait sortir le corps par sa face la plus proche, ce qui est la bonne règle et
-  // suffisait tant que les blocs ne bougeaient pas : on ne se retrouve jamais dedans que si
-  // l'on y est entré, donc jamais loin du bord. Une cloison qui coulisse, elle, arrive sur un
-  // corps immobile et le pousse devant elle ; au bout de sa course la face la plus proche
-  // devient celle vers laquelle elle pousse, et le corps passait **au travers du mur du
-  // couloir**. On le remet donc dans la salle, avec les mêmes butées qu'au-dessus — donc sans
-  // reboucher les embrasures. Il reste dans la cloison une image de plus, et en ressort par
-  // le côté à la suivante : poussé, jamais expulsé.
-  pos.x = Math.max(pos.x, cell.min.x + (clampMinX ? radius : -slack))
-  pos.x = Math.min(pos.x, cell.max.x - (clampMaxX ? radius : -slack))
-  pos.z = Math.max(pos.z, cell.min.z + (clampMinZ ? radius : -slack))
-  pos.z = Math.min(pos.z, cell.max.z - (clampMaxZ ? radius : -slack))
-
   // Le sol est signalé à l'appelant : c'est ce qui autorise à sauter.
   return { pos, floor, ceiling }
 }
