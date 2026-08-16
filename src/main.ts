@@ -275,7 +275,7 @@ async function main(): Promise<void> {
     // règle que pour la marche : on ne change pas de commandes en s'asseyant devant un jeu,
     // on change de ce qu'elles commandent — et lancer un cube dans le musée pendant qu'on
     // vise dans le labyrinthe n'aurait aucun sens.
-    if (playing && e.code !== 'Backquote') return
+    if (playing && e.code !== 'KeyP') return
 
     switch (e.code) {
       case 'KeyF':
@@ -287,31 +287,30 @@ async function main(): Promise<void> {
       case 'KeyH':
         hud.toggle()
         break
-      case 'KeyP':
-        settings.toggle()
-        break
       case 'KeyT':
         renderer.flat = !renderer.flat
         break
       case 'KeyE':
         // **On ne prend que devant, et on lâche avec une autre touche.** Une fois la
         // machine tenue, `E` est à elle — le jeu s'en sert, et elle s'écrit dans le nom
-        // de carte. C'est `Backquote` qui rend la main : voir plus bas.
+        // de carte. C'est `P` qui rend la main : voir plus bas.
         if (!playing && (jeu || maze) && atMachine()) take()
         break
 
-      case 'Backquote':
+      case 'KeyP':
         // **La touche que le musée garde pour lui.**
         //
         // Il en faut une pour sortir d'une machine — une machine dont on ne peut pas
         // sortir est un piège, et le plan y tient : aucune énigme ne doit bloquer. Mais
         // toutes les touches d'un jeu lui appartiennent, jusqu'aux lettres qui s'écrivent
-        // dans ses champs de texte. On en réserve donc une seule, celle du coin gauche du
-        // clavier — « ² » en AZERTY, « ` » en QWERTY — et le portage ne la transmet jamais.
+        // dans ses champs de texte : celle-ci, le portage ne la transmet jamais.
         //
-        // Elle est désignée par sa **place** et non par son caractère : `Backquote` est la
-        // touche physique, la même sur les deux dispositions.
+        // `P` parce qu'aucun de mes jeux ne s'en sert. C'est déjà la touche des
+        // paramètres du musée, et il n'y a pas de conflit : on ne marche pas et on ne
+        // joue pas en même temps. Elle est reconnue à sa **place** sur le clavier, la
+        // même en AZERTY et en QWERTY.
         if (playing) release()
+        else settings.toggle()
         break
       case 'BracketLeft':
         renderer.maxDepth = Math.max(0, renderer.maxDepth - 1)
@@ -462,7 +461,7 @@ async function main(): Promise<void> {
       stats: renderer.getStats(),
       aim: castRay(world, player.cell, player.pos, player.forward),
       prompt: playing
-        ? '² — lâcher la machine'
+        ? 'P — lâcher la machine'
         : !atMachine()
           ? null
           : jeu
