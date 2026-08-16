@@ -79,6 +79,7 @@ export class Hud {
       `traversées   ${d.crossings}`,
       '',
       `passes       ${d.stats.passes}`,
+      `remplissage  ${d.stats.fill.toFixed(2)} écran(s)`,
       `profondeur   ${d.stats.deepest} / ${d.maxDepth}`,
       `copies       ${d.stats.copies}`,
       `écartées     ${d.stats.skipped}`,

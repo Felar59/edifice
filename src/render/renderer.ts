@@ -167,6 +167,22 @@ export interface RenderStats {
   copies: number
   deepest: number
   skipped: number
+  /**
+   * Surface réellement dessinée, en écrans : la somme des cisailles.
+   *
+   * Sans la cisaille, ce nombre vaudrait `passes` — chaque passe coûtait l'écran entier.
+   * C'est la mesure directe du remplissage économisé, et c'est le chiffre à regarder
+   * quand une machine peine.
+   */
+  fill: number
+}
+
+/** Un rectangle d'écran, en pixels de cible : la cisaille d'une passe de couture. */
+interface Scissor {
+  x: number
+  y: number
+  w: number
+  h: number
 }
 
 interface Target {
@@ -244,7 +260,7 @@ export class Renderer {
   private readonly freeTargets: Target[] = []
   private readonly allTargets: Target[] = []
 
-  private stats: RenderStats = { passes: 0, deepest: 0, skipped: 0, copies: 0 }
+  private stats: RenderStats = { passes: 0, deepest: 0, skipped: 0, copies: 0, fill: 0 }
 
   // Matrices réutilisées d'une image sur l'autre : rien ici ne doit allouer par
   // image, sinon le ramasse-miettes se réveille au pire moment.
@@ -422,7 +438,7 @@ export class Renderer {
     const cell = world.cells.get(camera.cell)
     if (!cell) throw new Error(`Cellule inconnue : ${camera.cell}`)
 
-    this.stats = { passes: 0, deepest: 0, skipped: 0, copies: 0 }
+    this.stats = { passes: 0, deepest: 0, skipped: 0, copies: 0, fill: 0 }
     this.sceneUniforms.reset()
     this.portalUniforms.reset()
 
@@ -451,6 +467,10 @@ export class Renderer {
     this.device.queue.submit([encoder.finish()])
   }
 
+  /**
+   * Le rectangle d'ecran, en pixels de cible, ou une passe de couture a le droit d'ecrire.
+   * Voir le parametre `scissor` de renderNode.
+   */
   private renderNode(
     encoder: GPUCommandEncoder,
     cell: Cell,
@@ -474,9 +494,21 @@ export class Renderer {
      * son image, et c'est tout ce qu'on lui demande.
      */
     quota = Infinity,
+    /**
+     * Le rectangle d'écran hors duquel cette passe est illisible — la **cisaille**.
+     *
+     * Une passe de couture peint dans une cible plein écran, mais le parent ne la lit
+     * qu'à travers sa porte : tout pixel calculé hors du rectangle de cette porte est
+     * du travail jeté. Une porte à dix pas couvre un dixième de l'écran ; sans la
+     * cisaille, sa passe coûte l'écran entier — et la récursion multiplie ce gâchis à
+     * chaque profondeur. C'est le levier de remplissage le plus lourd du moteur, et il
+     * ne change pas un pixel : on renonce seulement à calculer ceux que personne ne lit.
+     */
+    scissor: Scissor | null = null,
   ): void {
     this.stats.deepest = Math.max(this.stats.deepest, depth)
     this.stats.passes++
+    this.stats.fill += scissor ? (scissor.w * scissor.h) / (this.width * this.height) : 1
     const spentAtEntry = this.stats.passes
 
     const camPos = origin(camWorld)
@@ -512,6 +544,8 @@ export class Renderer {
       polygon: Vec3[]
       /** Fraction de l'écran couverte : c'est elle qui décide de l'ordre des passes. */
       cover: number
+      /** Le rectangle d'écran où cette ouverture peut se voir : la cisaille de sa passe. */
+      clip: Scissor | null
     }[] = []
 
     // **Chaque copie a sa porte, et chaque porte donne sur la rotonde.**
@@ -542,7 +576,12 @@ export class Renderer {
         // dessiner pendant l'image du franchissement, c'est-à-dire au pire moment.
         const polygon = dist <= 0 ? [] : this.mouthPolygon(mouth, camPos, viewFwd)
         const cover = polygon.length < 3 ? 0 : this.coverage(polygon, viewProj)
-        children.push({ passage, shift, target: null, visible: cover > 0, polygon, cover })
+        // Le rectangle d'écran de l'ouverture, rogné par celui de la passe courante. S'il
+        // est vide, l'ouverture est certes dans le champ — mais dans une zone de l'image
+        // que personne ne lira : à travers la porte du parent, elle n'apparaît pas.
+        const clip = cover <= 0 ? null : this.clipFor(polygon, viewProj, scissor)
+        const seen = cover > 0 && clip !== null
+        children.push({ passage, shift, target: null, visible: seen, polygon, cover, clip })
       }
     }
 
@@ -590,6 +629,7 @@ export class Renderer {
         objects,
         world,
         share,
+        child.clip,
       )
       child.target = target
     }
@@ -614,6 +654,12 @@ export class Renderer {
         depthStoreOp: 'store',
       },
     })
+
+    // La cisaille. Elle borne tout ce que la passe dessine — la scene, les objets, les
+    // quads d'ouverture — au rectangle que le parent lira. L'effacement, lui, couvre
+    // toute la cible : c'est une operation de tuiles, quasi gratuite, et la garder
+    // pleine evite de gerer des restes d'images precedentes hors du rectangle.
+    if (scissor) pass.setScissorRect(scissor.x, scissor.y, scissor.w, scissor.h)
 
     const colorFormat = depth === 0 ? this.canvasFormat : OFFSCREEN_FORMAT
     const scenePipeline = this.scenePipeline(colorFormat)
@@ -774,6 +820,53 @@ export class Renderer {
    * point le long de son rayon ne change pas sa projection, donc la mesure reste
    * juste.
    */
+  /**
+   * Le rectangle d'écran d'une ouverture, rogné par la cisaille de la passe courante.
+   *
+   * C'est la même projection que `coverage`, mais rendue en pixels et intersectée : le
+   * résultat borne la passe de l'enfant. Deux pixels de marge absorbent les arrondis de
+   * rastérisation — le quad de l'ouverture ne peut pas déborder d'un demi-pixel que la
+   * cisaille aurait coupé.
+   *
+   * Rend `null` quand l'intersection est vide : l'ouverture est dans le champ, mais dans
+   * une zone de l'image que le parent ne lira jamais — il n'y a alors ni passe à faire,
+   * ni quad à peindre.
+   */
+  private clipFor(polygon: Vec3[], viewProj: Mat4, parent: Scissor | null): Scissor | null {
+    const whole: Scissor = { x: 0, y: 0, w: this.width, h: this.height }
+    const outer = parent ?? whole
+
+    let minX = Infinity
+    let maxX = -Infinity
+    let minY = Infinity
+    let maxY = -Infinity
+
+    for (const p of polygon) {
+      const cw = viewProj[3]! * p.x + viewProj[7]! * p.y + viewProj[11]! * p.z + viewProj[15]!
+      // Un sommet posé presque sur l'œil : l'ouverture couvre tout ce que le parent couvre.
+      if (cw <= 1e-6) return outer
+      const ndcX = (viewProj[0]! * p.x + viewProj[4]! * p.y + viewProj[8]! * p.z + viewProj[12]!) / cw
+      const ndcY = (viewProj[1]! * p.x + viewProj[5]! * p.y + viewProj[9]! * p.z + viewProj[13]!) / cw
+      if (ndcX < minX) minX = ndcX
+      if (ndcX > maxX) maxX = ndcX
+      if (ndcY < minY) minY = ndcY
+      if (ndcY > maxY) maxY = ndcY
+    }
+
+    // NDC vers pixels — l'axe y se retourne — puis marge et intersection.
+    const x0 = Math.max(outer.x, Math.floor(((minX + 1) / 2) * this.width) - 2)
+    const x1 = Math.min(outer.x + outer.w, Math.ceil(((maxX + 1) / 2) * this.width) + 2)
+    const y0 = Math.max(outer.y, Math.floor(((1 - maxY) / 2) * this.height) - 2)
+    const y1 = Math.min(outer.y + outer.h, Math.ceil(((1 - minY) / 2) * this.height) + 2)
+
+    const x = Math.max(0, Math.min(this.width, x0))
+    const y = Math.max(0, Math.min(this.height, y0))
+    const w = Math.max(0, Math.min(this.width, x1) - x)
+    const h = Math.max(0, Math.min(this.height, y1) - y)
+    if (w <= 0 || h <= 0) return null
+    return { x, y, w, h }
+  }
+
   private coverage(polygon: Vec3[], viewProj: Mat4): number {
     if (polygon.length < 3) return 0
 

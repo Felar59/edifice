@@ -173,6 +173,36 @@ export async function loadPictures(
   }
 }
 
+/**
+ * L'outillage de réduction, fabriqué **une fois par carte** et gardé.
+ *
+ * Il était refait à chaque appel — module, pipeline, échantillonneur — ce qui ne se voyait
+ * pas tant que les mip-maps ne se construisaient qu'au chargement. Depuis que l'écran d'une
+ * machine se réécrit en continu, c'était une compilation de pipeline douze fois par seconde :
+ * du temps processeur brûlé à refaire l'identique, et des à-coups sur les cartes qui
+ * compilent lentement. Un WeakMap sur la carte, et l'outillage vit aussi longtemps qu'elle.
+ */
+const REDUCERS = new WeakMap<GPUDevice, { pipeline: GPURenderPipeline; sampler: GPUSampler }>()
+
+function reducer(device: GPUDevice): { pipeline: GPURenderPipeline; sampler: GPUSampler } {
+  let r = REDUCERS.get(device)
+  if (!r) {
+    const module = device.createShaderModule({ label: 'réduction', code: BLIT })
+    r = {
+      pipeline: device.createRenderPipeline({
+        label: 'réduction',
+        layout: 'auto',
+        vertex: { module, entryPoint: 'vs' },
+        fragment: { module, entryPoint: 'fs', targets: [{ format: 'rgba8unorm' }] },
+        primitive: { topology: 'triangle-list' },
+      }),
+      sampler: device.createSampler({ magFilter: 'linear', minFilter: 'linear' }),
+    }
+    REDUCERS.set(device, r)
+  }
+  return r
+}
+
 function buildMips(
   device: GPUDevice,
   texture: GPUTexture,
@@ -180,15 +210,7 @@ function buildMips(
   levels: number,
   first = 0,
 ): void {
-  const module = device.createShaderModule({ label: 'réduction', code: BLIT })
-  const pipeline = device.createRenderPipeline({
-    label: 'réduction',
-    layout: 'auto',
-    vertex: { module, entryPoint: 'vs' },
-    fragment: { module, entryPoint: 'fs', targets: [{ format: 'rgba8unorm' }] },
-    primitive: { topology: 'triangle-list' },
-  })
-  const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' })
+  const { pipeline, sampler } = reducer(device)
 
   const encoder = device.createCommandEncoder({ label: 'mip-maps des tableaux' })
   for (let layer = first; layer < layers; layer++) {
