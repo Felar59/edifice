@@ -1931,6 +1931,8 @@ export interface Landmarks {
   /** L'écran de la première machine : où il est, pour savoir quand on est devant. */
   machineCell: string
   machinePos: Vec3
+  /** Et son interrupteur, qu'on vise pour allumer ou éteindre. */
+  machineButton: Vec3
   cryptCell: string
   cryptPos: Vec3
   cryptForward: Vec3
@@ -2309,8 +2311,9 @@ export function buildWorld(): World {
   const hubExtra: number[] = []
   for (const { mouth: m } of hubMouths) pushReveal(hubExtra, m, accent)
 
-  /** Où se trouve la dalle de la borne, une fois le meuble construit. */
+  /** Où se trouvent la dalle de la borne et son interrupteur, une fois le meuble construit. */
   let machineScreen: Vec3 = { x: 1214, y: GREAT_BOX.min.y + 1.5, z: GREAT_BOX.max.z - 1.5 }
+  let machineButton: Vec3 = { x: 1214, y: GREAT_BOX.min.y + 0.7, z: GREAT_BOX.max.z - 1.6 }
 
   const cells: Cell[] = [
     {
@@ -2601,7 +2604,7 @@ export function buildWorld(): World {
     }
 
     // **Et la borne.** Elle regarde la porte, à un mètre du mur.
-    machineScreen = pushArcade(screen, {
+    const borne = pushArcade(screen, {
       at: { x: 1214, y: foot, z: wall - 1.05 },
       facing: { x: 0, y: 0, z: -1 },
       width: 1.7,
@@ -2614,7 +2617,9 @@ export function buildWorld(): World {
       red: made(WOLF.rouge, MATTER.uni),
       glow: made(WOLF.ambre, MATTER.lumiere),
       accent: made(WOLF.orange, MATTER.uni),
-    }).centre
+    })
+    machineScreen = borne.centre
+    machineButton = borne.bouton
 
     cells.push({
       id: GREAT,
@@ -2767,6 +2772,7 @@ export function buildWorld(): World {
     bridgeForward: { x: 0.12, y: -0.08, z: 1 },
     machineCell: GREAT,
     machinePos: machineScreen,
+    machineButton,
     wings: WINGS.map((w) => ({ id: w.id, purpose: w.purpose })),
   }
 

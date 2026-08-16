@@ -34,6 +34,19 @@ Chaque projet a son `build.mjs`, qui écrit son `.wasm` dans `src/machines/`.
 | `wolf3d` (noyau) | génération du labyrinthe (automates cellulaires, marches aléatoires, élagage), lancer de rayon par DDA, lecture de la carte | le dessin des colonnes, qui passait par SFML |
 | `wolf3d` (entier) | **le jeu complet** : menu, réglages, carte, simulation, arme, minimap, son | rien — c'est SFML qu'on a portée |
 
+### La borne s'allume, et s'arrête
+
+Le jeu tourne derrière l'écran d'une borne d'arcade, dans une salle qu'on finit par quitter.
+Un jeu qui continue de lancer ses rayons pour personne coûte exactement ce qu'il coûterait
+devant un joueur : la borne a donc un interrupteur, qu'on vise et qu'on presse, et elle
+s'éteint d'elle-même dès qu'on sort de la salle.
+
+Ce n'est pas une mise en veille approximative. Le portage suspend le jeu dans
+`Window::display` — le seul endroit de tout le programme où sa pile n'attend rien, la frame
+étant finie et l'image à l'écran. Entre deux réveils il n'exécute pas une instruction. Mesuré
+dans le musée : **zéro appel de dessin** borne éteinte, trois mille deux cents en trois
+secondes borne allumée, zéro de nouveau une fois la salle quittée.
+
 ### Les deux Wolf3D
 
 Le premier est le noyau du jeu recompilé seul, sans sa bibliothèque : `machines/wolf3d/`,

@@ -40,6 +40,7 @@ interface Module {
   _main(argc: number, argv: number, env: number): void
   _edifice_environ(): number
   _edifice_ecoute(on: number): void
+  _edifice_suspend(on: number): void
   _malloc(bytes: number): number
   setValue(at: number, value: number, type: string): void
   stringToUTF8(text: string, at: number, room: number): void
@@ -124,8 +125,10 @@ export class Jeu {
     })
 
     // La machine n'écoute pas encore : on marche dans le musée, et les touches y servent
-    // déjà à quelque chose.
+    // déjà à quelque chose. Et elle est **arrêtée** : c'est son bouton qui l'allume, et le
+    // jeu ne consomme rien tant que personne n'a appuyé.
     module._edifice_ecoute(0)
+    module._edifice_suspend(1)
 
     const jeu = new Jeu(module, canevas)
 
@@ -173,6 +176,22 @@ export class Jeu {
     this.canevas.style.visibility = 'visible'
     this.canevas.style.pointerEvents = 'auto'
     this.module._edifice_ecoute(1)
+  }
+
+  /**
+   * Arrêter la machine, et la remettre en marche.
+   *
+   * Le jeu s'endort à la fin d'une image, au seul endroit où sa pile n'attend rien — voir
+   * `Window::display`, côté portage. Entre deux réveils il n'exécute pas une instruction :
+   * ce n'est pas un ralentissement, c'est un arrêt, et c'est ce qu'il faut quand le visiteur
+   * a quitté la salle.
+   */
+  arreter(): void {
+    this.module._edifice_suspend(1)
+  }
+
+  reprendre(): void {
+    this.module._edifice_suspend(0)
   }
 
   /** La lâcher. Le jeu continue de tourner derrière l'écran — on ne l'entend plus. */

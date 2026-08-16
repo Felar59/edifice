@@ -7,8 +7,8 @@ import { castRay } from './world/ray'
 import { CUBE_SIZE, Projectiles } from './player/projectiles'
 import { Physics } from './player/physique'
 import { loadPictures, noPictures } from './render/pictures'
-import { Maze } from './machines/wolf3d'
 import { Jeu } from './machines/wolf3d-jeu'
+import { Demarrage, DUREE } from './machines/demarrage'
 import musee from './assets/musee1.png?url'
 import julia from './assets/Julia1.png?url'
 import hunter from './assets/my_hunter1.png?url'
@@ -129,12 +129,23 @@ async function main(): Promise<void> {
    * le musée se visite quand même : une machine en panne ne ferme pas le bâtiment.
    */
   const MACHINE_LAYER = 7
-  let maze: Maze | null = null
-  try {
-    maze = await Maze.load()
-  } catch (err) {
-    console.error('wolf3d :', err)
-  }
+
+  /**
+   * **L'état de la borne**, qui est aussi celui du jeu derrière.
+   *
+   * Éteinte, le jeu ne tourne pas — pas « au ralenti », pas « en arrière-plan » : sa boucle
+   * dort à la fin d'une image et n'exécute plus rien. C'est ce qui permet d'avoir une machine
+   * dans une salle sans la payer dans toutes les autres.
+   *
+   * Le passage de l'un à l'autre n'est pas instantané, et c'est voulu : une borne qu'on
+   * allume met une seconde à chauffer. Ce délai n'est pas une décoration — c'est lui qui
+   * fait qu'on a appuyé sur un bouton plutôt que basculé un réglage.
+   */
+  type Etat = 'eteinte' | 'demarrage' | 'allumee'
+  let etat: Etat = 'eteinte'
+  let allumage = 0
+  const ecranBorne = new Demarrage()
+  let ecranAPeindre = true
 
   /**
    * **Et le jeu entier, derrière.** Le noyau ci-dessus tourne dès l'ouverture : c'est
@@ -197,6 +208,27 @@ async function main(): Promise<void> {
     requestAnimationFrame(() => void canvas.requestPointerLock())
   }
 
+  /**
+   * Allumer la borne, et l'éteindre.
+   *
+   * Allumer ne rend pas la main au jeu tout de suite : l'écran passe d'abord par l'allumage,
+   * que le musée peint lui-même — voir `machines/demarrage.ts`. Éteindre, en revanche, est
+   * immédiat : un interrupteur ne négocie pas.
+   */
+  const allumer = (): void => {
+    if (!jeu || etat !== 'eteinte') return
+    etat = 'demarrage'
+    allumage = 0
+  }
+
+  const eteindre = (): void => {
+    if (etat === 'eteinte') return
+    if (playing) release()
+    jeu?.arreter()
+    etat = 'eteinte'
+    ecranAPeindre = true
+  }
+
   /** Le carré de la distance à l'écran, ou l'infini si l'on n'est pas dans sa salle. */
   const toMachine = (): number => {
     const m = getLandmarks()
@@ -211,6 +243,23 @@ async function main(): Promise<void> {
   // Trois mètres de la dalle : on est devant la borne, pas dans la salle. Le meuble
   // occupe déjà le premier mètre, et l'on ne prend pas une machine de loin.
   const atMachine = (): boolean => toMachine() < 9
+
+  /**
+   * Vise-t-on l'interrupteur ?
+   *
+   * Le musée sait déjà où le regard rencontre la matière — c'est le rayon d'interaction, qui
+   * ne servait jusqu'ici qu'à s'afficher. Il sert maintenant : on regarde le bouton, on
+   * appuie. C'est le seul geste du musée qui désigne un objet plutôt qu'une salle.
+   */
+  const viseBouton = (hit: ReturnType<typeof castRay>): boolean => {
+    const marks = getLandmarks()
+    if (!hit || hit.cell !== marks.machineCell || hit.distance > 3.5) return false
+    const b = marks.machineButton
+    const dx = hit.point.x - b.x
+    const dy = hit.point.y - b.y
+    const dz = hit.point.z - b.z
+    return dx * dx + dy * dy + dz * dz < 0.02
+  }
 
   const player = new Player()
 
@@ -294,10 +343,17 @@ async function main(): Promise<void> {
         renderer.flat = !renderer.flat
         break
       case 'KeyE':
-        // **On ne prend que devant, et on lâche avec une autre touche.** Une fois la
-        // machine tenue, `E` est à elle — le jeu s'en sert, et elle s'écrit dans le nom
-        // de carte. C'est `P` qui rend la main : voir plus bas.
-        if (!playing && (jeu || maze) && atMachine()) take()
+        // **`E` fait ce que l'on regarde.** Sur l'interrupteur, il allume ou éteint la
+        // borne ; ailleurs devant elle, il en prend la main. Une fois la machine tenue,
+        // `E` lui appartient — le jeu s'en sert, et elle s'écrit dans le nom de carte ;
+        // c'est `P` qui rend la main.
+        if (playing) break
+        if (viseBouton(regard)) {
+          if (etat === 'eteinte') allumer()
+          else eteindre()
+        } else if (etat === 'allumee' && atMachine()) {
+          take()
+        }
         break
 
       case 'KeyP':
@@ -410,6 +466,8 @@ async function main(): Promise<void> {
   let fps = 0
   let paused = false
   let ecran = 0
+  /** Où le regard rencontre la matière, cette image-ci. Le clavier s'en sert aussi. */
+  let regard: ReturnType<typeof castRay> = null
 
   const frame = (now: number): void => {
     // Onglet en arrière-plan, point d'arrêt dans le débogueur : un pas de temps
@@ -418,11 +476,18 @@ async function main(): Promise<void> {
     previous = now
     fps += (1 / Math.max(dt, 1e-4) - fps) * 0.1
 
+    regard = castRay(world, player.cell, player.pos, player.forward)
+
     // On s'éloigne, on lâche : sans cela on piloterait un écran qu'on ne voit plus.
     if (playing && !atMachine()) release()
 
+    // **On quitte la salle, la borne s'éteint.** C'est la règle qui rend la machine
+    // gratuite partout ailleurs : le jeu ne dort pas « en tâche de fond », il s'arrête.
+    if (etat !== 'eteinte' && player.cell !== getLandmarks().machineCell) eteindre()
+
     // On charge le jeu entier en approchant, une fois. Vingt-cinq mètres, c'est
-    // l'autre bout de la grande salle : le temps de la traverser, il tourne.
+    // l'autre bout de la grande salle : le temps de la traverser, il est prêt — arrêté,
+    // mais prêt, et l'allumage n'a plus rien à attendre.
     if (toMachine() < 625) approcher()
 
     if (!paused) {
@@ -437,10 +502,27 @@ async function main(): Promise<void> {
       // est là, c'est lui. La recopie n'a pas besoin de suivre l'image du musée — un écran
       // de machine vu depuis une salle n'a rien à gagner à ses soixante images par seconde,
       // et le jeu, lui, tourne à son propre rythme derrière.
-      if (jeu) {
-        if (!playing && ++ecran % 5 === 0) jeu.projeter(pictures, MACHINE_LAYER)
-      } else if (maze) {
-        pictures.paint(MACHINE_LAYER, maze.step(dt, null), 512, 288)
+      // **L'écran de la borne**, selon son état.
+      //
+      // Éteinte, on peint une dalle morte une fois pour toutes — rien ne bouge, il n'y a
+      // rien à réécrire. Pendant l'allumage, le musée peint lui-même. Allumée, on recopie
+      // le canevas du jeu, et pas à chaque image : un écran vu depuis une salle n'a rien à
+      // gagner à soixante recopies par seconde, et le jeu tourne à son rythme derrière.
+      if (etat === 'eteinte') {
+        if (ecranAPeindre) {
+          pictures.paint(MACHINE_LAYER, ecranBorne.eteint(), 512, 288)
+          ecranAPeindre = false
+        }
+      } else if (etat === 'demarrage') {
+        allumage += dt
+        if (allumage >= DUREE) {
+          etat = 'allumee'
+          jeu?.reprendre()
+        } else {
+          pictures.paint(MACHINE_LAYER, ecranBorne.image(allumage), 512, 288)
+        }
+      } else if (jeu && !playing && ++ecran % 5 === 0) {
+        jeu.projeter(pictures, MACHINE_LAYER)
       }
     }
 
@@ -462,18 +544,20 @@ async function main(): Promise<void> {
       maxDepth: renderer.maxDepth,
       projectiles: projectiles.count,
       stats: renderer.getStats(),
-      aim: castRay(world, player.cell, player.pos, player.forward),
+      aim: regard,
       prompt: playing
         ? 'P — lâcher la machine'
-        : !atMachine()
-          ? null
-          : jeu
-            ? 'E — prendre la main'
-            : chargement
-              ? 'Wolf3D démarre…'
-              : maze
-                ? 'E — prendre la main'
-                : null,
+        : viseBouton(regard)
+          ? etat === 'eteinte'
+            ? jeu
+              ? 'E — allumer la borne'
+              : 'la borne se charge…'
+            : 'E — éteindre la borne'
+          : etat === 'demarrage'
+            ? 'la borne démarre…'
+            : etat === 'allumee' && atMachine()
+              ? 'E — prendre la main'
+              : null,
     })
 
     hook.frames++

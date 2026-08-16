@@ -98,11 +98,13 @@ export function pushPipe(
   }
 }
 
-/** Ce que la borne rend à la salle : où est sa dalle, et de quelle taille. */
+/** Ce que la borne rend à la salle : où regarder, et où appuyer. */
 export interface Screen {
   centre: Vec3
   width: number
   height: number
+  /** Le bouton d'alimentation, qu'on vise pour l'allumer ou l'éteindre. */
+  bouton: Vec3
 }
 
 export function pushArcade(out: number[], spec: Arcade): Screen {
@@ -148,6 +150,12 @@ export function pushArcade(out: number[], spec: Arcade): Screen {
   // Le socle, en retrait : une borne ne pose pas sa tôle par terre, elle a un pied de
   // caisse — et ce décrochement est ce qui l'empêche de ressembler à une armoire.
   box(-inner, 0.012, front - 0.55, inner, 0.16, front - 0.08, spec.dark)
+
+  // **L'interrupteur.** Sur la face avant, à hauteur de main, dans son écusson de tôle : la
+  // borne s'allume et s'éteint comme une vraie, et ce geste n'est pas un ornement — c'est lui
+  // qui arrête le jeu derrière l'écran quand personne ne s'en sert.
+  const bouton = p(0.52, 0.44, front - 0.012)
+  box(0.42, 0.34, front - 0.05, 0.62, 0.54, front - 0.014, spec.dark)
   // Et la face avant s'arrête **un centimètre en deçà** des flancs, qui restent donc en
   // saillie — comme sur tout meuble en panneaux, et parce que deux faces avant dans le même
   // plan se disputeraient les pixels sur toute la largeur des joues.
@@ -313,9 +321,25 @@ export function pushArcade(out: number[], spec: Arcade): Screen {
     spec.dark,
   )
 
+  // Le bouton lui-même : une pastille en relief, cerclée de tôle. On le pose en dernier
+  // pour qu'il passe devant son écusson.
+  pushCylinder(out, add(bouton, scale(f, -0.005)), 0.052, 0.05, 0.006, 12, spec.dark, spec.dark)
+  {
+    const face = add(bouton, scale(f, 0.014))
+    const rim = Array.from({ length: 14 }, (_, i) => {
+      const angle = (i / 14) * TAU
+      return add(face, add(scale(s, Math.cos(angle) * 0.042), scale(up, Math.sin(angle) * 0.042)))
+    })
+    for (let i = 0; i < 14; i++) {
+      const j = (i + 1) % 14
+      pushQuad(out, face, rim[j]!, rim[i]!, rim[i]!, spec.accent, [[0, 0], [1, 0], [1, 1], [1, 1]])
+    }
+  }
+
   return {
     centre: plane(0, (t0 + t1) / 2, 0.012),
     width: opening,
     height: high,
+    bouton,
   }
 }

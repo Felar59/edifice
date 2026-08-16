@@ -60,7 +60,7 @@ em++ "$OBJ"/*.o \
   `# écrite au-dessus de WebGL, faite pour les portages de code OpenGL ancien.` \
   -sLEGACY_GL_EMULATION=1 \
   `# FS donne accès au système de fichiers du module — celui où sont préchargés`   `# les Assets et les nuanceurs. C'est un outil de mise au point : on peut y`   `# réécrire un .frag depuis la console avant que le jeu ne le charge, et voir`   `# le résultat sans recompiler. Les deux défauts de rendu ont été trouvés`   `# comme cela, en quelques secondes par essai plutôt qu'en deux minutes.`   -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,stringToUTF8,lengthBytesUTF8,setValue,FS \
-  -sEXPORTED_FUNCTIONS=_main,_edifice_environ,_edifice_ecoute,_malloc \
+  -sEXPORTED_FUNCTIONS=_main,_edifice_environ,_edifice_ecoute,_edifice_suspend,_malloc \
   -sINVOKE_RUN=0 \
   `# Une fabrique plutôt qu'un objet global : le musée est une application` \
   `# à modules, et un « Module » posé sur window y serait une verrue — sans` \
