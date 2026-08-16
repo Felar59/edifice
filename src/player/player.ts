@@ -288,7 +288,10 @@ export class Player {
     // rattrapé par la résolution de collision, qui signale le sol. Tester
     // l'appui au sol séparément demanderait un second sondage, et le drapeau
     // clignoterait d'une image sur l'autre — de quoi rendre le saut capricieux.
-    if (this.grounded && (keys.has('Space') || keys.has('KeyE'))) {
+    // Le saut est sur la barre d'espace, et sur elle seule. « E » l'a partagée un temps,
+    // par commodité ; depuis qu'elle sert à prendre une machine et à presser son
+    // interrupteur, appuyer dessus devant une borne faisait sauter le visiteur.
+    if (this.grounded && keys.has('Space')) {
       this.vertical = JUMP_SPEED
       this.grounded = false
     }

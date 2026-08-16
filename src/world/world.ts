@@ -2617,6 +2617,7 @@ export function buildWorld(): World {
       red: made(WOLF.rouge, MATTER.uni),
       glow: made(WOLF.ambre, MATTER.lumiere),
       accent: made(WOLF.orange, MATTER.uni),
+      veilleuse: made([0.55, 0.19, 0.03], MATTER.lumiere),
     })
     machineScreen = borne.centre
     machineButton = borne.bouton

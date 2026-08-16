@@ -47,6 +47,8 @@ export interface Arcade {
   logo: Color
   /** Les boutons. */
   accent: Color
+  /** La veilleuse de l'interrupteur : émissive, pour qu'on la voie de loin. */
+  veilleuse: Color
 }
 
 /**
@@ -154,8 +156,24 @@ export function pushArcade(out: number[], spec: Arcade): Screen {
   // **L'interrupteur.** Sur la face avant, à hauteur de main, dans son écusson de tôle : la
   // borne s'allume et s'éteint comme une vraie, et ce geste n'est pas un ornement — c'est lui
   // qui arrête le jeu derrière l'écran quand personne ne s'en sert.
+  //
+  // Il **brille**, et c'est ce qui fait qu'on le trouve. Un bouton de la couleur du meuble
+  // sur un meuble sombre demande qu'on le cherche, et un musée qui demande qu'on cherche a
+  // déjà perdu : le geste doit se voir depuis la porte de la salle. La veilleuse est donc
+  // émissive — elle échappe à l'éclairage — et son écusson est cerclé de la même lumière.
   const bouton = p(0.52, 0.44, front - 0.012)
-  box(0.42, 0.34, front - 0.05, 0.62, 0.54, front - 0.014, spec.dark)
+  // L'écusson déborde du cerclage de deux centimètres : bord à bord, leurs faces
+  // partageraient un plan.
+  box(0.38, 0.3, front - 0.05, 0.66, 0.58, front - 0.016, spec.dark)
+  // Le cerclage : quatre traverses de lumière autour de l'écusson.
+  for (const [a0, b0, a1, b1] of [
+    [0.4, 0.32, 0.64, 0.345],
+    [0.4, 0.535, 0.64, 0.56],
+    [0.4, 0.345, 0.425, 0.535],
+    [0.615, 0.345, 0.64, 0.535],
+  ]) {
+    box(a0!, b0!, front - 0.03, a1!, b1!, front - 0.014, spec.veilleuse)
+  }
   // Et la face avant s'arrête **un centimètre en deçà** des flancs, qui restent donc en
   // saillie — comme sur tout meuble en panneaux, et parce que deux faces avant dans le même
   // plan se disputeraient les pixels sur toute la largeur des joues.
@@ -323,7 +341,7 @@ export function pushArcade(out: number[], spec: Arcade): Screen {
 
   // Le bouton lui-même : une pastille en relief, cerclée de tôle. On le pose en dernier
   // pour qu'il passe devant son écusson.
-  pushCylinder(out, add(bouton, scale(f, -0.005)), 0.052, 0.05, 0.006, 12, spec.dark, spec.dark)
+  pushCylinder(out, add(bouton, scale(f, -0.005)), 0.058, 0.056, 0.006, 12, spec.dark, spec.dark)
   {
     const face = add(bouton, scale(f, 0.014))
     const rim = Array.from({ length: 14 }, (_, i) => {
@@ -332,7 +350,7 @@ export function pushArcade(out: number[], spec: Arcade): Screen {
     })
     for (let i = 0; i < 14; i++) {
       const j = (i + 1) % 14
-      pushQuad(out, face, rim[j]!, rim[i]!, rim[i]!, spec.accent, [[0, 0], [1, 0], [1, 1], [1, 1]])
+      pushQuad(out, face, rim[j]!, rim[i]!, rim[i]!, spec.veilleuse, [[0, 0], [1, 0], [1, 1], [1, 1]])
     }
   }
 

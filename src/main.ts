@@ -8,7 +8,8 @@ import { CUBE_SIZE, Projectiles } from './player/projectiles'
 import { Physics } from './player/physique'
 import { loadPictures, noPictures } from './render/pictures'
 import { Jeu } from './machines/wolf3d-jeu'
-import { Demarrage, DUREE } from './machines/demarrage'
+import { Demarrage, DUREE, JALONS } from './machines/demarrage'
+import { Sons } from './machines/son'
 import musee from './assets/musee1.png?url'
 import julia from './assets/Julia1.png?url'
 import hunter from './assets/my_hunter1.png?url'
@@ -146,6 +147,9 @@ async function main(): Promise<void> {
   let allumage = 0
   const ecranBorne = new Demarrage()
   let ecranAPeindre = true
+  /** Le son de la borne : synthétisé, jamais chargé. Voir `machines/son.ts`. */
+  const sons = new Sons()
+  let bipsPasses = 0
 
   /**
    * **Et le jeu entier, derrière.** Le noyau ci-dessus tourne dès l'ouverture : c'est
@@ -219,6 +223,9 @@ async function main(): Promise<void> {
     if (!jeu || etat !== 'eteinte') return
     etat = 'demarrage'
     allumage = 0
+    bipsPasses = 0
+    sons.interrupteur()
+    sons.allumage()
   }
 
   const eteindre = (): void => {
@@ -227,6 +234,8 @@ async function main(): Promise<void> {
     jeu?.arreter()
     etat = 'eteinte'
     ecranAPeindre = true
+    sons.ronron(false)
+    sons.interrupteur()
   }
 
   /** Le carré de la distance à l'écran, ou l'infini si l'on n'est pas dans sa salle. */
@@ -478,6 +487,8 @@ async function main(): Promise<void> {
 
     regard = castRay(world, player.cell, player.pos, player.forward)
 
+    sons.distance(Math.sqrt(toMachine()))
+
     // On s'éloigne, on lâche : sans cela on piloterait un écran qu'on ne voit plus.
     if (playing && !atMachine()) release()
 
@@ -515,9 +526,17 @@ async function main(): Promise<void> {
         }
       } else if (etat === 'demarrage') {
         allumage += dt
+        // Un bip par ligne du compte rendu : c'est le son qui rend l'écriture crédible,
+        // et il suffit de compter les lignes déjà écrites pour savoir quand le poser.
+        const bips = JALONS.filter((at) => at <= allumage).length
+        if (bips > bipsPasses) {
+          sons.bip(bips === JALONS.length)
+          bipsPasses = bips
+        }
         if (allumage >= DUREE) {
           etat = 'allumee'
           jeu?.reprendre()
+          sons.ronron(true)
         } else {
           pictures.paint(MACHINE_LAYER, ecranBorne.image(allumage), 512, 288)
         }

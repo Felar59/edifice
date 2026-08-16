@@ -51,6 +51,14 @@ const JOURNAL: readonly { at: number; texte: string }[] = [
 ]
 
 /**
+ * Les instants où une ligne s'écrit, pour que le son suive l'image.
+ *
+ * Le musée n'a pas à savoir ce qui est écrit — seulement quand quelque chose apparaît, pour
+ * poser un bip dessus. Les lignes vides n'en font pas partie : on ne bipe pas un silence.
+ */
+export const JALONS: readonly number[] = JOURNAL.filter((l) => l.texte).map((l) => l.at)
+
+/**
  * Peint une image de l'allumage.
  *
  * `t` court de zéro à `DUREE`. Rend les pixels prêts pour `Pictures.paint`, ou `null` quand
