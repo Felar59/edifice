@@ -21,8 +21,9 @@ import { cameraToWorld } from '../render/camera'
 import { FLOATS_PER_VERTEX } from '../world/geometry'
 import { MAX_LIGHTS } from '../world/light'
 import { advance, resolveAgainstCell } from '../world/motion'
+import { castRay } from '../world/ray'
 import { heightAtTurn, onSquare, rampHeight, stepHeight } from '../world/spiral'
-import { angleAt, frameAt, toLocal } from '../world/twist'
+import { angleAt, frameAt, toLocal, toWorld } from '../world/twist'
 import type { Cell, Mouth } from '../world/types'
 import { getLandmarks, HUB } from '../world/world'
 import type { World } from '../world/types'
@@ -1720,6 +1721,133 @@ export function runSelfTest(world: World, physics: Physics): Check[] {
         `${cell.id} · une boucle verticale n’a pas de lampe`,
         cell.lighting.lights.length === 0,
         `${cell.lighting.lights.length} lampe(s) ponctuelle(s)`,
+      )
+    }
+  }
+
+  // 18 quater. Le rayon d'interaction.
+  //
+  //    C'est le pendant du déplacement, pour le regard, et le verrou de tout le LOT 4 : rien
+  //    ne peut être visé, pressé ni ramassé sans lui. Quatre choses à prouver.
+  //
+  //    **Il touche ce qu'il vise.** Un rayon vers le bas rencontre le sol à hauteur d'œil, un
+  //    rayon vers le haut le plafond. C'est le contrôle bête, et c'est lui qui attrape une
+  //    normale retournée ou un axe permuté.
+  //
+  //    **Il traverse.** Visé sur une porte, il ne s'arrête pas à la porte : il annonce la
+  //    salle d'en face, et sa longueur est celle du trajet réel, coutures comprises.
+  //
+  //    **Il ne traverse pas un mur plein.** L'ouverture l'emporte sur la paroi qu'elle perce,
+  //    et il fallait que cette règle soit étroite : à côté du chambranle, la paroi arrête.
+  //
+  //    **Il sort du coffre par le mur du fond.** Le reliquaire est le cas où la couture
+  //    reboucle sur sa propre salle : le rayon doit y revenir, plus loin, sans se perdre.
+  {
+    const marks = getLandmarks()
+    const eye = { x: 0, y: 1.65, z: 0 }
+    const hub = world.cells.get(HUB)!
+
+    const down = castRay(world, HUB, eye, v3(0, -1, 0))
+    add_(
+      'rayon · il touche le sol à hauteur d’œil',
+      down !== null &&
+        down.crossings === 0 &&
+        Math.abs(down.distance - 1.65) < 1e-6 &&
+        down.normal.y > 0.999,
+      down ? `${fmt(down.distance)} m, normale ${fmt(down.normal.y)}` : 'rien touché',
+    )
+
+    // Vers chaque porte de la rotonde : on doit ressortir ailleurs.
+    let crossed = 0
+    let short = ''
+    for (const passage of hub.passages) {
+      const m = passage.from
+      const hit = castRay(world, HUB, eye, sub(m.center, eye), 80)
+      // On ne demande pas d'arriver *ailleurs* : le tunnel-vrille et la salle pavée
+      // rebouclent sur la rotonde, et un rayon qui les traverse en revient légitimement.
+      // Ce qui compte est qu'une porte ne l'arrête pas.
+      if (hit && hit.crossings > 0) crossed++
+      else short = short || m.id
+      // La longueur est un vrai chemin : elle ne peut pas être plus courte que la distance
+      // à la bouche qu'on vient de franchir.
+      if (hit && hit.distance + 1e-6 < len(sub(m.center, eye))) short = short || `${m.id} (trop court)`
+    }
+    add_(
+      'rayon · il traverse les portes de la rotonde',
+      crossed === hub.passages.length,
+      crossed === hub.passages.length
+        ? `${crossed} portes franchies`
+        : `${crossed} / ${hub.passages.length}, la première en défaut : ${short}`,
+    )
+
+    // Et le mur, à côté : la paroi arrête, sans couture.
+    const wall = castRay(world, HUB, eye, v3(1, 0, 0))
+    add_(
+      'rayon · un mur plein l’arrête',
+      wall !== null && wall.crossings === 0 && wall.cell === HUB,
+      wall ? `${wall.cell} à ${fmt(wall.distance)} m, ${wall.crossings} couture(s)` : 'rien touché',
+    )
+
+    // **Les deux salles qui ne sont pas leur boîte**, et qui se marchent au lieu de se
+    // résoudre. C'est le seul endroit du rayon qui procède par tâtonnement : on vérifie donc
+    // que le tâtonnement tombe juste, au millimètre, et sur la bonne face — dans un tube qui
+    // a tourné d'un quart de tour, « le plafond » n'est plus en haut.
+    const tube = [...world.cells.values()].find((c) => c.twist)
+    if (tube?.twist) {
+      const s = tube.twist.length * 0.75
+      const frame = frameAt(tube.twist, s)
+      const axis = toWorld(tube.twist, { s, u: 0, v: 0 })
+      const up = castRay(world, tube.id, axis, frame.up, 12)
+      add_(
+        'rayon · il voit la paroi du tube qui a tourné',
+        up !== null &&
+          Math.abs(up.distance - tube.twist.halfSize) < 2e-3 &&
+          dot(up.normal, frame.up) < -0.99,
+        up
+          ? `${fmt(up.distance)} m pour ${fmt(tube.twist.halfSize)}, normale à` +
+            ` ${((Math.acos(Math.min(1, -dot(up.normal, frame.up))) * 180) / Math.PI).toFixed(1)}°`
+          : 'rien touché',
+      )
+    }
+
+    const stair = [...world.cells.values()].find((c) => c.spiral)
+    if (stair?.spiral) {
+      const on = { ...marks.stairPos }
+      const floor = rampHeight(stair.spiral, on)
+      const below = castRay(world, stair.id, on, v3(0, -1, 0), 8)
+      add_(
+        'rayon · il voit les marches et non le fond de la boîte',
+        below !== null && Math.abs(below.distance - (on.y - floor)) < 2e-3,
+        below ? `${fmt(below.distance)} m pour ${fmt(on.y - floor)}` : 'rien touché',
+      )
+    }
+
+    // Le coffre du reliquaire, et sa couture qui reboucle sur la salle où il est posé.
+    const vault = world.cells.get(marks.chestCell)
+    const chest = vault?.blocks?.find((b) => b.door)
+    if (!vault || !chest?.door) {
+      add_('rayon · le coffre existe', false, 'aucun bloc percé dans la salle du reliquaire')
+    } else {
+      const at = marks.chestPos
+      const inChest = castRay(world, vault.id, at, sub(chest.door.center, at), 60)
+      // À côté du chambranle, mais toujours sur le coffre : sa face fait deux mètres
+      // cinquante, la porte un mètre quatre-vingts. Viser plus loin manquerait le coffre
+      // entier et ne prouverait rien.
+      const jamb = add(chest.door.center, scale(chest.door.right, 1.05))
+      const beside = castRay(world, vault.id, at, sub(jamb, at), 60)
+      add_(
+        'rayon · il entre dans le coffre et ressort dans la salle',
+        inChest !== null && inChest.crossings === 1 && inChest.cell === vault.id,
+        inChest
+          ? `${inChest.cell} à ${fmt(inChest.distance)} m, ${inChest.crossings} couture(s)`
+          : 'rien touché',
+      )
+      add_(
+        'rayon · à côté de la porte, le coffre arrête',
+        beside !== null && beside.crossings === 0 && beside.block !== undefined,
+        beside
+          ? `${beside.crossings} couture(s), ${beside.block ? 'bloc' : 'paroi'}`
+          : 'rien touché',
       )
     }
   }

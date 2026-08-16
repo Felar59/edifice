@@ -1,6 +1,7 @@
 import { presets } from '../player/player'
 import type { RenderStats } from '../render/renderer'
 import type { Vec3 } from '../math/vec3'
+import type { RayHit } from '../world/ray'
 
 export interface HudData {
   fps: number
@@ -10,6 +11,8 @@ export interface HudData {
   maxDepth: number
   projectiles: number
   stats: RenderStats
+  /** Ce que le rayon d'interaction rencontre droit devant, s'il rencontre quelque chose. */
+  aim: RayHit | null
 }
 
 /**
@@ -63,6 +66,16 @@ export class Hud {
       `copies       ${d.stats.copies}`,
       `écartées     ${d.stats.skipped}`,
       `cubes        ${d.projectiles}`,
+      '',
+      // **Le rayon d'interaction, lu en direct.** C'est son premier usage, et le plus
+      // modeste : savoir ce qu'on regarde et à quelle distance. C'est aussi le seul moyen
+      // de voir de ses yeux qu'il traverse — viser une porte doit annoncer la salle d'en
+      // face, pas la porte.
+      d.aim
+        ? `visée        ${d.aim.cell} ${d.aim.distance.toFixed(2)} m` +
+          (d.aim.crossings > 0 ? ` · ${d.aim.crossings} couture(s)` : '') +
+          (d.aim.block ? ' · bloc' : '')
+        : 'visée        —',
     ].join('\n')
   }
 }

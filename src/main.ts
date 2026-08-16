@@ -3,6 +3,7 @@ import './style.css'
 import { initGpu } from './render/gpu'
 import { Renderer } from './render/renderer'
 import { Player, presets } from './player/player'
+import { castRay } from './world/ray'
 import { CUBE_SIZE, Projectiles } from './player/projectiles'
 import { Physics } from './player/physique'
 import { loadPictures, noPictures } from './render/pictures'
@@ -308,6 +309,7 @@ async function main(): Promise<void> {
       maxDepth: renderer.maxDepth,
       projectiles: projectiles.count,
       stats: renderer.getStats(),
+      aim: castRay(world, player.cell, player.pos, player.forward),
     })
 
     hook.frames++
