@@ -56,7 +56,7 @@ import {
   pushTorchere,
 } from './props'
 import { frameAt, makeTwist, toWorld } from './twist'
-import type { Block, Cell, Mouth, Passage, Spiral, World } from './types'
+import type { Block, Cell, Mouth, Mover, Passage, Spiral, World } from './types'
 
 const DOOR_HALF_W = 0.9
 const DOOR_HALF_H = 1.1
@@ -1430,6 +1430,75 @@ const GRIP = 1.65
  * une paroi sans aucun moyen de se relever, et elle serait un piège au lieu d'un terrain.
  */
 const MOBILE_WING = 'mobiles'
+const GATES_WING = 'regard'
+
+/**
+ * **Le couloir qui n'est plus le même quand on se retourne.**
+ *
+ * Cinq cloisons, chacune large des deux tiers du passage, chacune à droite ou à gauche. Elles
+ * ne coulissent pas : elles **changent de place**, et seulement quand personne ne les voit.
+ * On descend le couloir en louvoyant d'un côté puis de l'autre ; on se retourne, et le chemin
+ * qu'on vient de faire n'existe plus.
+ *
+ * Rien n'est à réussir, et c'est le point. Une cloison qui va et vient selon une horloge se
+ * franchit avec du timing, et une porte à passer au bon moment fait basculer le musée dans un
+ * autre genre. Ici on ne peut pas se tromper, on peut seulement ne pas en croire ses yeux.
+ *
+ * **Une cloison mince, et c'est un choix de sécurité.** Quarante centimètres : si l'une
+ * d'elles se pose malgré tout sur le visiteur, la face la plus proche est l'une de ses deux
+ * grandes faces, jamais son chant, et la résolution ordinaire le pousse de côté. Elle attend
+ * de toute façon qu'il se soit écarté — mais un garde-fou qui ne sert jamais est un
+ * garde-fou qu'on n'a pas.
+ */
+function slidingGates(box: Box, tint: Colour): { blocks: Block[]; movers: Mover[] } {
+  const blocks: Block[] = []
+  const movers: Mover[] = []
+
+  const width = box.max.x - box.min.x
+  const panel = width * 0.62
+  const travel = width - panel
+  const thick = 0.4
+
+  const face = made(tinted(tint, 0.34), MATTER.beton)
+  const top = made(tinted(tint, 0.44), MATTER.beton)
+  // Le chant qui mène la course, d'une couleur franche : c'est lui qu'on regarde pour
+  // savoir de quel côté le passage va s'ouvrir, et il n'y a pas d'autre indice.
+  const edge = made(tinted(tint, 0.8), MATTER.uni)
+
+  // Cinq cloisons, tous les trois mètres et demi : assez rapprochées pour qu'on ne voie
+  // jamais le couloir entier d'un coup, ce qui est la condition pour que quelque chose puisse
+  // changer derrière soi.
+  const gates = [box.max.z - 3, box.max.z - 6.5, box.max.z - 10, box.max.z - 13.5, box.max.z - 17]
+
+  for (const z of gates) {
+    const rest = {
+      min: { x: box.min.x, y: box.min.y, z },
+      max: { x: box.min.x + panel, y: box.max.y, z: z + thick },
+    }
+    const out: number[] = []
+    pushBlock(out, rest.min, rest.max, { side: face, top })
+    pushBlock(
+      out,
+      { x: rest.max.x - 0.14, y: rest.min.y, z: rest.min.z - 0.06 },
+      { x: rest.max.x + 0.06, y: rest.max.y, z: rest.max.z + 0.06 },
+      { side: edge, top: edge },
+    )
+
+    const block: Block = { min: { ...rest.min }, max: { ...rest.max } }
+    blocks.push(block)
+    movers.push({
+      block,
+      verts: new Float32Array(out),
+      rest,
+      travel: { x: travel, y: 0, z: 0 },
+      placed: 0,
+      target: 0,
+      offset: { x: 0, y: 0, z: 0 },
+    })
+  }
+
+  return { blocks, movers }
+}
 const CONDUIT = 'conduit'
 const GREAT = 'grande-salle'
 
@@ -2269,6 +2338,7 @@ export function buildWorld(): World {
     const sixSided = entry.wing.id === GRAVITY_WING
     const stairs = entry.wing.id === PENROSE_WING
     const paved = entry.wing.id === PAVE_WING
+    const gates = entry.wing.id === GATES_WING ? slidingGates(entry.wing.box, entry.wing.tint) : null
     const extra: number[] = []
     for (const m of entry.mouths) {
       // **Une embrasure posée dans une pièce n'a pas de seuil à dessiner.**
@@ -2403,6 +2473,7 @@ export function buildWorld(): World {
       // est atteignable. Elle n'a pas pour autant six sols : depuis le plancher, ses murs
       // restent des murs, et la trémie hors de portée.
       ...(entry.wing.id === MOBILE_WING ? { carries: true } : {}),
+      ...(gates ? { blocks: gates.blocks, movers: gates.movers } : {}),
       ...(stairs
         ? {
             spiral: STAIR,

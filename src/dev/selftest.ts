@@ -22,6 +22,7 @@ import { FLOATS_PER_VERTEX } from '../world/geometry'
 import { MAX_LIGHTS } from '../world/light'
 import { advance, resolveAgainstCell } from '../world/motion'
 import { castRay } from '../world/ray'
+import { restMovers, shuffle, tickMovers } from '../world/movers'
 import { heightAtTurn, onSquare, rampHeight, stepHeight } from '../world/spiral'
 import { angleAt, frameAt, toLocal, toWorld } from '../world/twist'
 import type { Cell, Mouth } from '../world/types'
@@ -1849,6 +1850,131 @@ export function runSelfTest(world: World, physics: Physics): Check[] {
           ? `${beside.crossings} couture(s), ${beside.block ? 'bloc' : 'paroi'}`
           : 'rien touché',
       )
+    }
+  }
+
+  // 18 quinquies. Les cloisons qui ne bougent que hors du champ de vision.
+  //
+  //    **Aucun mouvement visible, même du coin de l'œil.** C'est la règle du plan, et elle
+  //    est stricte pour une raison : il suffit d'apercevoir une cloison bouger une fois pour
+  //    comprendre qu'il y a un mécanisme, et à partir de là on ne regarde plus la salle, on
+  //    surveille les murs. On parcourt donc le couloir en regardant devant soi, et l'on
+  //    vérifie image par image qu'aucune cloison n'a changé de place pendant qu'elle était à
+  //    l'écran — ni avant, ni après son saut, puisqu'une cloison qui apparaît dans le champ
+  //    trahit tout autant qu'une cloison qui en sort.
+  //
+  //    **Mais elles bougent.** Une salle qui ne se reconfigure jamais serait un couloir
+  //    ordinaire, et l'invariant ci-dessus serait vide.
+  //
+  //    **Elles ne se posent pas sur le visiteur**, et le couloir reste franchissable quelle
+  //    que soit la configuration : chaque cloison laisse plus large que le corps.
+  {
+    const shifted = [...world.cells.values()].find((c) => (c.movers?.length ?? 0) > 0)
+    if (!shifted) {
+      add_('cloisons · une salle en porte', false, 'aucune cellule à cloisons mobiles')
+    } else {
+      const movers = shifted.movers!
+
+      // Le passage laissé par une cloison, dans les deux configurations.
+      let narrowest = Infinity
+      for (const m of movers) {
+        narrowest = Math.min(
+          narrowest,
+          shifted.max.x - m.rest.max.x,
+          m.rest.min.x + m.travel.x - shifted.min.x,
+        )
+      }
+      add_(
+        'cloisons · le couloir reste franchissable',
+        narrowest >= PROBE_BODY.radius * 2,
+        `${fmt(narrowest)} m au plus étroit, pour un corps de ${fmt(PROBE_BODY.radius * 2)} m`,
+      )
+
+      // Le parcours. On descend le couloir en regardant droit devant, et l'on tire au sort
+      // une consigne à chaque seconde pour que les cloisons aient toujours envie de bouger.
+      restMovers(world)
+      let seed = 1
+      const roll = (): number => {
+        seed = (seed * 1103515245 + 12345) % 2147483648
+        return seed / 2147483648
+      }
+      const door = shifted.passages[0]!.from
+      const walker = new Player()
+      walker.goTo(
+        {
+          name: 'cloisons',
+          cell: shifted.id,
+          pos: add(door.center, scale(door.normal, 1.2)),
+          forward: { ...door.normal },
+        },
+        world,
+      )
+
+      /** Une cloison est-elle à l'écran ? Un cône de soixante degrés, donc bien plus
+       *  étroit que la marge que s'accorde le mécanisme : c'est cette différence qu'on
+       *  mesure. */
+      const onScreen = (m: (typeof movers)[number], at: 0 | 1): boolean => {
+        const shift = at === 0 ? v3(0, 0, 0) : m.travel
+        for (const x of [m.rest.min.x + shift.x, m.rest.max.x + shift.x]) {
+          for (const z of [m.rest.min.z + shift.z, m.rest.max.z + shift.z]) {
+            for (const y of [m.rest.min.y, m.rest.max.y]) {
+              const to = sub({ x, y, z }, walker.pos)
+              if (len(to) < 1e-6) return true
+              if (dot(normalize(to), normalize(walker.forward)) > 0.5) return true
+            }
+          }
+        }
+        return false
+      }
+
+      let caught = ''
+      let moves = 0
+      let onPlayer = ''
+      for (let i = 0; i < 900; i++) {
+        if (i % 60 === 0) shuffle(shifted, roll)
+        // **On se retourne à mi-parcours**, et c'est tout l'objet de la mesure. En marchant
+        // droit devant, les cinq cloisons sont dans le champ et aucune n'a le droit de
+        // bouger : le contrôle serait vert sans rien avoir prouvé. C'est le demi-tour qui
+        // leur donne leur chance, et c'est le demi-tour que fait le visiteur.
+        if (i === 400) walker.face(scale(door.normal, -1))
+        const before = movers.map((m) => ({ at: m.placed, seen: onScreen(m, m.placed) }))
+        tickMovers(world, {
+          cell: walker.cell,
+          pos: walker.pos,
+          forward: walker.forward,
+        })
+        movers.forEach((m, k) => {
+          if (m.placed === before[k]!.at) return
+          moves++
+          if (before[k]!.seen || onScreen(m, m.placed)) {
+            caught = caught || `cloison ${k} à l'image ${i}`
+          }
+          const p = walker.pos
+          if (
+            p.x > m.block.min.x - PROBE_BODY.radius &&
+            p.x < m.block.max.x + PROBE_BODY.radius &&
+            p.z > m.block.min.z - PROBE_BODY.radius &&
+            p.z < m.block.max.z + PROBE_BODY.radius
+          ) {
+            onPlayer = onPlayer || `cloison ${k} à l'image ${i}`
+          }
+        })
+        walker.update(1 / 60, world, new Set(walker.cell === shifted.id ? ['KeyW'] : []))
+        if (walker.cell !== shifted.id) break
+      }
+
+      add_(
+        'cloisons · aucune ne bouge sous les yeux',
+        caught === '',
+        caught || `${moves} déplacements, tous hors du champ`,
+      )
+      add_('cloisons · elles bougent tout de même', moves > 0, `${moves} déplacements`)
+      add_(
+        'cloisons · aucune ne se pose sur le visiteur',
+        onPlayer === '',
+        onPlayer || 'jamais dans le corps',
+      )
+      restMovers(world)
     }
   }
 

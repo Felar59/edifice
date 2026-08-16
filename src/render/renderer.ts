@@ -54,7 +54,7 @@ import type { Pictures } from './pictures'
 const HEADER_FLOATS = 56
 const MOUTH_BLOCK = HEADER_FLOATS + MAX_LIGHTS * 8
 const SCENE_FLOATS = MOUTH_BLOCK + MAX_MOUTH_LIGHTS * 16
-import type { Cell, Mouth, Passage, World } from '../world/types'
+import type { Cell, Mouth, Mover, Passage, World } from '../world/types'
 import sceneShader from '../shaders/scene.wgsl?raw'
 import portalShader from '../shaders/portal.wgsl?raw'
 
@@ -229,6 +229,7 @@ export class Renderer {
   private world: World | null = null
   private readonly meshes = new Map<string, CellMesh>()
   private objectMesh: CellMesh | null = null
+  private readonly moverMeshes = new Map<Mover, CellMesh>()
 
   private width = 1
   private height = 1
@@ -340,6 +341,19 @@ export class Renderer {
     }
     this.objectMesh?.buffer.destroy()
     this.objectMesh = this.upload(objectVerts, 'objet')
+
+    // **Chaque cloison mobile a son propre maillage**, monté à sa taille et dessiné translaté.
+    // On aurait pu réutiliser le cube des objets en l'étirant par la matrice de modèle : ce
+    // serait un maillage de moins, et une matière fausse. Les coordonnées de matière voyagent
+    // avec les sommets ; étirer un cube d'un mètre sur six étire son béton d'autant, et la
+    // cloison n'aurait pas le grain du mur qu'elle prolonge.
+    for (const mesh of this.moverMeshes.values()) mesh.buffer.destroy()
+    this.moverMeshes.clear()
+    for (const cell of world.cells.values()) {
+      for (const mover of cell.movers ?? []) {
+        this.moverMeshes.set(mover, this.upload(mover.verts, `cloison ${cell.id}`))
+      }
+    }
   }
 
   private upload(verts: F32, label: string): CellMesh {
@@ -595,6 +609,21 @@ export class Renderer {
         pass.setBindGroup(0, this.sceneBindGroup, [offset])
         pass.draw(mesh.vertexCount)
         this.stats.copies++
+      }
+    }
+
+    // Les cloisons qui coulissent, chacune décalée de sa course du moment. Le décalage est
+    // celui-là même qui a déplacé sa boîte de collision une image plus tôt : ce qu'on voit et
+    // ce qu'on heurte sont le même objet, ce qui est toute la difficulté d'un mur qui bouge.
+    for (const mover of cell.movers ?? []) {
+      const mesh = this.moverMeshes.get(mover)
+      if (!mesh) continue
+      pass.setVertexBuffer(0, mesh.buffer)
+      for (const shift of shifts) {
+        const step = { x: shift.x + mover.offset.x, y: shift.y + mover.offset.y, z: shift.z + mover.offset.z }
+        const offset = this.writeSceneUniforms(viewProj, translation(step), camPos, cell, shift)
+        pass.setBindGroup(0, this.sceneBindGroup, [offset])
+        pass.draw(mesh.vertexCount)
       }
     }
 

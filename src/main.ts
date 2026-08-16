@@ -4,6 +4,7 @@ import { initGpu } from './render/gpu'
 import { Renderer } from './render/renderer'
 import { Player, presets } from './player/player'
 import { castRay } from './world/ray'
+import { restMovers, shuffle, tickMovers } from './world/movers'
 import { CUBE_SIZE, Projectiles } from './player/projectiles'
 import { Physics } from './player/physique'
 import { loadPictures, noPictures } from './render/pictures'
@@ -105,6 +106,7 @@ async function main(): Promise<void> {
 
   const renderer = new Renderer(device, context, format)
   const world = buildWorld()
+  restMovers(world)
   renderer.setWorld(world, buildCube(CUBE_SIZE, [0.78, 0.5, 0.26]))
 
   // **Les tableaux.** Leurs couches sont désignées par les matières que le monde pose sur ses
@@ -252,6 +254,7 @@ async function main(): Promise<void> {
     },
     walk: (metres) => player.walk(world, metres),
     tick: (seconds, pressed = []) => {
+      tickMovers(world, { cell: player.cell, pos: player.pos, forward: player.forward })
       player.update(seconds, world, new Set(pressed))
       projectiles.update(seconds, world)
     },
@@ -283,6 +286,15 @@ async function main(): Promise<void> {
   let previous = performance.now()
   let fps = 0
   let paused = false
+  /**
+   * Depuis quand les cloisons n'ont pas reçu de nouvelle consigne.
+   *
+   * On tire au sort une configuration toutes les deux secondes, et non à l'entrée dans la
+   * salle : le couloir doit continuer de se défaire pendant qu'on le remonte, sans quoi il
+   * suffirait de le parcourir d'une traite pour n'en rien voir.
+   */
+  let since = 0
+
 
   const frame = (now: number): void => {
     // Onglet en arrière-plan, point d'arrêt dans le débogueur : un pas de temps
@@ -292,6 +304,14 @@ async function main(): Promise<void> {
     fps += (1 / Math.max(dt, 1e-4) - fps) * 0.1
 
     if (!paused) {
+      // **Les cloisons d'abord.** Déplacées après le visiteur, elles le trouveraient déjà
+      // à l'intérieur d'elles-mêmes.
+      since += dt
+      if (since > 2) {
+        since = 0
+        for (const cell of world.cells.values()) shuffle(cell, Math.random)
+      }
+      tickMovers(world, { cell: player.cell, pos: player.pos, forward: player.forward })
       player.update(dt, world, keys)
       projectiles.update(dt, world)
     }
