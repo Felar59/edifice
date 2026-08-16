@@ -100,7 +100,10 @@ export class Jeu {
       width: '100vw',
       height: '100vh',
       display: 'block',
-      zIndex: '5',
+      // Au-dessus des panneaux du musée et de son réticule : quand on tient la machine,
+      // il n'y a plus qu'elle à l'écran. Voir la règle `body.machine` dans la feuille de
+      // style, qui éteint le réticule et fait remonter l'invite de sortie.
+      zIndex: '15',
       visibility: 'hidden',
       pointerEvents: 'none',
     })

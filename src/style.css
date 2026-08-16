@@ -190,6 +190,22 @@ kbd {
   z-index: 6;
 }
 
+/* --- Quand on tient une machine -------------------------------------------
+   L'écran du jeu couvre toute la page. Le réticule du musée n'a plus rien à
+   viser et se retrouverait posé au milieu de l'image ; l'invite qui dit
+   comment sortir, elle, doit rester lisible par-dessus. */
+body.machine #reticle {
+  display: none;
+}
+
+body.machine #prompt {
+  z-index: 16;
+  /* Tout contre le bas : le jeu occupe l'écran, et ses quatre coins sont pris —
+     vie, munitions, carte, texte. Il ne reste que la lisière. */
+  bottom: 0.4rem;
+  opacity: 0.75;
+}
+
 #error {
   position: fixed;
   inset: auto 1rem 1rem 1rem;

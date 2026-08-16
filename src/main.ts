@@ -182,12 +182,14 @@ async function main(): Promise<void> {
    */
   const take = (): void => {
     playing = true
+    document.body.classList.add('machine')
     // On ne décide pas du pointeur ici : c'est le portage qui rend au jeu l'état
     // exact qu'il avait demandé — libre dans ses menus, verrouillé dans une partie.
     jeu?.prendre()
   }
   const release = (): void => {
     playing = false
+    document.body.classList.remove('machine')
     jeu?.lacher()
     // Et l'on reprend le pointeur — à l'image suivante, le temps que le navigateur ait
     // fini de le rendre. Demandé dans la foulée du déverrouillage, il est ignoré.
