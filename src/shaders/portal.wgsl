@@ -29,6 +29,13 @@ fn vs(@builtin(vertex_index) i : u32) -> @builtin(position) vec4<f32> {
 
   // Borner la profondeur au plan proche, sans toucher au reste.
   //
+  // La profondeur est **inversée** — le plan proche vaut `w`, le lointain zéro : c'est ce
+  // qui donne au tampon flottant sa précision au loin, où deux surfaces distantes de
+  // quelques millimètres se disputaient les pixels. La borne est donc un minimum contre
+  // `w`, et non un maximum contre zéro : borner à zéro poserait le quad **sur le
+  // lointain**, où il perd le test de profondeur contre tout, et l'ouverture cesserait
+  // d'être dessinée juste avant qu'on la franchisse.
+  //
   // Dès qu'on approche l'ouverture à moins de la distance du plan proche, son quad
   // se fait intégralement écrêter : il ne reste que le trou dans la paroi, donc une
   // image vide au moment du franchissement. Or `z` ne détermine que la profondeur —
@@ -44,7 +51,7 @@ fn vs(@builtin(vertex_index) i : u32) -> @builtin(position) vec4<f32> {
   // Conséquence assumée : sur ces quelques millimètres, l'ouverture gagne le test de
   // profondeur contre tout ce qui la précède. Rien ne peut s'y trouver — il faudrait
   // un objet coincé entre l'œil et une porte qu'on touche du nez.
-  clip.z = max(clip.z, 0.0);
+  clip.z = min(clip.z, clip.w);
   return clip;
 }
 

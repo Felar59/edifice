@@ -59,7 +59,15 @@ import sceneShader from '../shaders/scene.wgsl?raw'
 import portalShader from '../shaders/portal.wgsl?raw'
 
 const OFFSCREEN_FORMAT: GPUTextureFormat = 'rgba8unorm'
-const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus'
+/**
+ * Un tampon de profondeur **flottant**, et lu à l'envers.
+ *
+ * Vingt-quatre bits entiers répartissent leur précision uniformément dans l'espace projeté,
+ * c'est-à-dire presque toute contre le plan proche. Un flottant, lui, est dense près de zéro
+ * — et l'on met donc le lointain à zéro. Voir `perspective` : c'est là que l'inversion se
+ * fait, et c'est ce qui a fait cesser le clignotement des tableaux vus de loin.
+ */
+const DEPTH_FORMAT: GPUTextureFormat = 'depth32float'
 /**
  * Un bloc d'uniformes de scène porte l'éclairage de la cellule : ses lampes et ses
  * ouvertures. Sa taille se déduit des deux plafonds et s'aligne sur 256, comme le veut le
@@ -575,7 +583,7 @@ export class Renderer {
       ],
       depthStencilAttachment: {
         view: target.depthView,
-        depthClearValue: 1,
+        depthClearValue: 0,
         depthLoadOp: 'clear',
         depthStoreOp: 'store',
       },
@@ -1021,7 +1029,7 @@ export class Renderer {
         // Effet de bord bienvenu : une paroi dont l'enroulement serait faux
         // devient invisible, donc le défaut se signale au lieu de se cacher.
         primitive: { topology: 'triangle-list', cullMode: 'back' },
-        depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: true, depthCompare: 'less' },
+        depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: true, depthCompare: 'greater' },
       })
       this.scenePipelines.set(format, p)
     }
@@ -1039,7 +1047,7 @@ export class Renderer {
         vertex: { module: this.portalModule, entryPoint: 'vs' },
         fragment: { module: this.portalModule, entryPoint: 'fs', targets: [{ format }] },
         primitive: { topology: 'triangle-list', cullMode: 'none' },
-        depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: true, depthCompare: 'less' },
+        depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: true, depthCompare: 'greater' },
       })
       this.portalPipelines.set(format, p)
     }

@@ -90,14 +90,29 @@ export function origin(m: Mat4): Vec3 {
 }
 
 /** Projection perspective pour WebGPU (z de clip dans [0, 1]). */
+/**
+ * Projection à **profondeur inversée** : le plan proche vaut 1, le lointain 0.
+ *
+ * Ce n'est pas une coquetterie. Une profondeur ordinaire écrase toute sa précision contre le
+ * plan proche : à cent mètres, deux surfaces distantes de huit millimètres — un tableau et
+ * son passe-partout, l'écran d'une machine et son cadre — tombent dans le même pas de
+ * quantification, et se disputent les pixels. On les voit clignoter, puis disparaître selon
+ * l'angle. Le musée est vaste et récursif : ses images se voient de très loin, à travers les
+ * coutures, et le défaut s'y montrait.
+ *
+ * En inversant, le lointain va vers zéro, où un flottant est le plus dense — et la précision
+ * cesse de dépendre de la distance. Sur le même écart de huit millimètres à cent mètres, on
+ * passe de quatre cent-millionièmes, sous la résolution du tampon, à deux mille fois sa
+ * résolution. Le format doit suivre : `depth32float`, et une comparaison `greater`.
+ */
 export function perspective(out: Mat4, fovY: number, aspect: number, near: number, far: number): Mat4 {
   const f = 1 / Math.tan(fovY / 2)
   out.fill(0)
   out[0] = f / aspect
   out[5] = f
-  out[10] = far / (near - far)
+  out[10] = near / (far - near)
   out[11] = -1
-  out[14] = (far * near) / (near - far)
+  out[14] = (far * near) / (far - near)
   return out
 }
 
@@ -131,11 +146,12 @@ export function obliqueNear(
 ): Mat4 {
   copy(out, proj)
 
-  // Coin du frustum le plus opposé au plan de coupe, en espace de vue.
+  // Coin du frustum le plus opposé au plan de coupe, en espace de vue. Le lointain est
+  // à **zéro** en profondeur inversée, et c'est ce zéro qu'on inverse ici.
   const qx = (Math.sign(plane.x) + proj[8]!) / proj[0]!
   const qy = (Math.sign(plane.y) + proj[9]!) / proj[5]!
   const qz = -1
-  const qw = (1 + proj[10]!) / proj[14]!
+  const qw = proj[10]! / proj[14]!
 
   const d = plane.x * qx + plane.y * qy + plane.z * qz + plane.w * qw
 
@@ -145,11 +161,12 @@ export function obliqueNear(
   if (Math.abs(d) < 1e-6) return out
 
   const k = 1 / d
-  // Troisième ligne de la matrice = k · plan. La bouche de la couture devient
-  // ainsi exactement z = 0, c'est-à-dire le plan proche.
-  out[2] = plane.x * k
-  out[6] = plane.y * k
-  out[10] = plane.z * k
-  out[14] = plane.w * k
+  // Troisième ligne = quatrième moins k · plan. Sur le plan de la couture, z devient
+  // exactement w — c'est-à-dire 1 après division, c'est-à-dire le plan proche, puisque la
+  // profondeur est inversée. Ce qui est derrière passe au-dessus de 1 et se fait couper.
+  out[2] = -plane.x * k
+  out[6] = -plane.y * k
+  out[10] = -1 - plane.z * k
+  out[14] = -plane.w * k
   return out
 }
