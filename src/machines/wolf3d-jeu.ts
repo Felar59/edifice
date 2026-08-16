@@ -128,6 +128,11 @@ export class Jeu {
       pointerEvents: 'none',
     })
     canevas.addEventListener('contextmenu', (e) => e.preventDefault())
+    // L'origine des transformations est le coin haut-gauche — le défaut CSS est le
+    // **centre**, et c'est lui qui faisait partir l'image d'un coin de la page au lieu
+    // de l'écran de la borne : translate-puis-scale ne pose un rectangle que si l'origine
+    // est à zéro.
+    canevas.style.transformOrigin = '0 0'
     document.body.appendChild(canevas)
 
     await charger_script(`${RACINE}wolf3d.js`)
@@ -192,13 +197,16 @@ export class Jeu {
    *
    * Le canevas récupère aussi les événements de pointeur — sans quoi les clics traverseraient
    * jusqu'à celui du musée, qui reprendrait le verrouillage au premier clic dans le menu.
+   *
+   * Le **placement** de l'image, lui, n'est pas décidé ici : pendant l'immersion, c'est le
+   * musée qui épingle le canevas sur la dalle de la borne à chaque image, parce que lui seul
+   * sait où elle tombe à l'écran — la caméra bouge pendant qu'on entre. Voir `placer`.
    */
-  prendre(depuis?: Rect): void {
+  prendre(): void {
     this.tenu = true
     this.canevas.style.visibility = 'visible'
     this.canevas.style.pointerEvents = 'auto'
     this.module._edifice_ecoute(1)
-    this.plonger(depuis, false)
   }
 
   /**
@@ -213,8 +221,8 @@ export class Jeu {
     this.module._edifice_fermer()
   }
 
-  /** La lâcher : l'image se referme sur l'écran de la borne, puis s'efface. */
-  lacher(vers?: Rect): void {
+  /** La lâcher : les touches reviennent au musée. L'image, elle, se range par `placer`. */
+  lacher(): void {
     this.tenu = false
     this.canevas.style.pointerEvents = 'none'
     this.module._edifice_ecoute(0)
@@ -222,50 +230,38 @@ export class Jeu {
     // musée pendant que celui du jeu le tient ne suffit pas : le navigateur ne
     // transfère pas un verrouillage, il faut le défaire d'abord.
     if (document.pointerLockElement === this.canevas) document.exitPointerLock()
-
-    const animation = this.plonger(vers, true)
-    if (!animation) {
-      this.canevas.style.visibility = 'hidden'
-      return
-    }
-    animation.addEventListener('finish', () => {
-      if (!this.tenu) this.canevas.style.visibility = 'hidden'
-    })
   }
 
   /**
-   * **L'immersion.**
-   *
-   * L'image du jeu grandit depuis l'écran de la borne jusqu'au bord de la page. Le rectangle
-   * qu'on reçoit est la place que la dalle occupe dans l'image du musée, mesurée à la
-   * projection : sans lui, une image apparaît ; avec lui, on entre dans le meuble qu'on
-   * regardait. Le musée continue de se dessiner derrière pendant ce temps-là, de sorte qu'on
-   * voie la salle s'éloigner autour de l'écran.
+   * Pose l'image du jeu dans un rectangle de la page — ou plein cadre, avec `null`.
    *
    * Le canevas occupe déjà toute la page : on ne le redimensionne pas, on le **transforme**,
-   * ce qui ne coûte rien et ne touche pas au rendu. L'origine étant son coin supérieur
-   * gauche, une translation suivie d'une mise à l'échelle le pose exactement dans le
-   * rectangle voulu.
+   * ce qui ne coûte rien et ne touche pas au rendu. C'est l'outil de l'immersion : épinglé
+   * sur la dalle pendant que la caméra du musée vole vers elle, il est l'écran de la borne ;
+   * relâché plein cadre, il est le jeu.
    */
-  private plonger(rect: Rect | undefined, retour: boolean): Animation | null {
-    if (!rect || !this.canevas.animate) return null
-
+  placer(rect: Rect | null): void {
+    if (!rect) {
+      this.canevas.style.transform = ''
+      return
+    }
     const W = this.canevas.clientWidth || 1
     const H = this.canevas.clientHeight || 1
-    const petit = {
-      transform: `translate(${rect.x}px, ${rect.y}px) scale(${rect.w / W}, ${rect.h / H})`,
-      opacity: '0.4',
-      filter: 'brightness(1.6) contrast(1.2)',
-    }
-    const grand = { transform: 'translate(0px, 0px) scale(1, 1)', opacity: '1', filter: 'none' }
+    this.canevas.style.transform = `translate(${rect.x}px, ${rect.y}px) scale(${rect.w / W}, ${rect.h / H})`
+  }
 
-    return this.canevas.animate(retour ? [grand, petit] : [petit, grand], {
-      duration: retour ? 360 : 560,
-      // Vif au départ, posé à l'arrivée : c'est la courbe d'un objet qu'on approche du
-      // visage, et non celle d'un panneau qui coulisse.
-      easing: retour ? 'cubic-bezier(0.5, 0, 0.9, 0.4)' : 'cubic-bezier(0.13, 0.75, 0.2, 1)',
-      fill: 'both',
-    })
+  /** Cache l'image — la fin du retrait, quand elle a fini de rentrer dans la dalle. */
+  cacher(): void {
+    if (!this.tenu) this.canevas.style.visibility = 'hidden'
+  }
+
+  /** L'éclair du raccord : l'instant où l'écran de la borne devient l'écran tout court. */
+  flash(): void {
+    if (!this.canevas.animate) return
+    this.canevas.animate(
+      [{ filter: 'brightness(2.1) saturate(0.65)' }, { filter: 'none' }],
+      { duration: 190, easing: 'ease-out' },
+    )
   }
 
   /**

@@ -4,6 +4,7 @@ import { initGpu } from './render/gpu'
 import { Renderer } from './render/renderer'
 import { Player, presets } from './player/player'
 import { castRay } from './world/ray'
+import { add, normalize, scale, sub, type Vec3 } from './math/vec3'
 import { CUBE_SIZE, Projectiles } from './player/projectiles'
 import { Physics } from './player/physique'
 import { loadPictures, noPictures } from './render/pictures'
@@ -217,23 +218,54 @@ async function main(): Promise<void> {
     return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y }
   }
 
+  /**
+   * **L'immersion** : on n'apparaît pas dans le jeu, on y entre.
+   *
+   * Pendant qu'elle court, la caméra du musée quitte les yeux du visiteur et **vole vers la
+   * dalle** — le visiteur, lui, ne bouge pas — pendant que l'image du jeu reste épinglée sur
+   * cette dalle, image après image, à l'endroit exact où la projection la fait tomber. La
+   * salle grossit donc autour de l'écran jusqu'à ce qu'il n'y ait plus que lui, et le
+   * raccord au plein cadre se fait dans les derniers dixièmes, quand la dalle occupe déjà
+   * presque tout. Au retour, le même chemin à l'envers : l'image rentre dans le meuble.
+   */
+  interface Immersion {
+    sens: 'entre' | 'sort'
+    t: number
+    /** Les yeux du visiteur au moment du geste : le bout fixe du trajet. */
+    de: { pos: Vec3; forward: Vec3; up: Vec3 }
+  }
+  let immersion: Immersion | null = null
+  const ENTREE = 0.9
+  const SORTIE = 0.55
+
+  const yeux = () => ({
+    pos: { ...player.pos },
+    forward: { ...player.forward },
+    up: { ...player.up },
+  })
+
   const take = (): void => {
     playing = true
     document.body.classList.add('machine')
-    transition = 0.6
     sons.plonger(false)
+    // Si l'on reprend la machine pendant que l'image finissait de se ranger, on repart
+    // d'où elle en est — le trajet est le même, remonté.
+    immersion = immersion
+      ? { sens: 'entre', t: 1 - immersion.t, de: immersion.de }
+      : { sens: 'entre', t: 0, de: yeux() }
     // On ne décide pas du pointeur ici : c'est le portage qui rend au jeu l'état
     // exact qu'il avait demandé — libre dans ses menus, verrouillé dans une partie.
-    jeu?.prendre(placeDeLEcran())
+    jeu?.prendre()
+    jeu?.placer(placeDeLEcran() ?? null)
   }
   const release = (): void => {
     playing = false
     document.body.classList.remove('machine')
-    // Le musée redessine pendant que l'image se referme : c'est ce qui donne le sentiment de
-    // reculer hors du meuble, plutôt que de voir un panneau disparaître.
-    transition = 0.4
     sons.plonger(true)
-    jeu?.lacher(placeDeLEcran())
+    immersion = immersion
+      ? { sens: 'sort', t: 1 - immersion.t, de: immersion.de }
+      : { sens: 'sort', t: 0, de: yeux() }
+    jeu?.lacher()
     // Et l'on reprend le pointeur — à l'image suivante, le temps que le navigateur ait
     // fini de le rendre. Demandé dans la foulée du déverrouillage, il est ignoré.
     requestAnimationFrame(() => void canvas.requestPointerLock())
@@ -507,8 +539,6 @@ async function main(): Promise<void> {
   let ecran = 0
   /** Où le regard rencontre la matière, cette image-ci. Le clavier s'en sert aussi. */
   let regard: ReturnType<typeof castRay> = null
-  /** Secondes restantes d'immersion : tant qu'il en reste, le musée se dessine derrière. */
-  let transition = 0
 
   const frame = (now: number): void => {
     // Onglet en arrière-plan, point d'arrêt dans le débogueur : un pas de temps
@@ -578,14 +608,66 @@ async function main(): Promise<void> {
 
     // Pendant qu'on tient une machine, son écran couvre toute la page : dessiner le musée
     // derrière ne servirait qu'à lui disputer la carte graphique, et c'est elle qui en a
-    // besoin. Sa dernière image reste là, prête pour le moment où l'on lâchera.
-    if (transition > 0) transition = Math.max(0, transition - dt)
+    // besoin. On ne le dessine que libre — ou pendant l'immersion, où c'est lui qui fait
+    // tout le mouvement.
+    if (immersion) {
+      immersion.t = Math.min(1, immersion.t + dt / (immersion.sens === 'entre' ? ENTREE : SORTIE))
+    }
 
-    if (!playing || transition > 0) {
-      renderer.render(
-        { cell: player.cell, pos: player.pos, forward: player.forward, up: player.up },
-        projectiles.toRenderList(),
-      )
+    if (!playing || immersion) {
+      // La caméra de l'immersion : des yeux du visiteur vers un point à quarante
+      // centimètres de la dalle, le regard se posant sur elle en chemin. Douce au départ,
+      // pressée ensuite — la courbe d'une aspiration, pas celle d'un travelling.
+      let camera = { cell: player.cell, pos: player.pos, forward: player.forward, up: player.up }
+      let v = 0
+      if (immersion) {
+        const m = getLandmarks()
+        const de = immersion.de
+        const brut = immersion.sens === 'entre' ? immersion.t : 1 - immersion.t
+        v = brut * brut * (3 - 2 * brut)
+        const dir = normalize(sub(m.machinePos, de.pos))
+        const arret = add(m.machinePos, scale(dir, -0.42))
+        const vise = Math.min(1, v * 1.6)
+        camera = {
+          cell: m.machineCell,
+          pos: add(scale(de.pos, 1 - v), scale(arret, v)),
+          forward: normalize(add(scale(de.forward, 1 - vise), scale(dir, vise))),
+          up: de.up,
+        }
+      }
+      renderer.render(camera, projectiles.toRenderList())
+
+      if (immersion) {
+        if (jeu) {
+          // L'image du jeu, épinglée sur la dalle que la caméra approche — puis fondue
+          // vers le plein cadre dans les derniers dixièmes, quand la dalle emplit déjà
+          // presque tout. `couvre` traîne exprès derrière la caméra : c'est elle qui fait
+          // le travail, pas l'étirement.
+          const couvre = v ** 3
+          const dalle = placeDeLEcran()
+          const plein = { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }
+          jeu.placer(
+            dalle
+              ? {
+                  x: dalle.x * (1 - couvre),
+                  y: dalle.y * (1 - couvre),
+                  w: dalle.w + (plein.w - dalle.w) * couvre,
+                  h: dalle.h + (plein.h - dalle.h) * couvre,
+                }
+              : plein,
+          )
+        }
+        if (immersion.t >= 1) {
+          if (immersion.sens === 'entre') {
+            jeu?.placer(null)
+            jeu?.flash()
+          } else {
+            jeu?.cacher()
+            jeu?.placer(null)
+          }
+          immersion = null
+        }
+      }
     }
 
     hud.update({
