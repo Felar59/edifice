@@ -43,6 +43,15 @@ export interface Pictures {
   view: GPUTextureView
   sampler: GPUSampler
   count: number
+  /**
+   * Écrit une image dans une couche, et refait sa chaîne de mip-maps.
+   *
+   * C'est par là qu'une **machine** s'affiche. Le musée sait déjà accrocher une image sur un
+   * mur : une couche de plus, réécrite à chaque instant, et l'écran d'une machine devient un
+   * tableau comme les autres — même matière, même filtrage, même anticrénelage. Il n'y a rien
+   * eu à ajouter au nuanceur.
+   */
+  paint(layer: number, rgba: Uint8Array<ArrayBuffer>, width: number, height: number): void
 }
 
 const BLIT = /* wgsl */ `
@@ -79,11 +88,13 @@ fn fs(@builtin(position) at : vec4<f32>) -> @location(0) vec4<f32> {
 export async function loadPictures(
   device: GPUDevice,
   urls: string[],
+  /** Couches vides réservées aux écrans des machines, qui se réécrivent en cours de visite. */
+  spare = 0,
 ): Promise<Pictures> {
   const levels = Math.floor(Math.log2(WIDE)) + 1
   const texture = device.createTexture({
     label: 'tableaux',
-    size: [WIDE, HIGH, Math.max(1, urls.length)],
+    size: [WIDE, HIGH, Math.max(1, urls.length + spare)],
     format: 'rgba8unorm',
     mipLevelCount: levels,
     usage:
@@ -113,7 +124,21 @@ export async function loadPictures(
 
   buildMips(device, texture, urls.length, levels)
 
+  const paint = (layer: number, rgba: Uint8Array<ArrayBuffer>, width: number, height: number): void => {
+    device.queue.writeTexture(
+      { texture, origin: [0, 0, layer] },
+      rgba,
+      { bytesPerRow: width * 4, rowsPerImage: height },
+      [width, height],
+    )
+    // La chaîne de réduction est refaite pour cette couche seulement : sans elle, l'écran
+    // scintille dès qu'on s'en éloigne, exactement comme le faisaient les tableaux avant
+    // qu'on la construise à la main.
+    buildMips(device, texture, layer + 1, levels, layer)
+  }
+
   return {
+    paint,
     view: texture.createView({ dimension: '2d-array' }),
     sampler: device.createSampler({
       label: 'tableaux',
@@ -128,7 +153,13 @@ export async function loadPictures(
   }
 }
 
-function buildMips(device: GPUDevice, texture: GPUTexture, layers: number, levels: number): void {
+function buildMips(
+  device: GPUDevice,
+  texture: GPUTexture,
+  layers: number,
+  levels: number,
+  first = 0,
+): void {
   const module = device.createShaderModule({ label: 'réduction', code: BLIT })
   const pipeline = device.createRenderPipeline({
     label: 'réduction',
@@ -140,7 +171,7 @@ function buildMips(device: GPUDevice, texture: GPUTexture, layers: number, level
   const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' })
 
   const encoder = device.createCommandEncoder({ label: 'mip-maps des tableaux' })
-  for (let layer = 0; layer < layers; layer++) {
+  for (let layer = first; layer < layers; layer++) {
     for (let level = 1; level < levels; level++) {
       const source = texture.createView({
         dimension: '2d',
@@ -187,6 +218,7 @@ export function noPictures(device: GPUDevice): Pictures {
   })
   device.queue.writeTexture({ texture }, new Uint8Array([120, 118, 112, 255]), {}, [1, 1])
   return {
+    paint: () => {},
     view: texture.createView({ dimension: '2d-array' }),
     sampler: device.createSampler({}),
     count: 0,

@@ -32,6 +32,7 @@ import {
   buildRoom,
   buildTwistedTube,
   pushBlock,
+  pushQuad,
   pushSpiral,
   pushTubeCap,
   pushWall,
@@ -1022,6 +1023,15 @@ const PICTURES = {
   monde: 103,
   shell: 104,
   antivirus: 105,
+  /**
+   * L'écran d'une machine.
+   *
+   * Ce n'est pas une image chargée mais une couche **réécrite à chaque instant** par le
+   * projet qui tourne derrière — ici Wolf3D, dont le vrai code compilé en WebAssembly rend
+   * ses colonnes. Le musée n'a rien eu à apprendre pour cela : une machine s'accroche au mur
+   * comme un tableau, avec la même matière et le même filtrage.
+   */
+  machine: 106,
 } as const
 
 const VIGNETTE_SIDE = 4.4
@@ -2477,6 +2487,43 @@ export function buildWorld(): World {
       carries: true,
     })
 
+    // **La première machine.** Un écran contre la paroi nord, et le vrai Wolf3D derrière.
+    // Le plan lui promet mieux — une maquette sur une table, un stéréoscope où l'on colle
+    // l'œil — mais il fallait d'abord prouver que le C d'origine tourne dans le musée. Il
+    // tourne : ce qu'on voit là est son lancer de rayon, dans son labyrinthe.
+    const screen: number[] = []
+    const wall = GREAT_BOX.min.z
+    const foot = GREAT_BOX.min.y
+    pushBlock(
+      screen,
+      { x: 509, y: foot + 0.6, z: wall },
+      { x: 515.4, y: foot + 5, z: wall + 0.35 },
+      { side: made(tinted(GREAT_TINT, 0.16), MATTER.tole), top: made(tinted(GREAT_TINT, 0.22), MATTER.tole) },
+    )
+    // Un socle, pour que l'écran ait l'air posé et non collé.
+    pushBlock(
+      screen,
+      { x: 508.4, y: foot, z: wall },
+      { x: 516, y: foot + 0.6, z: wall + 1.1 },
+      { side: made(tinted(GREAT_TINT, 0.2), MATTER.beton), top: made(tinted(GREAT_TINT, 0.3), MATTER.beton) },
+    )
+    {
+      const x0 = 509.4
+      const x1 = 515
+      const y0 = foot + 1
+      const y1 = foot + 4.15
+      const z = wall + 0.36
+      pushQuad(
+        screen,
+        { x: x0, y: y0, z },
+        { x: x1, y: y0, z },
+        { x: x1, y: y1, z },
+        { x: x0, y: y1, z },
+        made([1, 1, 1], PICTURES.machine),
+        [[0, 1], [1, 1], [1, 0], [0, 0]],
+      )
+    }
+
     cells.push({
       id: GREAT,
       fogColour: haze(GREAT_TINT),
@@ -2493,7 +2540,7 @@ export function buildWorld(): World {
           },
           { floor: [holeOf(upper.over)] },
         ),
-        jambs(upper.over, GREAT_TINT),
+        jambs(upper.over, GREAT_TINT).concat(screen),
       ),
       passages: [outOfGreat],
       lighting: greatLighting,

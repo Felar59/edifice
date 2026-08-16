@@ -7,6 +7,7 @@ import { castRay } from './world/ray'
 import { CUBE_SIZE, Projectiles } from './player/projectiles'
 import { Physics } from './player/physique'
 import { loadPictures, noPictures } from './render/pictures'
+import { Maze } from './machines/wolf3d'
 import musee from './assets/musee1.png?url'
 import julia from './assets/Julia1.png?url'
 import hunter from './assets/my_hunter1.png?url'
@@ -110,13 +111,27 @@ async function main(): Promise<void> {
   // **Les tableaux.** Leurs couches sont désignées par les matières que le monde pose sur ses
   // cadres, dans l'ordre de cette liste. Un échec de chargement ne doit pas empêcher
   // d'entrer : on se rabat sur un aplat, et le musée reste visitable.
+  let pictures = noPictures(device)
   try {
-    renderer.setPictures(
-      await loadPictures(device, [musee, julia, hunter, myworld, shell, antivirus]),
-    )
+    // Une couche de plus que d'images : c'est l'écran de la machine, réécrit à chaque
+    // instant par le projet qui tourne derrière.
+    pictures = await loadPictures(device, [musee, julia, hunter, myworld, shell, antivirus], 1)
   } catch (err) {
     console.error('tableaux :', err)
-    renderer.setPictures(noPictures(device))
+  }
+  renderer.setPictures(pictures)
+
+  /**
+   * **La première machine.** Le vrai Wolf3D, compilé en WebAssembly, qui bâtit son labyrinthe
+   * et le rend par son propre lancer de rayon. S'il ne se charge pas, l'écran reste éteint et
+   * le musée se visite quand même : une machine en panne ne ferme pas le bâtiment.
+   */
+  const MACHINE_LAYER = 6
+  let maze: Maze | null = null
+  try {
+    maze = await Maze.load()
+  } catch (err) {
+    console.error('wolf3d :', err)
   }
 
   const player = new Player()
@@ -294,6 +309,9 @@ async function main(): Promise<void> {
     if (!paused) {
       player.update(dt, world, keys)
       projectiles.update(dt, world)
+      // La machine tourne, qu'on la regarde ou non — c'est ce qui fait qu'on la découvre
+      // déjà en marche plutôt qu'à mettre en marche.
+      if (maze) pictures.paint(MACHINE_LAYER, maze.step(dt), 512, 288)
     }
 
     renderer.render(

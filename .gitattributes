@@ -1,0 +1,2 @@
+src/machines/*.wasm binary
+machines/**/*.c linguist-vendored
