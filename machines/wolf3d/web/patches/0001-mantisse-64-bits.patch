@@ -1,0 +1,21 @@
+Un champ de bits de 64 bits demande un type de 64 bits.
+
+`unsigned long` fait 64 bits sur Linux 64 bits, et 32 bits partout ailleurs —
+sur Windows, sur wasm32, sur toute cible ILP32. Le champ ne tient donc pas dans
+son type et le compilateur refuse, à juste titre.
+
+`unsigned long long` fait au moins 64 bits sur toutes les plateformes. Le
+correctif ne change rien au comportement sur la machine d'origine, et il rend le
+fichier portable. Il vaudrait la peine d'être remonté dans le dépôt du jeu.
+
+--- a/lib/my_printf/my_printf.h
++++ b/lib/my_printf/my_printf.h
+@@ -62,7 +62,7 @@
+ typedef union ldb {
+     long double ld;
+     struct {
+-        unsigned long mantissa : 64;
++        unsigned long long mantissa : 64;
+         unsigned int exponent : 15;
+         unsigned int sign : 1;
+     };

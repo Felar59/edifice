@@ -13,3 +13,6 @@ tools/.build/
 # La compilation du noyau de physique. Le `.wasm` produit, lui, est versionné :
 # `npm run dev` doit fonctionner sans avoir Rust installé.
 physique/target/
+machines/wolf3d/web/wolf3d.js
+machines/wolf3d/web/wolf3d.wasm
+machines/wolf3d/web/wolf3d.data
