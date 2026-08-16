@@ -8,6 +8,7 @@ import { CUBE_SIZE, Projectiles } from './player/projectiles'
 import { Physics } from './player/physique'
 import { loadPictures, noPictures } from './render/pictures'
 import { Maze } from './machines/wolf3d'
+import { Jeu } from './machines/wolf3d-jeu'
 import musee from './assets/musee1.png?url'
 import julia from './assets/Julia1.png?url'
 import hunter from './assets/my_hunter1.png?url'
@@ -135,6 +136,26 @@ async function main(): Promise<void> {
   }
 
   /**
+   * **Et le jeu entier, derrière.** Le noyau ci-dessus tourne dès l'ouverture : c'est
+   * l'écran allumé qu'on aperçoit en entrant dans la grande salle. Le jeu complet pèse dix-sept
+   * mégaoctets et ne se charge qu'en approchant — le temps de traverser la salle, il tourne, et
+   * l'écran passe de la démonstration au vrai jeu sans qu'on ait rien à faire.
+   */
+  let jeu: Jeu | null = null
+  let chargement: Promise<void> | null = null
+  const approcher = (): void => {
+    if (chargement) return
+    chargement = Jeu.charger()
+      .then((pret) => {
+        jeu = pret
+      })
+      .catch((err) => {
+        // Une machine en panne ne ferme pas le bâtiment : le noyau garde l'écran.
+        console.error('wolf3d (jeu entier) :', err)
+      })
+  }
+
+  /**
    * A-t-on la main sur la machine ?
    *
    * Deux états, et rien entre les deux : ou l'on marche dans le musée, ou l'on joue au jeu.
@@ -144,15 +165,41 @@ async function main(): Promise<void> {
    */
   let playing = false
 
-  /** Est-on assez près de l'écran pour s'en servir ? */
-  const atMachine = (): boolean => {
+  /**
+   * Prendre la machine, et la lâcher.
+   *
+   * **Le pointeur change de mains.** Le musée le garde verrouillé sur son canevas pour
+   * tourner la tête du visiteur ; le jeu, lui, en a besoin des deux façons — un curseur
+   * visible pour son menu, des déplacements pour viser. C'est exactement ce que fait un
+   * bureau, et la seule manière de le reproduire est de le lui rendre entièrement : on
+   * déverrouille en prenant la machine, et le jeu reprend le pointeur lui-même quand il
+   * lance une partie. On le récupère en le lâchant.
+   */
+  const take = (): void => {
+    playing = true
+    document.exitPointerLock()
+    jeu?.prendre()
+  }
+  const release = (): void => {
+    playing = false
+    jeu?.lacher()
+    // La touche qui lâche est un geste de l'utilisateur : le navigateur accepte donc de
+    // rendre le pointeur au musée dans la foulée.
+    void canvas.requestPointerLock()
+  }
+
+  /** Le carré de la distance à l'écran, ou l'infini si l'on n'est pas dans sa salle. */
+  const toMachine = (): number => {
     const m = getLandmarks()
-    if (player.cell !== m.machineCell) return false
+    if (player.cell !== m.machineCell) return Infinity
     const dx = player.pos.x - m.machinePos.x
     const dy = player.pos.y - m.machinePos.y
     const dz = player.pos.z - m.machinePos.z
-    return dx * dx + dy * dy + dz * dz < 25
+    return dx * dx + dy * dy + dz * dz
   }
+
+  /** Est-on assez près de l'écran pour s'en servir ? */
+  const atMachine = (): boolean => toMachine() < 25
 
   const player = new Player()
 
@@ -180,14 +227,22 @@ async function main(): Promise<void> {
     if (e.code === 'Escape' && settings.open) settings.setOpen(false)
   })
   canvas.addEventListener('click', () => {
+    // Pendant qu'on tient une machine, le pointeur est à elle : le lui reprendre au premier
+    // clic dans son menu la rendrait inutilisable.
+    if (playing) return
     if (document.pointerLockElement !== canvas) void canvas.requestPointerLock()
   })
   document.addEventListener('pointerlockchange', () => {
     // L'écran d'entrée revient quand on rend la souris — sauf si c'est la page de
-    // paramètres qui l'a demandée, auquel cas c'est elle qu'on regarde.
-    overlay.hidden = document.pointerLockElement === canvas || settings.open
+    // paramètres qui l'a demandée, auquel cas c'est elle qu'on regarde, et sauf si c'est une
+    // machine qui l'a prise, auquel cas on est en train de jouer.
+    overlay.hidden = playing || document.pointerLockElement === canvas || settings.open
   })
   document.addEventListener('mousemove', (e) => {
+    // Le pointeur reste verrouillé sur le canevas du musée, même quand on joue : c'est le
+    // portage du jeu qui lit les mêmes déplacements de son côté. Ici, on cesse simplement
+    // de tourner la tête du visiteur — il ne bouge pas pendant qu'il tient la machine.
+    if (playing) return
     if (document.pointerLockElement === canvas) player.look(e.movementX, e.movementY)
   })
 
@@ -208,6 +263,12 @@ async function main(): Promise<void> {
 
     keys.add(e.code)
 
+    // **La machine prend tout le clavier**, sauf la touche qui la lâche. C'est la même
+    // règle que pour la marche : on ne change pas de commandes en s'asseyant devant un jeu,
+    // on change de ce qu'elles commandent — et lancer un cube dans le musée pendant qu'on
+    // vise dans le labyrinthe n'aurait aucun sens.
+    if (playing && e.code !== 'KeyE') return
+
     switch (e.code) {
       case 'KeyF':
         projectiles.throwFrom(player, world)
@@ -227,8 +288,8 @@ async function main(): Promise<void> {
       case 'KeyE':
         // **On lâche toujours, on ne prend que devant.** Une machine dont on ne peut pas
         // sortir est un piège, et le plan y tient : aucune énigme ne doit bloquer.
-        if (playing) playing = false
-        else if (maze && atMachine()) playing = true
+        if (playing) release()
+        else if ((jeu || maze) && atMachine()) take()
         break
       case 'BracketLeft':
         renderer.maxDepth = Math.max(0, renderer.maxDepth - 1)
@@ -324,6 +385,7 @@ async function main(): Promise<void> {
   let previous = performance.now()
   let fps = 0
   let paused = false
+  let ecran = 0
 
   const frame = (now: number): void => {
     // Onglet en arrière-plan, point d'arrêt dans le débogueur : un pas de temps
@@ -333,7 +395,11 @@ async function main(): Promise<void> {
     fps += (1 / Math.max(dt, 1e-4) - fps) * 0.1
 
     // On s'éloigne, on lâche : sans cela on piloterait un écran qu'on ne voit plus.
-    if (playing && !atMachine()) playing = false
+    if (playing && !atMachine()) release()
+
+    // On charge le jeu entier en approchant, une fois. Vingt-cinq mètres, c'est
+    // l'autre bout de la grande salle : le temps de la traverser, il tourne.
+    if (toMachine() < 625) approcher()
 
     if (!paused) {
       // Ou l'on marche dans le musée, ou l'on joue : le visiteur ne bouge pas pendant qu'il
@@ -342,13 +408,27 @@ async function main(): Promise<void> {
       projectiles.update(dt, world)
       // La machine tourne, qu'on la tienne ou non — c'est ce qui fait qu'on la découvre
       // déjà en marche plutôt qu'à mettre en marche.
-      if (maze) pictures.paint(MACHINE_LAYER, maze.step(dt, playing ? keys : null), 512, 288)
+      //
+      // Tant que le jeu entier n'est pas là, c'est le noyau qui occupe l'écran ; dès qu'il
+      // est là, c'est lui. La recopie n'a pas besoin de suivre l'image du musée — un écran
+      // de machine vu depuis une salle n'a rien à gagner à ses soixante images par seconde,
+      // et le jeu, lui, tourne à son propre rythme derrière.
+      if (jeu) {
+        if (!playing && ++ecran % 5 === 0) jeu.projeter(pictures, MACHINE_LAYER)
+      } else if (maze) {
+        pictures.paint(MACHINE_LAYER, maze.step(dt, null), 512, 288)
+      }
     }
 
-    renderer.render(
-      { cell: player.cell, pos: player.pos, forward: player.forward, up: player.up },
-      projectiles.toRenderList(),
-    )
+    // Pendant qu'on tient une machine, son écran couvre toute la page : dessiner le musée
+    // derrière ne servirait qu'à lui disputer la carte graphique, et c'est elle qui en a
+    // besoin. Sa dernière image reste là, prête pour le moment où l'on lâchera.
+    if (!playing) {
+      renderer.render(
+        { cell: player.cell, pos: player.pos, forward: player.forward, up: player.up },
+        projectiles.toRenderList(),
+      )
+    }
 
     hud.update({
       fps,
@@ -361,9 +441,15 @@ async function main(): Promise<void> {
       aim: castRay(world, player.cell, player.pos, player.forward),
       prompt: playing
         ? 'E — lâcher la machine'
-        : maze && atMachine()
-          ? 'E — prendre la main'
-          : null,
+        : !atMachine()
+          ? null
+          : jeu
+            ? 'E — prendre la main'
+            : chargement
+              ? 'Wolf3D démarre…'
+              : maze
+                ? 'E — prendre la main'
+                : null,
     })
 
     hook.frames++

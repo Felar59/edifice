@@ -193,6 +193,15 @@ export function presets(): Preset[] {
       pos: marks.cryptPos,
       forward: marks.cryptForward,
     },
+    // Devant la machine. Ce point de vue ne teste pas le musée : il teste ce que le musée
+    // montre. Quatre mètres et demi devant l'écran de la grande salle — dans le rayon des
+    // cinq mètres où `E` prend la main, et assez loin pour voir l'écran entier.
+    {
+      name: 'Devant la machine',
+      cell: marks.machineCell,
+      pos: { x: marks.machinePos.x, y: marks.machinePos.y - 0.6, z: marks.machinePos.z - 4.5 },
+      forward: { x: 0, y: 0.02, z: 1 },
+    },
   ]
   return cached
 }

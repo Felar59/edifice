@@ -13,6 +13,10 @@ tools/.build/
 # La compilation du noyau de physique. Le `.wasm` produit, lui, est versionné :
 # `npm run dev` doit fonctionner sans avoir Rust installé.
 physique/target/
+# La page d'essai du portage, qui sert à voir le jeu tourner tout seul. Elle se
+# régénère avec `build.sh` ; c'est la copie du musée, dans `public/`, qui est
+# versionnée — même règle que pour la physique : `npm run dev` doit montrer la
+# machine sans avoir à installer emscripten ni à rejouer les correctifs de SFML.
 machines/wolf3d/web/wolf3d.js
 machines/wolf3d/web/wolf3d.wasm
 machines/wolf3d/web/wolf3d.data

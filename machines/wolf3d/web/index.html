@@ -10,35 +10,37 @@
 </style>
 <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
 <div id="log"></div>
+<script src="wolf3d.js"></script>
 <script>
   window.addEventListener('error', (e) => { window.__err = String(e.message) })
   // Page d'essai, hors du musée : elle sert à voir tourner le jeu tout seul
   // avant de l'accrocher au mur de la grande salle.
   const log = document.getElementById('log')
   const say = (s) => { log.textContent += s + '\n'; log.scrollTop = log.scrollHeight }
-  var Module = {
+
+  creerWolf3d({
     canvas: document.getElementById('canvas'),
     print: say,
     printErr: say,
-    onRuntimeInitialized: () => {
-      say('— module chargé —')
-      // On appelle `main` nous-mêmes, avec ses **trois** arguments. Emscripten
-      // n'en passe que deux, et le jeu lit le troisième — l'environnement — dès
-      // sa première ligne pour vérifier qu'il y a un écran.
-      const name = 'wolf3d'
-      const bytes = Module.lengthBytesUTF8(name) + 1
-      const str = Module._malloc(bytes)
-      Module.stringToUTF8(name, str, bytes)
-      const argv = Module._malloc(8)
-      // `setValue` plutôt que HEAPU32 : la mémoire peut grandir, et les vues
-      // typées sont alors remplacées. Emscripten n'expose pas les anciennes.
-      Module.setValue(argv, str, 'i32')
-      Module.setValue(argv + 4, 0, 'i32')
-      say('— lancement du jeu —')
-      Module._main(1, argv, Module._edifice_environ())
-    },
     onAbort: (w) => say('ABANDON : ' + w),
-    onExit: (c) => say('sortie du programme, code ' + c),
-  }
+  }).then((jeu) => {
+    say('— module chargé —')
+    // Hors du musée, la machine écoute tout de suite : il n'y a rien d'autre
+    // sur la page à qui les touches pourraient être destinées.
+    jeu._edifice_ecoute(1)
+    // On appelle `main` nous-mêmes, avec ses **trois** arguments. Emscripten
+    // n'en passe que deux, et le jeu lit le troisième — l'environnement — dès
+    // sa première ligne pour vérifier qu'il y a un écran.
+    const name = 'wolf3d'
+    const bytes = jeu.lengthBytesUTF8(name) + 1
+    const str = jeu._malloc(bytes)
+    jeu.stringToUTF8(name, str, bytes)
+    const argv = jeu._malloc(8)
+    // `setValue` plutôt que HEAPU32 : la mémoire peut grandir, et les vues
+    // typées sont alors remplacées. Emscripten n'expose pas les anciennes.
+    jeu.setValue(argv, str, 'i32')
+    jeu.setValue(argv + 4, 0, 'i32')
+    say('— lancement du jeu —')
+    jeu._main(1, argv, jeu._edifice_environ())
+  })
 </script>
-<script src="wolf3d.js"></script>

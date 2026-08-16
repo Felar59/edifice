@@ -60,8 +60,18 @@ em++ "$OBJ"/*.o \
   `# écrite au-dessus de WebGL, faite pour les portages de code OpenGL ancien.` \
   -sLEGACY_GL_EMULATION=1 \
   -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,stringToUTF8,lengthBytesUTF8,setValue \
-  -sEXPORTED_FUNCTIONS=_main,_edifice_environ,_malloc \
+  -sEXPORTED_FUNCTIONS=_main,_edifice_environ,_edifice_ecoute,_malloc \
   -sINVOKE_RUN=0 \
+  `# Une fabrique plutôt qu'un objet global : le musée est une application` \
+  `# à modules, et un « Module » posé sur window y serait une verrue — sans` \
+  `# compter qu'il faudrait l'installer avant que le script ne s'exécute.` \
+  -sMODULARIZE=1 \
+  -sEXPORT_NAME=creerWolf3d \
+  `# Le musée relit le canevas du jeu pour l'accrocher à son mur. Sans cela, le` \
+  `# navigateur vide le tampon de dessin dès qu'il l'a affiché, et la relecture` \
+  `# ne rapporte que du noir. Le drapeau porte un nom malheureux : il ne fait` \
+  `# rien d'autre que poser preserveDrawingBuffer.` \
+  -sGL_TESTING=1 \
   --preload-file "$GAME/Assets@/Assets" \
   --preload-file "$GAME/shaders@/shaders" \
   -o "$OUT"

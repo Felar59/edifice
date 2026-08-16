@@ -52,6 +52,16 @@ export interface Pictures {
    * eu à ajouter au nuanceur.
    */
   paint(layer: number, rgba: Uint8Array<ArrayBuffer>, width: number, height: number): void
+
+  /**
+   * Écrit une **image du navigateur** dans une couche, et refait sa chaîne de mip-maps.
+   *
+   * Même chose que `paint`, mais la source ne passe pas par la mémoire centrale : elle est
+   * déjà sur la carte graphique. C'est ce qu'il faut pour une machine qui a son propre
+   * canevas — le jeu entier compilé en WebAssembly, qui dessine avec WebGL — et dont l'image
+   * n'a aucune raison de faire l'aller-retour par le processeur pour finir accrochée au mur.
+   */
+  project(layer: number, source: ImageBitmap): void
 }
 
 const BLIT = /* wgsl */ `
@@ -137,8 +147,18 @@ export async function loadPictures(
     buildMips(device, texture, layer + 1, levels, layer)
   }
 
+  const project = (layer: number, source: ImageBitmap): void => {
+    device.queue.copyExternalImageToTexture(
+      { source },
+      { texture, origin: [0, 0, layer] },
+      [WIDE, HIGH],
+    )
+    buildMips(device, texture, layer + 1, levels, layer)
+  }
+
   return {
     paint,
+    project,
     view: texture.createView({ dimension: '2d-array' }),
     sampler: device.createSampler({
       label: 'tableaux',
@@ -219,6 +239,7 @@ export function noPictures(device: GPUDevice): Pictures {
   device.queue.writeTexture({ texture }, new Uint8Array([120, 118, 112, 255]), {}, [1, 1])
   return {
     paint: () => {},
+    project: () => {},
     view: texture.createView({ dimension: '2d-array' }),
     sampler: device.createSampler({}),
     count: 0,
