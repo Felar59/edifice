@@ -107,6 +107,13 @@ export interface Screen {
   height: number
   /** Le bouton d'alimentation, qu'on vise pour l'allumer ou l'éteindre. */
   bouton: Vec3
+  /**
+   * Les quatre coins de la dalle.
+   *
+   * Le musée les projette pour savoir où l'écran tombe dans l'image, et faire grandir le jeu
+   * depuis cet endroit précis plutôt que depuis le milieu de la page.
+   */
+  coins: [Vec3, Vec3, Vec3, Vec3]
 }
 
 export function pushArcade(out: number[], spec: Arcade): Screen {
@@ -359,5 +366,11 @@ export function pushArcade(out: number[], spec: Arcade): Screen {
     width: opening,
     height: high,
     bouton,
+    coins: [
+      plane(opening / 2, t0, 0.012),
+      plane(-opening / 2, t0, 0.012),
+      plane(-opening / 2, t1, 0.012),
+      plane(opening / 2, t1, 0.012),
+    ],
   }
 }

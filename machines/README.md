@@ -41,11 +41,16 @@ Un jeu qui continue de lancer ses rayons pour personne coûte exactement ce qu'i
 devant un joueur : la borne a donc un interrupteur, qu'on vise et qu'on presse, et elle
 s'éteint d'elle-même dès qu'on sort de la salle.
 
-Ce n'est pas une mise en veille approximative. Le portage suspend le jeu dans
-`Window::display` — le seul endroit de tout le programme où sa pile n'attend rien, la frame
-étant finie et l'image à l'écran. Entre deux réveils il n'exécute pas une instruction. Mesuré
-dans le musée : **zéro appel de dessin** borne éteinte, trois mille deux cents en trois
-secondes borne allumée, zéro de nouveau une fois la salle quittée.
+Et ce n'est pas une mise en veille : c'est une **coupure**. Le portage envoie au jeu
+l'événement de fermeture — le même que la croix d'une fenêtre — et il se referme par son
+propre chemin : sa boucle s'arrête, il libère ce qu'il a pris, `main` rend la main. Rien ne
+subsiste, et le prochain allumage est un vrai démarrage, menu compris. C'est la seule façon
+honnête d'éteindre un programme qu'on n'a pas écrit : lui demander de s'arrêter, plutôt que
+de le figer par surprise.
+
+Mesuré dans le musée : **zéro appel de dessin** avant le premier allumage, deux mille sept
+cents en deux secondes et demie borne allumée, zéro de nouveau une fois coupée. Et l'allumage
+ne coûte aucune saccade — soixante-trois images du musée pendant la première seconde.
 
 ### Les deux Wolf3D
 

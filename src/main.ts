@@ -7,7 +7,7 @@ import { castRay } from './world/ray'
 import { CUBE_SIZE, Projectiles } from './player/projectiles'
 import { Physics } from './player/physique'
 import { loadPictures, noPictures } from './render/pictures'
-import { Jeu } from './machines/wolf3d-jeu'
+import { Jeu, type Rect } from './machines/wolf3d-jeu'
 import { Demarrage, DUREE, JALONS } from './machines/demarrage'
 import { Sons } from './machines/son'
 import musee from './assets/musee1.png?url'
@@ -166,8 +166,11 @@ async function main(): Promise<void> {
         jeu = pret
         // Le bouton « Quit » du jeu ne peut pas fermer une fenêtre qui n'existe pas :
         // il ramène au musée. Le jeu redémarre derrière, et l'écran se rallume.
+        // Le jeu s'est refermé — par son bouton « Quit », ou parce qu'on a coupé la borne.
+        // Dans les deux cas la borne est éteinte : c'est cohérent, et c'est ce qu'on attend
+        // d'un meuble dont on vient de quitter le programme.
         jeu.auQuitter = () => {
-          if (playing) release()
+          eteindre()
         }
       })
       .catch((err) => {
@@ -196,17 +199,41 @@ async function main(): Promise<void> {
    * déverrouille en prenant la machine, et le jeu reprend le pointeur lui-même quand il
    * lance une partie. On le récupère en le lâchant.
    */
+  /**
+   * Où la dalle de la borne tombe dans l'image, en pixels de mise en page.
+   *
+   * C'est de là que part l'immersion : le jeu s'ouvre depuis l'écran qu'on regarde, et non
+   * depuis le milieu de la page. On projette les quatre coins et l'on prend leur enveloppe —
+   * la dalle est penchée, un rectangle droit suffit largement à donner le départ.
+   */
+  const placeDeLEcran = (): Rect | undefined => {
+    const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR)
+    const coins = getLandmarks().machineCorners.map((c) => renderer.ouOnRegarde(c, dpr))
+    if (coins.some((c) => c === null)) return undefined
+    const xs = coins.map((c) => c!.x)
+    const ys = coins.map((c) => c!.y)
+    const x = Math.min(...xs)
+    const y = Math.min(...ys)
+    return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y }
+  }
+
   const take = (): void => {
     playing = true
     document.body.classList.add('machine')
+    transition = 0.6
+    sons.plonger(false)
     // On ne décide pas du pointeur ici : c'est le portage qui rend au jeu l'état
     // exact qu'il avait demandé — libre dans ses menus, verrouillé dans une partie.
-    jeu?.prendre()
+    jeu?.prendre(placeDeLEcran())
   }
   const release = (): void => {
     playing = false
     document.body.classList.remove('machine')
-    jeu?.lacher()
+    // Le musée redessine pendant que l'image se referme : c'est ce qui donne le sentiment de
+    // reculer hors du meuble, plutôt que de voir un panneau disparaître.
+    transition = 0.4
+    sons.plonger(true)
+    jeu?.lacher(placeDeLEcran())
     // Et l'on reprend le pointeur — à l'image suivante, le temps que le navigateur ait
     // fini de le rendre. Demandé dans la foulée du déverrouillage, il est ignoré.
     requestAnimationFrame(() => void canvas.requestPointerLock())
@@ -226,6 +253,9 @@ async function main(): Promise<void> {
     bipsPasses = 0
     sons.interrupteur()
     sons.allumage()
+    // Le jeu démarre **maintenant**, pas à la fin de l'animation : il a ses images à
+    // charger, et l'allumage de l'écran couvre exactement ce temps-là.
+    jeu.demarrer()
   }
 
   const eteindre = (): void => {
@@ -477,6 +507,8 @@ async function main(): Promise<void> {
   let ecran = 0
   /** Où le regard rencontre la matière, cette image-ci. Le clavier s'en sert aussi. */
   let regard: ReturnType<typeof castRay> = null
+  /** Secondes restantes d'immersion : tant qu'il en reste, le musée se dessine derrière. */
+  let transition = 0
 
   const frame = (now: number): void => {
     // Onglet en arrière-plan, point d'arrêt dans le débogueur : un pas de temps
@@ -535,7 +567,6 @@ async function main(): Promise<void> {
         }
         if (allumage >= DUREE) {
           etat = 'allumee'
-          jeu?.reprendre()
           sons.ronron(true)
         } else {
           pictures.paint(MACHINE_LAYER, ecranBorne.image(allumage), 512, 288)
@@ -548,7 +579,9 @@ async function main(): Promise<void> {
     // Pendant qu'on tient une machine, son écran couvre toute la page : dessiner le musée
     // derrière ne servirait qu'à lui disputer la carte graphique, et c'est elle qui en a
     // besoin. Sa dernière image reste là, prête pour le moment où l'on lâchera.
-    if (!playing) {
+    if (transition > 0) transition = Math.max(0, transition - dt)
+
+    if (!playing || transition > 0) {
       renderer.render(
         { cell: player.cell, pos: player.pos, forward: player.forward, up: player.up },
         projectiles.toRenderList(),

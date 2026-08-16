@@ -1933,6 +1933,8 @@ export interface Landmarks {
   machinePos: Vec3
   /** Et son interrupteur, qu'on vise pour allumer ou éteindre. */
   machineButton: Vec3
+  /** Les quatre coins de sa dalle, pour l'animation d'immersion. */
+  machineCorners: [Vec3, Vec3, Vec3, Vec3]
   cryptCell: string
   cryptPos: Vec3
   cryptForward: Vec3
@@ -2314,6 +2316,9 @@ export function buildWorld(): World {
   /** Où se trouvent la dalle de la borne et son interrupteur, une fois le meuble construit. */
   let machineScreen: Vec3 = { x: 1214, y: GREAT_BOX.min.y + 1.5, z: GREAT_BOX.max.z - 1.5 }
   let machineButton: Vec3 = { x: 1214, y: GREAT_BOX.min.y + 0.7, z: GREAT_BOX.max.z - 1.6 }
+  let machineCorners: [Vec3, Vec3, Vec3, Vec3] = [
+    machineScreen, machineScreen, machineScreen, machineScreen,
+  ]
 
   const cells: Cell[] = [
     {
@@ -2621,6 +2626,7 @@ export function buildWorld(): World {
     })
     machineScreen = borne.centre
     machineButton = borne.bouton
+    machineCorners = borne.coins
 
     cells.push({
       id: GREAT,
@@ -2774,6 +2780,7 @@ export function buildWorld(): World {
     machineCell: GREAT,
     machinePos: machineScreen,
     machineButton,
+    machineCorners,
     wings: WINGS.map((w) => ({ id: w.id, purpose: w.purpose })),
   }
 

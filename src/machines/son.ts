@@ -146,6 +146,48 @@ export class Sons {
   }
 
   /**
+   * Le souffle de l'immersion : on entre dans la borne, ou l'on en sort.
+   *
+   * Une montée pour entrer, une descente pour sortir — et du souffle balayé par un filtre
+   * qui s'ouvre. C'est court, et cela ne fait qu'une chose : dire au corps que l'image qui
+   * grandit est un déplacement et non un changement d'écran.
+   */
+  plonger(retour: boolean): void {
+    const ctx = this.ouvrir()
+    if (!ctx || !this.maitre) return
+    const t = ctx.currentTime
+    const duree = retour ? 0.34 : 0.52
+
+    const bruit = ctx.createBufferSource()
+    bruit.buffer = this.souffle(ctx, duree + 0.1)
+    const balai = ctx.createBiquadFilter()
+    balai.type = 'bandpass'
+    balai.Q.value = 0.9
+    balai.frequency.setValueAtTime(retour ? 2400 : 320, t)
+    balai.frequency.exponentialRampToValueAtTime(retour ? 260 : 2600, t + duree)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.exponentialRampToValueAtTime(0.12, t + duree * 0.35)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + duree)
+    bruit.connect(balai).connect(g).connect(this.maitre)
+    bruit.start(t)
+    bruit.stop(t + duree + 0.05)
+
+    // Et une basse qui accompagne le mouvement, pour lui donner un corps.
+    const o = ctx.createOscillator()
+    o.type = 'sine'
+    o.frequency.setValueAtTime(retour ? 220 : 70, t)
+    o.frequency.exponentialRampToValueAtTime(retour ? 65 : 210, t + duree)
+    const go = ctx.createGain()
+    go.gain.setValueAtTime(0.0001, t)
+    go.gain.exponentialRampToValueAtTime(0.13, t + duree * 0.3)
+    go.gain.exponentialRampToValueAtTime(0.0001, t + duree)
+    o.connect(go).connect(this.maitre)
+    o.start(t)
+    o.stop(t + duree + 0.05)
+  }
+
+  /**
    * Le ronronnement du meuble, tant qu'il est allumé.
    *
    * Deux graves désaccordés d'un hertz : le battement lent qu'ils font entre eux est ce qui

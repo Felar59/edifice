@@ -249,6 +249,7 @@ export class Renderer {
   // Matrices réutilisées d'une image sur l'autre : rien ici ne doit allouer par
   // image, sinon le ramasse-miettes se réveille au pire moment.
   private readonly proj = create()
+  private readonly lastViewProj = create()
   private readonly scratch = new Float32Array(Math.max(SCENE_FLOATS, 240))
 
   constructor(device: GPUDevice, context: GPUCanvasContext, canvasFormat: GPUTextureFormat) {
@@ -360,6 +361,28 @@ export class Renderer {
     return { buffer, vertexCount: verts.length / FLOATS_PER_VERTEX }
   }
 
+  /**
+   * Où un point de la salle courante tombe sur l'écran, en pixels de mise en page.
+   *
+   * Le musée en a besoin pour une seule chose, et elle vaut la peine : faire naître l'image
+   * d'une machine **à l'endroit exact de son écran** avant de l'agrandir jusqu'au bord de la
+   * page. Sans cette mesure, l'agrandissement partirait du centre et l'on verrait une image
+   * apparaître ; avec elle, on entre dans la borne qu'on regarde.
+   *
+   * Rend `null` derrière l'œil, où la projection ne veut plus rien dire.
+   */
+  ouOnRegarde(point: Vec3, dpr: number): { x: number; y: number } | null {
+    const m = this.lastViewProj
+    const x = m[0]! * point.x + m[4]! * point.y + m[8]! * point.z + m[12]!
+    const y = m[1]! * point.x + m[5]! * point.y + m[9]! * point.z + m[13]!
+    const w = m[3]! * point.x + m[7]! * point.y + m[11]! * point.z + m[15]!
+    if (w <= 1e-4) return null
+    return {
+      x: ((x / w) * 0.5 + 0.5) * (this.width / dpr),
+      y: (0.5 - (y / w) * 0.5) * (this.height / dpr),
+    }
+  }
+
   resize(width: number, height: number): void {
     if (width === this.width && height === this.height) return
     this.width = Math.max(1, width)
@@ -406,6 +429,9 @@ export class Renderer {
     perspective(this.proj, this.fovY, this.width / this.height, NEAR, 300)
 
     const camWorld = cameraToWorld(camera)
+    // Gardée pour `ouOnRegarde` : le musée s'en sert pour savoir où un objet de la salle
+    // atterrit sur l'écran, et faire grandir une image depuis exactement cet endroit.
+    multiply(this.lastViewProj, this.proj, invertRigid(create(), camWorld))
 
     const encoder = this.device.createCommandEncoder({ label: 'image' })
     const canvasView = this.context.getCurrentTexture().createView()

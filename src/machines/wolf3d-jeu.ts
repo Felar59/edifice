@@ -28,6 +28,14 @@
  * ici : le musée garde le pointeur, et le jeu reçoit les déplacements comme s'il l'avait.
  */
 
+/** La place d'un écran dans l'image, en pixels de mise en page. */
+export interface Rect {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
 /** Où sont les fichiers du jeu. C'est la page qui sait, pas le module. */
 const RACINE = '/machines/wolf3d/'
 
@@ -41,6 +49,7 @@ interface Module {
   _edifice_environ(): number
   _edifice_ecoute(on: number): void
   _edifice_suspend(on: number): void
+  _edifice_fermer(): void
   _malloc(bytes: number): number
   setValue(at: number, value: number, type: string): void
   stringToUTF8(text: string, at: number, room: number): void
@@ -64,6 +73,16 @@ export class Jeu {
 
   /** A-t-on la main ? */
   tenu = false
+
+  /**
+   * Le jeu tourne-t-il ?
+   *
+   * Éteindre la borne ne suspend pas le jeu : elle le **coupe**. Il se referme par son
+   * propre chemin, libère ce qu'il a pris, et `main` rend la main. Rien ne subsiste — pas
+   * de partie en cours qui attendrait, pas de menu resté ouvert. Le prochain allumage est
+   * un vrai démarrage, ce qui est la seule chose qu'un interrupteur puisse promettre.
+   */
+  vivant = false
 
   /**
    * Ce que le musée fait quand le jeu se referme sur son propre « Quit ».
@@ -125,23 +144,20 @@ export class Jeu {
     })
 
     // La machine n'écoute pas encore : on marche dans le musée, et les touches y servent
-    // déjà à quelque chose. Et elle est **arrêtée** : c'est son bouton qui l'allume, et le
-    // jeu ne consomme rien tant que personne n'a appuyé.
+    // déjà à quelque chose. Et **le jeu n'est pas lancé** : le module est là, prêt, mais
+    // c'est le bouton de la borne qui appellera `main`. Une borne éteinte ne calcule rien.
     module._edifice_ecoute(0)
-    module._edifice_suspend(1)
 
     const jeu = new Jeu(module, canevas)
 
-    // Le jeu peut se refermer tout seul — c'est ce que fait son bouton « Quit ». Le portage
-    // nous prévient ; on ramène le visiteur au musée et l'on rallume la machine derrière lui.
+    // Le jeu peut se refermer de lui-même — c'est ce que fait son bouton « Quit », et c'est
+    // aussi ce qu'on lui demande en coupant la borne. Dans les deux cas il n'y a plus de jeu
+    // derrière l'écran, et le musée doit le savoir.
     module.edificeFerme = () => {
+      jeu.vivant = false
       jeu.auQuitter?.()
-      // Un temps mort avant de relancer : on est appelé depuis le destructeur de la fenêtre,
-      // c'est-à-dire depuis l'intérieur du jeu qui s'arrête.
-      setTimeout(() => jeu.lancer(), 0)
     }
 
-    jeu.lancer()
     return jeu
   }
 
@@ -152,6 +168,12 @@ export class Jeu {
    * première ligne, pour vérifier qu'il y a un écran. C'est aussi par là qu'on le rallume
    * quand il s'est refermé.
    */
+  demarrer(): void {
+    if (this.vivant) return
+    this.vivant = true
+    this.lancer()
+  }
+
   private lancer(): void {
     const nom = 'wolf3d'
     const octets = this.module.lengthBytesUTF8(nom) + 1
@@ -171,39 +193,79 @@ export class Jeu {
    * Le canevas récupère aussi les événements de pointeur — sans quoi les clics traverseraient
    * jusqu'à celui du musée, qui reprendrait le verrouillage au premier clic dans le menu.
    */
-  prendre(): void {
+  prendre(depuis?: Rect): void {
     this.tenu = true
     this.canevas.style.visibility = 'visible'
     this.canevas.style.pointerEvents = 'auto'
     this.module._edifice_ecoute(1)
+    this.plonger(depuis, false)
   }
 
   /**
-   * Arrêter la machine, et la remettre en marche.
+   * Couper la machine.
    *
-   * Le jeu s'endort à la fin d'une image, au seul endroit où sa pile n'attend rien — voir
-   * `Window::display`, côté portage. Entre deux réveils il n'exécute pas une instruction :
-   * ce n'est pas un ralentissement, c'est un arrêt, et c'est ce qu'il faut quand le visiteur
-   * a quitté la salle.
+   * On envoie au jeu l'événement de fermeture — le même que la croix d'une fenêtre — et il
+   * se referme par son propre chemin. C'est la seule façon honnête d'éteindre un programme
+   * qu'on n'a pas écrit : lui demander de s'arrêter, plutôt que de le figer par surprise.
    */
   arreter(): void {
-    this.module._edifice_suspend(1)
+    if (!this.vivant) return
+    this.module._edifice_fermer()
   }
 
-  reprendre(): void {
-    this.module._edifice_suspend(0)
-  }
-
-  /** La lâcher. Le jeu continue de tourner derrière l'écran — on ne l'entend plus. */
-  lacher(): void {
+  /** La lâcher : l'image se referme sur l'écran de la borne, puis s'efface. */
+  lacher(vers?: Rect): void {
     this.tenu = false
-    this.canevas.style.visibility = 'hidden'
     this.canevas.style.pointerEvents = 'none'
     this.module._edifice_ecoute(0)
     // On rend le pointeur explicitement. Le demander directement pour le canevas du
     // musée pendant que celui du jeu le tient ne suffit pas : le navigateur ne
     // transfère pas un verrouillage, il faut le défaire d'abord.
     if (document.pointerLockElement === this.canevas) document.exitPointerLock()
+
+    const animation = this.plonger(vers, true)
+    if (!animation) {
+      this.canevas.style.visibility = 'hidden'
+      return
+    }
+    animation.addEventListener('finish', () => {
+      if (!this.tenu) this.canevas.style.visibility = 'hidden'
+    })
+  }
+
+  /**
+   * **L'immersion.**
+   *
+   * L'image du jeu grandit depuis l'écran de la borne jusqu'au bord de la page. Le rectangle
+   * qu'on reçoit est la place que la dalle occupe dans l'image du musée, mesurée à la
+   * projection : sans lui, une image apparaît ; avec lui, on entre dans le meuble qu'on
+   * regardait. Le musée continue de se dessiner derrière pendant ce temps-là, de sorte qu'on
+   * voie la salle s'éloigner autour de l'écran.
+   *
+   * Le canevas occupe déjà toute la page : on ne le redimensionne pas, on le **transforme**,
+   * ce qui ne coûte rien et ne touche pas au rendu. L'origine étant son coin supérieur
+   * gauche, une translation suivie d'une mise à l'échelle le pose exactement dans le
+   * rectangle voulu.
+   */
+  private plonger(rect: Rect | undefined, retour: boolean): Animation | null {
+    if (!rect || !this.canevas.animate) return null
+
+    const W = this.canevas.clientWidth || 1
+    const H = this.canevas.clientHeight || 1
+    const petit = {
+      transform: `translate(${rect.x}px, ${rect.y}px) scale(${rect.w / W}, ${rect.h / H})`,
+      opacity: '0.4',
+      filter: 'brightness(1.6) contrast(1.2)',
+    }
+    const grand = { transform: 'translate(0px, 0px) scale(1, 1)', opacity: '1', filter: 'none' }
+
+    return this.canevas.animate(retour ? [grand, petit] : [petit, grand], {
+      duration: retour ? 360 : 560,
+      // Vif au départ, posé à l'arrivée : c'est la courbe d'un objet qu'on approche du
+      // visage, et non celle d'un panneau qui coulisse.
+      easing: retour ? 'cubic-bezier(0.5, 0, 0.9, 0.4)' : 'cubic-bezier(0.13, 0.75, 0.2, 1)',
+      fill: 'both',
+    })
   }
 
   /**
