@@ -148,6 +148,11 @@ async function main(): Promise<void> {
     chargement = Jeu.charger()
       .then((pret) => {
         jeu = pret
+        // Le bouton « Quit » du jeu ne peut pas fermer une fenêtre qui n'existe pas :
+        // il ramène au musée. Le jeu redémarre derrière, et l'écran se rallume.
+        jeu.auQuitter = () => {
+          if (playing) release()
+        }
       })
       .catch((err) => {
         // Une machine en panne ne ferme pas le bâtiment : le noyau garde l'écran.
@@ -177,15 +182,16 @@ async function main(): Promise<void> {
    */
   const take = (): void => {
     playing = true
-    document.exitPointerLock()
+    // On ne décide pas du pointeur ici : c'est le portage qui rend au jeu l'état
+    // exact qu'il avait demandé — libre dans ses menus, verrouillé dans une partie.
     jeu?.prendre()
   }
   const release = (): void => {
     playing = false
     jeu?.lacher()
-    // La touche qui lâche est un geste de l'utilisateur : le navigateur accepte donc de
-    // rendre le pointeur au musée dans la foulée.
-    void canvas.requestPointerLock()
+    // Et l'on reprend le pointeur — à l'image suivante, le temps que le navigateur ait
+    // fini de le rendre. Demandé dans la foulée du déverrouillage, il est ignoré.
+    requestAnimationFrame(() => void canvas.requestPointerLock())
   }
 
   /** Le carré de la distance à l'écran, ou l'infini si l'on n'est pas dans sa salle. */
@@ -267,7 +273,7 @@ async function main(): Promise<void> {
     // règle que pour la marche : on ne change pas de commandes en s'asseyant devant un jeu,
     // on change de ce qu'elles commandent — et lancer un cube dans le musée pendant qu'on
     // vise dans le labyrinthe n'aurait aucun sens.
-    if (playing && e.code !== 'KeyE') return
+    if (playing && e.code !== 'Backquote') return
 
     switch (e.code) {
       case 'KeyF':
@@ -286,10 +292,24 @@ async function main(): Promise<void> {
         renderer.flat = !renderer.flat
         break
       case 'KeyE':
-        // **On lâche toujours, on ne prend que devant.** Une machine dont on ne peut pas
-        // sortir est un piège, et le plan y tient : aucune énigme ne doit bloquer.
+        // **On ne prend que devant, et on lâche avec une autre touche.** Une fois la
+        // machine tenue, `E` est à elle — le jeu s'en sert, et elle s'écrit dans le nom
+        // de carte. C'est `Backquote` qui rend la main : voir plus bas.
+        if (!playing && (jeu || maze) && atMachine()) take()
+        break
+
+      case 'Backquote':
+        // **La touche que le musée garde pour lui.**
+        //
+        // Il en faut une pour sortir d'une machine — une machine dont on ne peut pas
+        // sortir est un piège, et le plan y tient : aucune énigme ne doit bloquer. Mais
+        // toutes les touches d'un jeu lui appartiennent, jusqu'aux lettres qui s'écrivent
+        // dans ses champs de texte. On en réserve donc une seule, celle du coin gauche du
+        // clavier — « ² » en AZERTY, « ` » en QWERTY — et le portage ne la transmet jamais.
+        //
+        // Elle est désignée par sa **place** et non par son caractère : `Backquote` est la
+        // touche physique, la même sur les deux dispositions.
         if (playing) release()
-        else if ((jeu || maze) && atMachine()) take()
         break
       case 'BracketLeft':
         renderer.maxDepth = Math.max(0, renderer.maxDepth - 1)
@@ -440,7 +460,7 @@ async function main(): Promise<void> {
       stats: renderer.getStats(),
       aim: castRay(world, player.cell, player.pos, player.forward),
       prompt: playing
-        ? 'E — lâcher la machine'
+        ? '² — lâcher la machine'
         : !atMachine()
           ? null
           : jeu

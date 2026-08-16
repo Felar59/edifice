@@ -44,6 +44,8 @@ interface Module {
   setValue(at: number, value: number, type: string): void
   stringToUTF8(text: string, at: number, room: number): void
   lengthBytesUTF8(text: string): number
+  /** Appelé par le portage quand le jeu ferme sa fenêtre — son bouton « Quit ». */
+  edificeFerme?: () => void
 }
 
 declare global {
@@ -61,6 +63,15 @@ export class Jeu {
 
   /** A-t-on la main ? */
   tenu = false
+
+  /**
+   * Ce que le musée fait quand le jeu se referme sur son propre « Quit ».
+   *
+   * Il faut bien que ce bouton mène quelque part : dans une page, fermer la fenêtre
+   * ne veut rien dire. Il ramène donc au musée — et la machine se rallume derrière,
+   * pour que l'écran ne reste pas éteint sur le mur.
+   */
+  auQuitter: (() => void) | null = null
 
   /** Une recopie est-elle en cours ? Elles sont asynchrones et ne doivent pas se doubler. */
   private copie = false
@@ -113,21 +124,39 @@ export class Jeu {
     // déjà à quelque chose.
     module._edifice_ecoute(0)
 
-    // On appelle `main` soi-même, avec ses **trois** arguments. Emscripten n'en passe que
-    // deux, et le jeu lit le troisième — l'environnement — dès sa première ligne, pour
-    // vérifier qu'il y a un écran.
+    const jeu = new Jeu(module, canevas)
+
+    // Le jeu peut se refermer tout seul — c'est ce que fait son bouton « Quit ». Le portage
+    // nous prévient ; on ramène le visiteur au musée et l'on rallume la machine derrière lui.
+    module.edificeFerme = () => {
+      jeu.auQuitter?.()
+      // Un temps mort avant de relancer : on est appelé depuis le destructeur de la fenêtre,
+      // c'est-à-dire depuis l'intérieur du jeu qui s'arrête.
+      setTimeout(() => jeu.lancer(), 0)
+    }
+
+    jeu.lancer()
+    return jeu
+  }
+
+  /**
+   * Démarre le jeu — son `main`, avec ses **trois** arguments.
+   *
+   * Emscripten n'en passe que deux ; le jeu lit le troisième — l'environnement — dès sa
+   * première ligne, pour vérifier qu'il y a un écran. C'est aussi par là qu'on le rallume
+   * quand il s'est refermé.
+   */
+  private lancer(): void {
     const nom = 'wolf3d'
-    const octets = module.lengthBytesUTF8(nom) + 1
-    const texte = module._malloc(octets)
-    module.stringToUTF8(nom, texte, octets)
-    const argv = module._malloc(8)
+    const octets = this.module.lengthBytesUTF8(nom) + 1
+    const texte = this.module._malloc(octets)
+    this.module.stringToUTF8(nom, texte, octets)
+    const argv = this.module._malloc(8)
     // `setValue` plutôt qu'une vue typée : la mémoire peut grandir, et les vues sont alors
     // remplacées.
-    module.setValue(argv, texte, 'i32')
-    module.setValue(argv + 4, 0, 'i32')
-    module._main(1, argv, module._edifice_environ())
-
-    return new Jeu(module, canevas)
+    this.module.setValue(argv, texte, 'i32')
+    this.module.setValue(argv + 4, 0, 'i32')
+    this.module._main(1, argv, this.module._edifice_environ())
   }
 
   /**
@@ -149,6 +178,10 @@ export class Jeu {
     this.canevas.style.visibility = 'hidden'
     this.canevas.style.pointerEvents = 'none'
     this.module._edifice_ecoute(0)
+    // On rend le pointeur explicitement. Le demander directement pour le canevas du
+    // musée pendant que celui du jeu le tient ne suffit pas : le navigateur ne
+    // transfère pas un verrouillage, il faut le défaire d'abord.
+    if (document.pointerLockElement === this.canevas) document.exitPointerLock()
   }
 
   /**
