@@ -15,6 +15,7 @@ import hunter from './assets/my_hunter1.png?url'
 import myworld from './assets/myworld1.png?url'
 import shell from './assets/42sh1.png?url'
 import antivirus from './assets/antivirus.png?url'
+import casque from './assets/wolf-casque.png?url'
 import physiqueUrl from './player/physique.wasm?url'
 import { buildWorld, getLandmarks, HUB } from './world/world'
 import { buildCube } from './world/geometry'
@@ -116,7 +117,7 @@ async function main(): Promise<void> {
   try {
     // Une couche de plus que d'images : c'est l'écran de la machine, réécrit à chaque
     // instant par le projet qui tourne derrière.
-    pictures = await loadPictures(device, [musee, julia, hunter, myworld, shell, antivirus], 1)
+    pictures = await loadPictures(device, [musee, julia, hunter, myworld, shell, antivirus, casque], 1)
   } catch (err) {
     console.error('tableaux :', err)
   }
@@ -127,7 +128,7 @@ async function main(): Promise<void> {
    * et le rend par son propre lancer de rayon. S'il ne se charge pas, l'écran reste éteint et
    * le musée se visite quand même : une machine en panne ne ferme pas le bâtiment.
    */
-  const MACHINE_LAYER = 6
+  const MACHINE_LAYER = 7
   let maze: Maze | null = null
   try {
     maze = await Maze.load()
@@ -207,7 +208,9 @@ async function main(): Promise<void> {
   }
 
   /** Est-on assez près de l'écran pour s'en servir ? */
-  const atMachine = (): boolean => toMachine() < 25
+  // Trois mètres de la dalle : on est devant la borne, pas dans la salle. Le meuble
+  // occupe déjà le premier mètre, et l'on ne prend pas une machine de loin.
+  const atMachine = (): boolean => toMachine() < 9
 
   const player = new Player()
 

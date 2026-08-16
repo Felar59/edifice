@@ -32,7 +32,6 @@ import {
   buildRoom,
   buildTwistedTube,
   pushBlock,
-  pushQuad,
   pushSpiral,
   pushTubeCap,
   pushWall,
@@ -41,6 +40,7 @@ import {
   type RoomHoles,
   type RoomPalette,
 } from './geometry'
+import { pushArcade, pushPipe } from './arcade'
 import { mouthRadiance, type CellLighting, type Colour } from './light'
 import { heightAtTurn, onSquare, stepAngle, stepHeight } from './spiral'
 import {
@@ -1023,6 +1023,8 @@ const PICTURES = {
   monde: 103,
   shell: 104,
   antivirus: 105,
+  /** L'enseigne de la borne : le casque du jeu, en pixels, sur sa plaque. */
+  casque: 106,
   /**
    * L'écran d'une machine.
    *
@@ -1031,7 +1033,7 @@ const PICTURES = {
    * ses colonnes. Le musée n'a rien eu à apprendre pour cela : une machine s'accroche au mur
    * comme un tableau, avec la même matière et le même filtrage.
    */
-  machine: 106,
+  machine: 107,
 } as const
 
 const VIGNETTE_SIDE = 4.4
@@ -2307,6 +2309,9 @@ export function buildWorld(): World {
   const hubExtra: number[] = []
   for (const { mouth: m } of hubMouths) pushReveal(hubExtra, m, accent)
 
+  /** Où se trouve la dalle de la borne, une fois le meuble construit. */
+  let machineScreen: Vec3 = { x: 1214, y: GREAT_BOX.min.y + 1.5, z: GREAT_BOX.max.z - 1.5 }
+
   const cells: Cell[] = [
     {
       id: HUB,
@@ -2531,44 +2536,85 @@ export function buildWorld(): World {
       carries: true,
     })
 
-    // **La première machine.** Un écran contre la paroi nord, et le vrai Wolf3D derrière.
-    // Le plan lui promet mieux — une maquette sur une table, un stéréoscope où l'on colle
-    // l'œil — mais il fallait d'abord prouver que le C d'origine tourne dans le musée. Il
-    // tourne : ce qu'on voit là est son lancer de rayon, dans son labyrinthe.
+    // **La première machine.** Une borne d'arcade contre la paroi nord, et le vrai Wolf3D
+    // dedans. Le plan promet d'autres formes — une maquette sur une table, un stéréoscope
+    // où l'on colle l'œil — mais celui-ci demandait une borne : c'est un jeu, on s'y met
+    // debout, et le meuble dit ce qu'on a le droit d'en faire mieux qu'aucun panneau.
     const screen: number[] = []
     // Contre la paroi du fond, en face de la porte : c'est la première chose qu'on voit en
     // entrant, et il faut traverser la salle pour y arriver.
     const wall = GREAT_BOX.max.z
     const foot = GREAT_BOX.min.y
-    pushBlock(
-      screen,
-      { x: 1210.8, y: foot + 0.6, z: wall - 0.35 },
-      { x: 1217.2, y: foot + 5, z: wall },
-      { side: made(tinted(GREAT_TINT, 0.16), MATTER.tole), top: made(tinted(GREAT_TINT, 0.22), MATTER.tole) },
-    )
-    // Un socle, pour que l'écran ait l'air posé et non collé.
-    pushBlock(
-      screen,
-      { x: 1210.2, y: foot, z: wall - 1.1 },
-      { x: 1217.8, y: foot + 0.6, z: wall },
-      { side: made(tinted(GREAT_TINT, 0.2), MATTER.beton), top: made(tinted(GREAT_TINT, 0.3), MATTER.beton) },
-    )
-    {
-      const x0 = 1211.2
-      const x1 = 1216.8
-      const y0 = foot + 1
-      const y1 = foot + 4.15
-      const z = wall - 0.36
-      pushQuad(
-        screen,
-        { x: x1, y: y0, z },
-        { x: x0, y: y0, z },
-        { x: x0, y: y1, z },
-        { x: x1, y: y1, z },
-        made([1, 1, 1], PICTURES.machine),
-        [[0, 1], [1, 1], [1, 0], [0, 0]],
-      )
+
+    /**
+     * **La palette du jeu**, relevée sur ses propres textures.
+     *
+     * Wolf3D est chaud : ses murs, son sol et son plafond tournent autour de (52, 40, 32) —
+     * un brun-gris de béton sale —, sa bande est un crimson désaturé, et le seul éclat de la
+     * palette est l'orange du casque et du panneau d'armes. Le musée, lui, est bleu-gris :
+     * une borne peinte de sa teinte à lui aurait eu l'air d'un meuble du musée qui montre un
+     * jeu, au lieu d'un morceau du jeu posé dans le musée.
+     */
+    const WOLF = {
+      tole: [0.2, 0.157, 0.125] as Color,
+      ombre: [0.105, 0.085, 0.07] as Color,
+      rouge: [0.4, 0.125, 0.095] as Color,
+      orange: [0.86, 0.36, 0.08] as Color,
+      /** L'ambre des enseignes : émissive, donc peinte sombre pour ne pas partir au blanc. */
+      ambre: [0.2, 0.08, 0.018] as Color,
     }
+
+    // **Le pan de mur du jeu.** Une tôle sombre, la bande rouge qui court dans ses couloirs,
+    // et deux tuyaux : de loin, ce coin de la salle appartient déjà à Wolf3D, et l'on y va
+    // pour cette raison avant même de distinguer ce qui s'y trouve.
+    pushBlock(
+      screen,
+      { x: 1210.4, y: foot, z: wall - 0.22 },
+      { x: 1217.6, y: foot + 5, z: wall },
+      { side: made(WOLF.tole, MATTER.tole), top: made(WOLF.ombre, MATTER.tole) },
+    )
+    pushBlock(
+      screen,
+      { x: 1210.4, y: foot + 2.35, z: wall - 0.245 },
+      { x: 1217.6, y: foot + 2.85, z: wall - 0.22 },
+      { side: made(WOLF.rouge, MATTER.uni) },
+    )
+    for (const y of [foot + 4.5, foot + 4.82]) {
+      pushPipe(
+        screen,
+        { x: 1210.4, y, z: wall - 0.35 },
+        { x: 1217.6, y, z: wall - 0.35 },
+        0.06,
+        8,
+        made(WOLF.ombre, MATTER.tole),
+      )
+      for (const x of [1211.6, 1214, 1216.4]) {
+        pushPipe(
+          screen,
+          { x, y, z: wall - 0.44 },
+          { x, y, z: wall - 0.26 },
+          0.082,
+          8,
+          made(WOLF.tole, MATTER.tole),
+        )
+      }
+    }
+
+    // **Et la borne.** Elle regarde la porte, à un mètre du mur.
+    machineScreen = pushArcade(screen, {
+      at: { x: 1214, y: foot, z: wall - 1.05 },
+      facing: { x: 0, y: 0, z: -1 },
+      width: 1.7,
+      depth: 1.15,
+      height: 2.72,
+      screen: made([1, 1, 1], PICTURES.machine),
+      logo: made([1, 1, 1], PICTURES.casque),
+      metal: made(WOLF.tole, MATTER.tole),
+      dark: made(WOLF.ombre, MATTER.tole),
+      red: made(WOLF.rouge, MATTER.uni),
+      glow: made(WOLF.ambre, MATTER.lumiere),
+      accent: made(WOLF.orange, MATTER.uni),
+    }).centre
 
     cells.push({
       id: GREAT,
@@ -2590,6 +2636,14 @@ export function buildWorld(): World {
       ),
       passages: [outOfGreat],
       lighting: greatLighting,
+      // La borne est solide. Un meuble qu'on traverse n'est pas un meuble, et celui-ci est
+      // le seul objet de la salle qu'on approche exprès.
+      blocks: [
+        {
+          min: { x: 1214 - 0.97, y: foot, z: wall - 1.63 },
+          max: { x: 1214 + 0.97, y: foot + 2.72, z: wall },
+        },
+      ],
     })
   }
 
@@ -2712,7 +2766,7 @@ export function buildWorld(): World {
     bridgePos: { x: BRIDGE_X, y: BRIDGE_DECK + 1.65, z: 1022 },
     bridgeForward: { x: 0.12, y: -0.08, z: 1 },
     machineCell: GREAT,
-    machinePos: { x: 1214, y: GREAT_BOX.min.y + 2.5, z: GREAT_BOX.max.z - 0.4 },
+    machinePos: machineScreen,
     wings: WINGS.map((w) => ({ id: w.id, purpose: w.purpose })),
   }
 
